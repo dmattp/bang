@@ -125,10 +125,11 @@ Think about what happens when we place two arguments on the stack and apply the 
 
       3  4
       fun x =
-         fun y = x y +; !
+         fun y =
+            x y +; !
       !
 
-First we push 3 and 4 on the working stack.  Then we encounter the first function which takes the argument x. When this function is applied, it pops 4 off of the stack and binds it to variable "x".  Then, it evaluates the function body.  The function body defines another function which accepts a parameter "y".  When this function is applied, it pops the remaining "3" off the stack and binds it to parameter "y".  Then it pushes "x" and "y" onto the stack and adds them.
+First we push 3 and 4 on the working stack.  Then we encounter the first function which takes the argument x. When this function is applied, it pops 4 off of the stack and binds it to variable "x".  Then, it evaluates the function body.  The function body applies the function which accepts a parameter "y".  When this function is applied, it pops the remaining "3" off the stack and binds it to parameter "y".  Then it pushes "x" and "y" onto the stack and adds them.
 
 So we have in effect defined a function that takes two arguments, even though our language only gave us a function that takes one!  Standard fare if you're familiar with functional languages, but still a neat trick.
 
@@ -159,7 +160,7 @@ First, we can get move the inner '!' up to the front to clean up some of the bac
 
 Better, but we can still end up with a list of semicolons that you have to count out.  Why is that?  If you've ever worked with lisp you're familiar with the ")))))))" problem that lisp haters harp on. Although the postfix notation avoids some of the explicit "expression bounding" for operations, a similar problem arises here because we need to bound the extent of function definitions. Semicolons end up stacking up as you close out however many "fun" levels are active.
 
-To help with his Bang! provides a "curly brace" syntax let us close out any binding levels created after the open brace.  Where lisp might leave 12 stacked parentheses, in Bang! you can close out a whole group of nested fundef's with a single brace.  Unlike many traditional languages the braces only need to be used sparingly since it's just a programmer aid and not a syntax requirement.
+To help with this Bang! provides a "curly brace" syntax which closes out any binding levels created after the open brace.  Where lisp might leave 12 stacked parentheses, in Bang! you can close out a whole group of nested fundef's with a single brace.  Unlike many traditional languages the braces only need to be used sparingly since it's just a programmer aid and not a syntax requirement.
 
 So now we've got:
 
@@ -200,7 +201,7 @@ Or if you prefer, we can bind the variables with the "as" keyword:
 
 Now that is pretty close to a "traditional" function syntax, and yet we haven't created a large set of syntax rules that make for complicated parsers and which can lead to annoying inconsistency. We've defined only four keywords: "fun", "fun!", "as", and "def"- all of which are just minor syntactic variants on the core function construct; and the key apply operator "!" which runs behind the scenes as we bind values to function closures, but generally remains hidden except where we want to call attention to the fact that we're applying a function.
 
-I think it's a very cool result when contrasted with traditional infix languages which tend to build in a lot of arbitrary syntactic conventions, e.g., re-using parentheses for function definitions as well as forcing order of evaluation, commas to separate arguments, etc. - and prefix languages like lisp that require mind-numbing explicitness in parenthesizing the bounds of expression groups.
+I think it's a nice result when contrasted with traditional infix languages which tend to build in a lot of arbitrary syntactic conventions, e.g., re-using parentheses for function definitions as well as forcing order of evaluation, commas to separate arguments, etc. - and prefix languages like lisp that require mind-numbing explicitness in parenthesizing the bounds of expression groups.
 
 And because postfix doesn't ever require the use of parens to specify the order of evaluation we've still got those in our back pocket for... something.  Is it perfect? Certainly not; but given the very minimal syntax and requirements on the language implementation, it's a pretty good "Bang! for the buck".
 
@@ -269,12 +270,12 @@ Each value on the stack is transformed by the provided function.  The 'innermap'
 
 Given this map function, we can write a "filter" function that leaves only those functions on the stack which pass a certain predicate test:
 
-   def :filter predicate = {
-       def :filter-xform v = {
-         fun = v; v predicate!?
-       }
-       filter-xform map!
-   }
+      def :filter predicate = {
+          def :filter-xform v = {
+            fun = v; v predicate!?
+          }
+          filter-xform map!
+      }
 
 To help with the use of the working stack, a couple other niceties are provided.  "nth" pushes (duplicates) the nth value on the stack.  "save-stack" clears the stack contents, saving them into a function that will push them back onto the stack when applied.
 
@@ -291,7 +292,7 @@ Here is a short implementation of quicksort using higher order functions:
       (theStack! fun = pivotValue >; filter! quicksort # 1 >?)
     }
 
-When quicksort is invoked, it looks at the size of the stack, calculates the midpoint index and stores the midpoint value fore use as a 'pivot'.  The full stack contents are then saved off in a closure, as we'll need to operate on this list of values several times.
+When quicksort is invoked, it looks at the size of the stack, calculates the midpoint index and stores the midpoint value for use as a 'pivot'.  The full stack contents are then saved off in a closure, as we'll need to operate on this list of values several times.
 
 First, the stack contents less then the pivot value are pushed, recursively invoking quicksort to insure these values are fully sorted.  Then, the stack contents which match the pivot are pushed; finally, the stack contents greater than the pivot are pushed, recursively invoking quicksort on those stack items.  For the last two operations, parentheses are used to prevent the operations from being applied to values pushed in the previous step.
 
@@ -299,7 +300,7 @@ And that's, for an example, quicksort in six easy lines of Bang!.
 
 ## Records and Objects
 
-So now we've got first class lexically scope functions, conditionals, and iteration, great; but everybody wants objects right?
+So now we've got first class lexically scope functions, conditionals, iteration, and higher order functions, great; but everybody wants objects right?
 
 Once you have first class lexically scoped functions, it is possible to build a lightweight object/record system. It may not be everything your average Java programmer wants out of an object system, but with the goal of keeping Bang! simple, it's a fair starting point.
 
