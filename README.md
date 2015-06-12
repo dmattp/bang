@@ -1,4 +1,4 @@
-Bang! Copyright (c) 2015 David M. Placek
+Bang! Copyright (c) 2015 David M. Placek (MIT License)
 
 # The Bang! Programming Language
 
