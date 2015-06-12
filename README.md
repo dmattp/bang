@@ -390,6 +390,55 @@ These should also not be surprising
 'stack-to-array' is a sort of array object that provides methods to return the nth element of the array, the length of the array, or to push the array contents onto the working stack.
 
 
+# Libraries
+
+Library files or modules can be included with the "require" keyword.  Require loads a file as a closure which must be applied.  A typical pattern is to have the library file return a message handler style function which can be used with the object syntax to access methods.  E.g., the core higher-order-functions are included in a file called [lib/hof.bang], which looks like this:
+
+
+    def :map xform = {
+      def :innermap = {
+        fun val = innermap! val xform!;
+        # 1 > ?
+      }
+      innermap!
+    }
+    
+    def :filter predicate = {
+        def :filter-xform v = {
+          fun = v; v predicate!?
+        }
+        filter-xform map!
+    }
+    
+    fun = lookup
+    
+Users may access these functions by requiring [hof.lib]
+
+    'lib/hof.bang' require! as hof
+
+which saves the returned function as "hof".  Functions can then be accessed as such
+
+    1 2 3 4 fun=100 +; hof.map!
+
+Or rebound to local upvalues as
+
+    hof.map as map
+
+
+# Roadmap
+
+* Improve parse / runtime error reporting
+* coroutines, coroutines, coroutines.  Maybe even full continuations and call/cc
+* user defined operators and consistency with primitive operators ala scala?
+* Test integration with Boehm GC to fix my shared_ptr woes??
+* Working indentation in bang-mode.el
+* REPL
+* Libraries
+** SRFI implementations
+** String library (borrow from Lua?)
+* Library / Module Mechanism
+** Import module namespace into working AST/environment e.g for REPL
+
 # Summary of Language Elements
 
 * _Function/Binding_: fun, fun!, as, def
@@ -401,4 +450,7 @@ These should also not be surprising
 * _(tentative)_ primitive functions:
 ** # + - * / < > = not! or! drop! swap! dup! nth! save-stack! stack-to-array!
 
+# License
+
+Released under MIT license, see [doc/license.txt]
 

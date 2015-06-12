@@ -21,6 +21,6 @@ def :testQuicksort numItems = {
 }
 
 fun=
-19000 testQuicksort!
+35 testQuicksort!
 ;1 times!
 

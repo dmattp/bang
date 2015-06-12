@@ -7,17 +7,6 @@ def :map xform = {
   innermap!
 }
 
--- first attempt at non unbounded recursive map failed
---- def :map xform = {
----   stack-to-array! as fullStack
----   'map/stack len='@ '#' fullStack!@
----   fun ndx = {
----     'map ndx='@ ndx@
----     ndx fullStack! xform! }
----   0 '#' fullStack! 1 - range!
---- }
-
-
 def :filter predicate = {
     def :filter-xform v = {
       fun = v; v predicate!?
@@ -25,5 +14,4 @@ def :filter predicate = {
     filter-xform map!
 }
 
--- a little weird, I'd have thought i didn't need ! here
 fun = lookup
