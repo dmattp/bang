@@ -1,0 +1,12 @@
+*~
+out.*.out
+*.idb
+*.pdb
+*.obj
+*.pch
+*.exe
+*.tlog
+*.manifest
+*.lastbuildstate
+*.bad
+test-ref

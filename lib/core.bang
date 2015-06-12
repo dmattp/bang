@@ -1,0 +1,33 @@
+-- 150610 these are available as primitives now
+def :swap x = { as y = x y }
+def :dup n = n n;
+def :drop n = ;
+def :dup-nth n = {
+   def :inner Depth = { as v  -- this could be rewritten to test n < 1 and decrement n
+      Depth n < not! as hitRequestedDepth
+      fun = v v; hitRequestedDepth ?
+      fun = {
+         Depth 1 + inner!
+         as result v result -- v swap! -- < equivalent, no extra binding.  doesn't really run any faster, surprisingly.
+      } hitRequestedDepth not!?
+   }
+   0 inner!
+}
+
+-- this thing really leaks some memory it seems, at least it did
+-- when used in my quicksort implementation.  Whether that flaw
+-- is in save-stack or quicksort IDK, but it's something good to know
+def :save-stack = {
+  def :innergotsome = {
+    def :inner list = { as element
+        fun = element list!; as newList
+        fun = newList inner!; # 1 >?
+        fun = newList; # 2 <?
+    }
+    fun=; inner!
+  }
+  # 0 > as gotSome
+  innergotsome gotSome?
+  fun= fun=; ; gotSome not!?  
+}
+

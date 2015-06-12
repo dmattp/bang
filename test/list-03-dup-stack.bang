@@ -1,0 +1,29 @@
+-- this is an optimization to both to leave the stack intact
+-- but with a "list" of the previous stack contents as the last pushed
+-- item.  This allows functions that need to use the stack N times to
+-- avoid the save/push/push which really may not save that much anyway,
+-- but performance aesthetically it's pleasing to not clear the whole stack then
+-- restore it.  Not really necessary, but it's a performance optimization
+
+
+-- this is some tricky business
+
+def :ndup-stack = {
+  def :inner list = { as element
+    fun = element list!; as newList
+    fun = newList inner!; # 1 >?
+    element
+    fun = newList; # 3 <? -- return list if I've emptied the stack
+    fun x = { as y x y } # 3 >? -- otherwise swap the previous list with my element
+                                   -- so that the new list remains at the top of the stack
+  }
+  fun=; inner!
+}
+
+
+1 2 3 4 5 6 7 8 9
+
+ndup-stack! as stack
+stack!
+
+-- and voila! now I have enough to write quicksort.  

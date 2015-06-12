@@ -1,0 +1,9 @@
+fun p01 =
+   fun x   = p01 x +;           as secondfun
+     fun p01 = p01 secondfun !;   as lastfun
+     5 lastfun !;
+     ; ; 
+as main
+   1000 main !
+
+

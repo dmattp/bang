@@ -1,0 +1,14 @@
+
+
+def :make-point = { as y as x
+  fun = lookup
+}
+
+1 2 make-point! fun! aPoint = 
+4 6 make-point! fun! secondPoint = 
+
+aPoint.x
+aPoint.y
+
+secondPoint.x
+secondPoint.y

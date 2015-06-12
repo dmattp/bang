@@ -1,0 +1,8 @@
+fun p01 = {
+   fun x   = p01 x +;        fun! secondfun =
+   fun p01 = p01 secondfun !;   fun! lastfun =
+   5 lastfun !
+} fun! main =
+   1000 main !
+
+

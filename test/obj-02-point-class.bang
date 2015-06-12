@@ -1,0 +1,31 @@
+
+def :make-point = { as y_ as x_
+
+   def :x = x_;
+   def :y = y_;
+
+   def :dfrom-center = {
+       x_ x_ * y_ y_ * +
+   }
+
+   def :dfrom-other point = {
+       x_ point.x! - fun! dx = 
+       y_ point.y! - fun! dy =
+       dx dx * dy dy * +
+   }
+
+   fun = lookup
+}
+
+1 2 make-point! fun! aPoint = 
+4 6 make-point! fun! secondPoint = 
+
+aPoint.x!
+aPoint.y!
+aPoint.dfrom-center!
+
+secondPoint.x!
+secondPoint.y!
+secondPoint.dfrom-center!
+
+secondPoint aPoint.dfrom-other!

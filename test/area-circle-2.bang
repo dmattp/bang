@@ -1,0 +1,14 @@
+    fun n = n n *;
+fun! squared =
+
+     3.14159
+fun! pi =
+
+     77
+fun! iameter =
+  
+  iameter 2 / fun! radius =
+  pi radius squared ! *
+  
+    
+

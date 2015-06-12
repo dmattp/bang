@@ -1,0 +1,8 @@
+def :gimme-fn addBase = { fun addMe = addBase addMe + }
+
+  500 gimme-fn! as inner-fn
+
+  7 inner-fn!
+  6 inner-fn!
+  5 inner-fn!
+

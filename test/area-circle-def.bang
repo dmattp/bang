@@ -1,0 +1,13 @@
+3.14159 fun! pi =
+
+def :squared n = n n *; 
+
+def :iaToArea iameter = {
+  iameter 2 / fun! radius =
+  pi radius squared! *
+}
+
+77 iaToArea!
+  
+    
+

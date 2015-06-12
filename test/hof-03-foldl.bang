@@ -1,0 +1,12 @@
+
+
+def :Foldl operator = {
+  fun = operator! operator Foldl!;
+  # 2 >?
+}
+
+
+    1000 4 200 30
+fun = +;
+Foldl!
+

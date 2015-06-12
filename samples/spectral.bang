@@ -1,0 +1,86 @@
+def :times totalTimes = { fun! loopFun =
+    def :innerLoop remain = {
+      loopFun!
+      fun= remain 1 - innerLoop!; remain 1 >?
+    }
+    totalTimes innerLoop!
+}
+
+def :range last = { as first as do-me
+   def :inner current = {
+      current do-me!
+      fun = current 1 + inner!; current last <?
+   }
+   first inner!
+}
+
+def :A j = { as i
+  i j + 1 - as ij
+  1.0
+    ij ij 1 - * 0.5 * i +
+  /
+}
+
+def :Av N = {
+  stack-to-array! as input
+  fun i = { -- local a = 0
+     0 fun j = { -- for j=1,N do a = a + x[j] * A(i, j) end
+       j 1 - input! i j A! * +
+     } 1 N range!     
+  } 1 N range!
+}
+
+def :Atv N = {
+  stack-to-array! as input
+  fun i = { -- local a = 0
+     0 fun j = { -- for j=1,N do a = a + x[j] * A(j, i) end
+       j 1 - input! j i A! * +
+     } 1 N range!     
+  } 1 N range!
+}
+
+def :AtAv N = {
+  N Av!
+  N Atv!
+}
+
+150 as N
+
+fun = 1; N times!
+
+false
+fun = { as oldv
+        N AtAv! stack-to-array! as v
+v.push! N AtAv! v
+} 10 times!
+as v stack-to-array! as u
+
+0
+fun i = {
+  i u! i v! * +
+} 0 N 1- range!
+as vBv
+
+0
+fun i = {
+  i v! as vi vi vi * +
+} 0 N 1 - range!
+as vv
+
+vBv vv / -- sqrt!
+
+-- 50 takes about 600ms  (lua=40ms)
+-- 100 takes about 2.0s  (lua=90ms)
+-- 150 takes about 4.5s  (lua=185ms)
+
+-- So again, about 20-25x slower than lua.
+-- The best ruby from http://benchmarksgame.alioth.debian.org/u32/performance.php?test=spectralnorm#about
+--   is about 2x slower than lua.  So here, also 10x slower than ruby.
+-- the worst score on the shootout is just under 5x slower than lua.  So I'm hardly even in contention
+-- with the worst contender. So pretty slow.
+ 
+-- not exactly a screamer, but not at all optimized. And I still don't have array access,
+-- but honestly I don't think that's a big killer
+
+
+-- update: woohoo, after taking primitive operations out of shared_ptr<> usage time for 150 dropped to 2.5s, so only 13.5x 

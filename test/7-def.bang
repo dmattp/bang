@@ -1,0 +1,4 @@
+def :square n = n n *;
+3 square!
+
+

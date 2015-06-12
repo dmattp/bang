@@ -1,0 +1,4 @@
+fun n = n n *;
+fun! square = 3 square!
+
+

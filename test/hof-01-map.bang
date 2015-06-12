@@ -1,0 +1,15 @@
+
+
+def :map xform = {
+  def :innermap = {
+    fun val = innermap! val xform!;
+    # 1 > ?
+  }
+  innermap!
+}
+
+
+1 2 3
+fun= 100 +;
+map!
+

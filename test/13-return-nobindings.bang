@@ -1,0 +1,6 @@
+def :gimme-fun= { fun addMe = 1000 addMe + }
+  gimme-fun! fun! inner-fun=
+  7 inner-fun!
+  6 inner-fun!
+  5 inner-fun!
+

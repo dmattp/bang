@@ -1,0 +1,12 @@
+
+def :times totalTimes = { fun! loopFun =
+    def :innerLoop remain = {
+      loopFun!
+      fun= remain 1 - innerLoop!; remain 1 >?
+    }
+    totalTimes innerLoop!
+}
+
+def :say-hello = "hello"@;
+
+say-hello 7 times!

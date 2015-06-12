@@ -1,0 +1,89 @@
+-- The Computer Language Benchmarks Game
+-- http://benchmarksgame.alioth.debian.org/
+-- contributed by David M. Placek
+def :pow2 n = {
+   1
+   def :inner remain = {
+     2 *
+     fun=remain 1 - inner!; remain 1 >?
+   }
+   fun = n inner!; n 1 >?
+}
+
+def :range last = { as first as do-me
+   def :inner current = {
+      current do-me!
+      fun = current 1 + inner!; current last <?
+   }
+   first inner!
+}
+def :times totalTimes = { fun! loopFun =
+    def :innerLoop remain = {
+      loopFun!
+      fun= remain 1 -; remain 1 >?
+      innerLoop remain 1 >?
+    }
+    totalTimes innerLoop!
+}
+
+def :BottomUpTree depth = { as item
+  depth 0 > as hasMore
+  fun = {
+      fun = item
+  } hasMore not!?
+  fun = {
+    item item + as i
+    depth 1 - as nextDepth
+--    local left, right = BottomUpTree(i-1, depth), BottomUpTree(i, depth)
+    i 1 - nextDepth BottomUpTree! as left
+    i nextDepth BottomUpTree! as right
+    fun = item left right
+  } hasMore?
+}
+
+def :ItemCheck tree = {
+  (tree!
+  fun= {
+    as tRight as tLeft
+--    'oneItem='@ oneItem@
+    tLeft ItemCheck! + tRight ItemCheck! -
+  } # 2 >?)
+}
+
+12 as N
+4 as mindepth
+N as maxdepth
+
+maxdepth 1 + as stretchdepth
+0 stretchdepth BottomUpTree! as stretchtree
+'stretch tree of depth'@ stretchdepth@
+'check: '@  stretchtree ItemCheck! @
+
+0 maxdepth BottomUpTree! as longlivedtree
+
+fun depth_div2 = {
+  depth_div2 2 * as depth
+--  'iter depth='@ depth@
+  maxdepth depth - mindepth + pow2! as iterations
+
+  0 fun = { 1 depth BottomUpTree! ItemCheck! +
+              0 1 - depth BottomUpTree! ItemCheck! + } iterations times!
+  as check
+  'n iterations =' iterations 2*@ ' of depth =' depth@ ' check=' check@
+} mindepth 2 / maxdepth 2 / range!
+
+longlivedtree ItemCheck!
+'llt depth='@ maxdepth@ 'check='@ @
+----io.write(string.format("long lived tree of depth %d\t check: %d\n",
+----  maxdepth, ItemCheck(longlivedtree)))
+
+-- 11 takes 4.4s for Bang!
+-- 12 takes 680ms (lua) Bang! takes 8.8s for 13x slower than lua 
+-- 13 takes 1.3s  (lua) Bang! takes 21.0 for 16x slower than lua
+
+-- any way, it looks like i'm consistent in coming in at 15-25x slower than lua, so at least
+-- I'm consistent I guess
+
+-- after moving Primitives out of shared_ptr management:
+-- depth 13 takes only 16s, so 12x slower than lua
+-- depth 12 takes 6.6, so 9.7x slower than lua

@@ -1,0 +1,9 @@
+def :zact n = {
+  n
+  fun= n 1 - zact! *;  n 2 >?
+}
+
+21 zact!
+4  zact!
+7  zact!
+11 zact!

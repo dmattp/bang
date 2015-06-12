@@ -1,0 +1,26 @@
+
+'lib/hof.bang' require! as hof
+  hof.filter as filter
+
+def :quicksort = {
+  # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
+  save-stack! as theStack
+ 
+   theStack! fun = pivotValue <; filter! quicksort # 1 >?
+  (theStack! fun = pivotValue =; filter!)
+  (theStack! fun = pivotValue >; filter! quicksort # 1 >?)
+}
+
+
+'lib/iterate.bang' require! .times as times
+
+def :testQuicksort numItems = { 
+  random numItems times!
+  quicksort!
+  fun = save-stack! drop!; numItems 99 >?
+}
+
+fun=
+19000 testQuicksort!
+;1 times!
+

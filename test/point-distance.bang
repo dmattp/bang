@@ -1,0 +1,6 @@
+fun n = n n *; fun! squared =
+10 11 13 15
+fun! y2 = fun! x2 = fun! y1 = fun! x1 =
+    x2 x1 - fun! dx =
+    y2 y1 - fun! dy =
+    dx squared ! dy squared ! + 
