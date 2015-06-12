@@ -24,7 +24,7 @@ Bang! is less than a month old and many features are incomplete and specificatio
 
 This section will give an overview of the language starting with the foundations and some explanation of the reasoning behind the language design.
 
-## Functions - the only thing that matters
+## Functional Foundation
 
 So what does Bang! code look like? The central construct in Bang! is the function.
 
@@ -424,13 +424,13 @@ Or rebound to local upvalues as
 
     hof.map as map
 
-
 # Roadmap
 
 * Improve parse / runtime error reporting
 * coroutines, coroutines, coroutines.  Maybe even full continuations and call/cc
-* user defined operators and consistency with primitive operators ala scala?
+* Eval and programatic code generation
 * Test integration with Boehm GC to fix my shared_ptr woes??
+* user defined operators and consistency with primitive operators ala scala?
 * Working indentation in bang-mode.el
 * REPL
 * Libraries
