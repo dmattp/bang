@@ -44,7 +44,7 @@ def :AtAv N = {
   N Atv!
 }
 
-950 as N
+150 as N
 
 fun = 1; N times!
 
