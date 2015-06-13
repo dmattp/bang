@@ -44,7 +44,7 @@ def :AtAv N = {
   N Atv!
 }
 
-999 as N
+950 as N
 
 fun = 1; N times!
 
@@ -85,3 +85,13 @@ vBv vv / -- sqrt!
 
 -- update: woohoo, after taking primitive operations out of shared_ptr<> usage time for 150 dropped to 2.5s, so only 13.5x
 -- still at 3.2s for MSVC, even with GC 
+
+-- update: After changing math and comparison primitives (+-/*<>=) to not pop/push but rather
+-- mutate the stack in-place, MSVC+GC is down to 2.75 and MingW is hitting 2.4.  Better, but
+-- not a huge improvement. 
+
+
+
+
+
+

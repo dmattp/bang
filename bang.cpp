@@ -5,7 +5,6 @@
 //////////////////////////////////////////////////////////////////
 
 #define PBIND(...) do {} while (0)
-#define USE_GC 1
 
 /*
   Keywords
@@ -53,6 +52,11 @@ And there are primitives, until a better library / module system is in place.
 #include <ctype.h>
 #include <limits.h>
 
+
+class Function;
+class FunctionClosure;
+
+#if USE_GC
 #include  "gc_cpp.h"
 #include "gc_allocator.h"
 extern "C" {
@@ -67,10 +71,6 @@ extern "C" {
   /* header files that don't take kindly to this context.               */
 }
 
-
-class Function;
-class FunctionClosure;
-#if USE_GC
 typedef Function* bangfunptr_t;
 typedef FunctionClosure* bangclosure_t;
   #define BANGFUN_CREF bangfunptr_t
@@ -195,7 +195,7 @@ public:
         copyme( rhs );
         return *this;
     }
-    
+
     Value() : type_( kInvalidUnitialized ) {}
     Value( bool b )     : type_( kBool ) { v_.b = b; }
     Value( double num ) : type_( kNum ) { v_.num = num; }
@@ -227,6 +227,13 @@ public:
         free_manual_storage();
     }
 
+    void mutateNoType( double num ) { v_.num = num; } // precondition: previous type was double
+    void mutatePrimitiveToBool( bool b ) // precondition: previous type doesn't require ~destructor
+    {
+        type_ = kBool;
+        v_.b = b;
+    }
+
     BANGFUN_CREF tofun() const
     {
 #if USE_GC
@@ -244,6 +251,7 @@ public:
     bool isfun()  const { return type_ == kFun; }
     bool isstr()  const { return type_ == kStr; }
     bool isfunprim()  const { return type_ == kFunPrimitive; }
+    EValueType type() const { return type_; }
 
     double tonum()  const { return v_.num; }
     bool   tobool() const { return v_.b; }
@@ -322,6 +330,16 @@ public:
     {
         stack_.push_back( v );
     }
+
+    const Value& loc_top() const
+    {
+        return stack_.back();
+    }
+
+    Value& loc_topMinus1Mutate()
+    {
+        return *(&stack_[stack_.size()-2]);
+    }
     
     Value pop()
     {
@@ -329,7 +347,9 @@ public:
         stack_.pop_back();
         return v;
     }
-    const Value& nth( int ndx )
+    void pop_back() { stack_.pop_back(); };
+    
+    const Value& nth( int ndx ) const
     {
         return stack_[stack_.size()-1-ndx];
     }
@@ -404,15 +424,45 @@ namespace Primitives
         else
             throw std::runtime_error("Binary operator incompatible types");
     }
+
+    template <class T>
+    void infix2to1( Stack& s, T operation )
+    {
+        const Value& v2 = s.loc_top();
+        Value& v1 = s.loc_topMinus1Mutate();
+
+        if (v1.isnum() && v2.isnum())
+        {
+            v1.mutateNoType( operation( v1.tonum(), v2.tonum() ) );
+            s.pop_back();
+        }
+        else
+            throw std::runtime_error("Binary operator incompatible types");
+    }
+
+    template <class T>
+    void infix2to1bool( Stack& s, T operation )
+    {
+        const Value& v2 = s.loc_top();
+        Value& v1 = s.loc_topMinus1Mutate();
+
+        if (v1.isnum() && v2.isnum())
+        {
+            v1.mutatePrimitiveToBool( operation( v1.tonum(), v2.tonum() ) );
+            s.pop_back();
+        }
+        else
+            throw std::runtime_error("Binary operator incompatible types");
+    }
     
-    void plus ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 + v2; } ); }
-    void minus( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 - v2; } ); }
-    void mult ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 * v2; } ); }
-    void div  ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 / v2; } ); }
-    void lt   ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 < v2; } ); }
-    void gt   ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 > v2; } ); }
-    void eq   ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return v1 == v2; } ); }
-    void modulo ( Stack& s, const RunContext& ) { infixnum( s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
+    void plus ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 + v2; } ); }
+    void minus( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 - v2; } ); }
+    void mult ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 * v2; } ); }
+    void div  ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 / v2; } ); }
+    void lt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 < v2; } ); }
+    void gt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 > v2; } ); }
+    void eq   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 == v2; } ); }
+    void modulo ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
     
     void stacklen( Stack& s, const RunContext& ctx)
     {
@@ -843,7 +893,10 @@ namespace Ast
 // ParamValue will be set when it is invoked, which could happen
 // multiple times in theory.
 class FunctionClosure;
-class Function : public gc
+class Function
+#if USE_GC
+    : public gc
+#endif
 {
     bool isClosure_;
     Function( const Function& ); // uncopyable

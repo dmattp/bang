@@ -1,12 +1,14 @@
 PATH=c:/mingw/bin:$PATH
 
-#bang.exe: bang.cpp Makefile
-#	g++ -O2 -Wl,--stack,33554432 --std=c++11 bang.cpp -o $@
-
+USE_GC=0
+PATH_BOEHM=c:\m\home\pkg\boehm-gc\build1
 
 bang.exe: bang.cpp Makefile
-	g++ -D USE_GC=1 -I c:\m\home\pkg\boehm-gc\build1\include -O2 -Wl,--stack,33554432 --std=c++11 bang.cpp -Lc:\m\home\pkg\boehm-gc\build1 -lgc -o $@
-
+ifeq (1,$(USE_GC))
+	g++ -D USE_GC=1 -I $(PATH_BOEHM)\include -O2 -Wl,--stack,33554432 --std=c++11 bang.cpp -L$(PATH_BOEHM) -lgc -o $@
+else
+	g++ -O2 -Wl,--stack,33554432 --std=c++11 bang.cpp -o $@
+endif
 
 # -g0 doesnt seem to actually drop any size, maybe need linker option too?
 # mingw32-g++ -O2 --std=c++11 bang.cpp -o $@

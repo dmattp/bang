@@ -42,6 +42,7 @@
     <ClCompile>
       <AdditionalIncludeDirectories>c:\m\home\pkg\boehm-gc\build1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>USE_GC=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
