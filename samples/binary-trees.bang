@@ -50,7 +50,7 @@ def :ItemCheck tree = {
   } # 2 >?)
 }
 
-12 as N
+13 as N
 4 as mindepth
 N as maxdepth
 
@@ -85,5 +85,6 @@ longlivedtree ItemCheck!
 -- I'm consistent I guess
 
 -- after moving Primitives out of shared_ptr management:
--- depth 13 takes only 16s, so 12x slower than lua
+-- depth 13 takes only 16s, so 12x slower than lua -- with GC 11.1s
 -- depth 12 takes 6.6, so 9.7x slower than lua
+

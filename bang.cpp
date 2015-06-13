@@ -5,6 +5,7 @@
 //////////////////////////////////////////////////////////////////
 
 #define PBIND(...) do {} while (0)
+#define USE_GC 1
 
 /*
   Keywords
@@ -52,6 +53,48 @@ And there are primitives, until a better library / module system is in place.
 #include <ctype.h>
 #include <limits.h>
 
+#include  "gc_cpp.h"
+#include "gc_allocator.h"
+extern "C" {
+# include "private/gcconfig.h"
+
+# ifndef GC_API_PRIV
+#   define GC_API_PRIV GC_API
+# endif
+  GC_API_PRIV void GC_printf(const char * format, ...);
+  /* Use GC private output to reach the same log file.  */
+  /* Don't include gc_priv.h, since that may include Windows system     */
+  /* header files that don't take kindly to this context.               */
+}
+
+
+class Function;
+class FunctionClosure;
+#if USE_GC
+typedef Function* bangfunptr_t;
+typedef FunctionClosure* bangclosure_t;
+  #define BANGFUN_CREF bangfunptr_t
+  #define CLOSURE_CREF bangclosure_t
+  #define STATIC_CAST_TO_BANGFUN(f)  static_cast<Function*>( f )
+  #define DYNAMIC_CAST_TO_CLOSURE(f) dynamic_cast<FunctionClosure*>( f )
+  #define NEW_CLOSURE(a,b)           new FunctionClosure( a, b )
+  #define NEW_BANGFUN(A)             new A
+#else
+typedef std::shared_ptr<Function> bangfunptr_t;
+typedef std::shared_ptr<FunctionClosure> bangclosure_t;
+  #define BANGFUN_CREF const bangfunptr_t&
+  #define CLOSURE_CREF const bangclosure_t&
+  #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Function>(f)
+  #define DYNAMIC_CAST_TO_CLOSURE(f) std::dynamic_pointer_cast<FunctionClosure,Function>( f )
+  #define NEW_CLOSURE(a,b)           std::make_shared<FunctionClosure>( a, b )
+  #define NEW_BANGFUN(A)             std::make_shared<A>
+#endif 
+
+#define BANGFUNPTR bangfunptr_t
+#define BANGCLOSURE bangclosure_t
+
+
+
 const char* const BANG_VERSION = "0.001";
 const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
 
@@ -92,7 +135,11 @@ class Value
     {
         switch (rhs.type_)
         {
+#if USE_GC            
+            case kFun: v_.funptr = rhs.v_.funptr; return;
+#else
             case kFun:  new (v_.cfun) std::shared_ptr<Function>( rhs.tofun() ); return;
+#endif
             case kStr:  new (v_.cstr) std::string( rhs.tostr() ); return;
             case kBool: v_.b = rhs.v_.b; return;
             case kNum:  v_.num = rhs.v_.num; return;
@@ -104,9 +151,12 @@ class Value
     inline void free_manual_storage()
     {
         using namespace std;
+#if !USE_GC            
         if (type_ == kFun)
             reinterpret_cast<shared_ptr<Function>*>(v_.cfun)->~shared_ptr<Function>();
-        else if (type_ == kStr)
+        else
+#endif 
+            if (type_ == kStr)
             reinterpret_cast<string*>(v_.cstr)->~string();
     }
 public:
@@ -124,7 +174,11 @@ public:
         bool     b;
         double   num;
         char     cstr[sizeof(std::string)];
+#if USE_GC
+        bangfunptr_t funptr;
+#else
         char     cfun[sizeof(std::shared_ptr<Function>)];
+#endif
         const Ast::PushPrimitive* funprim;
     } v_;
 
@@ -151,11 +205,15 @@ public:
     {
         new (v_.cstr) std::string(str);
     }
-    
-    Value( const std::shared_ptr<Function>& f )
+
+    Value( BANGFUN_CREF f )
     : type_( kFun )
     {
+#if USE_GC
+        v_.funptr = f;
+#else
         new (v_.cfun) std::shared_ptr<Function>(f);
+#endif 
     }
 
     Value( const Ast::PushPrimitive* pprim )
@@ -169,7 +227,14 @@ public:
         free_manual_storage();
     }
 
-    const std::shared_ptr<Function>& tofun() const { return *reinterpret_cast<const std::shared_ptr<Function>* >(v_.cfun); }
+    BANGFUN_CREF tofun() const
+    {
+#if USE_GC
+        return v_.funptr;
+#else
+        return *reinterpret_cast<const std::shared_ptr<Function>* >(v_.cfun);
+#endif 
+    }
 
     EValueType type_;
 
@@ -312,13 +377,13 @@ class RunContext
     // Function& runfun_;
     friend class FunctionClosure;
 public:
-    const std::shared_ptr<FunctionClosure>& pActiveFun_;
+    CLOSURE_CREF pActiveFun_;
 public:    
-    RunContext( const std::shared_ptr<FunctionClosure>& fun )
+    RunContext( CLOSURE_CREF fun )
     : pActiveFun_(fun)
     {
     }
-    const std::shared_ptr<FunctionClosure>& running() const { return pActiveFun_; }
+    CLOSURE_CREF running() const { return pActiveFun_; }
 
     const Value& getUpValue( NthParent up ) const;
     const Value& getUpValue( const std::string& uvName ) const;
@@ -778,7 +843,7 @@ namespace Ast
 // ParamValue will be set when it is invoked, which could happen
 // multiple times in theory.
 class FunctionClosure;
-class Function
+class Function : public gc
 {
     bool isClosure_;
     Function( const Function& ); // uncopyable
@@ -787,7 +852,7 @@ public:
     Function( bool isc ) : isClosure_(isc) {};
     virtual ~Function() {}
     bool isClosure() { return isClosure_; }
-    virtual void apply( Stack& s, const std::shared_ptr<FunctionClosure>& runningOrMyself ) = 0;
+    virtual void apply( Stack& s, CLOSURE_CREF runningOrMyself ) = 0;
 };
 
 // class FunctionPrimitive : public Function
@@ -812,11 +877,11 @@ public:
 class FunctionClosure : public Function
 {
     Ast::PushFun* pushfun_;                      // permanent
-    std::shared_ptr<FunctionClosure> pParent_;  // set when pushed??
+    BANGCLOSURE pParent_;  // set when pushed??
     Value paramValue_;                          // set when applied??
 
 public:
-    static std::shared_ptr<FunctionClosure> lexicalMatch(std::shared_ptr<FunctionClosure> start, Ast::PushFun* target)
+    static BANGCLOSURE lexicalMatch(BANGCLOSURE start, Ast::PushFun* target)
     {
         
         while (start && start->pushfun_ != target)
@@ -829,7 +894,7 @@ public:
         return start;
     }
     
-    FunctionClosure( Ast::PushFun& pushfun, std::shared_ptr<FunctionClosure> pParent )
+    FunctionClosure( Ast::PushFun& pushfun, BANGCLOSURE pParent )
     : Function(true),
       pushfun_( &pushfun ),
       pParent_( FunctionClosure::lexicalMatch( pParent, pushfun.parent() ) ) // pParent_ ) // this is the running Closure which "pushed" this function
@@ -898,7 +963,7 @@ public:
 
     Ast::PushFun* pushfun() { return pushfun_; }
 
-    void apply( Stack& s, const std::shared_ptr<FunctionClosure>& myself );
+    void apply( Stack& s, CLOSURE_CREF myself );
     
 }; // end, class FunctionClosure
 
@@ -915,7 +980,7 @@ public:
     : pStack_( pStack )
     {
     }
-    virtual void apply( Stack& s, const std::shared_ptr<FunctionClosure>& running )
+    virtual void apply( Stack& s, CLOSURE_CREF running )
     {
         std::copy( pStack_->begin(), pStack_->end(), std::back_inserter( s.stack_ ) );
     }
@@ -937,7 +1002,7 @@ public:
     // because if I'm invoked through a shared_ptr, I never have access to the
     // shared reference counted, but I sort of need that, e.g., to "Clone()" or
     // to do something that takes another reference to me. 
-    virtual void apply( Stack& s, const std::shared_ptr<FunctionClosure>& running )
+    virtual void apply( Stack& s, CLOSURE_CREF running )
     {
         const Value& msg = s.pop();
         if (msg.isnum())
@@ -951,8 +1016,8 @@ public:
                 s.push( double(s.size()) );
             else if (str == "push")
             {
-                auto pushit = std::make_shared<FunctionRestoreStack>( pStack_ );
-                s.push( Value(std::static_pointer_cast<Function>(pushit)) );
+                auto pushit = NEW_BANGFUN(FunctionRestoreStack)( pStack_ );
+                s.push( Value(STATIC_CAST_TO_BANGFUN(pushit)) );
             }
         }
     }
@@ -977,20 +1042,20 @@ public:
 namespace Primitives {
     void savestack( Stack& s, const RunContext& rc )
     {
-        auto restoreFunction = std::make_shared<FunctionRestoreStack>( s );
-        s.push( Value(std::static_pointer_cast<Function>(restoreFunction)) );
+        auto restoreFunction = NEW_BANGFUN(FunctionRestoreStack)( s );
+        s.push( Value(STATIC_CAST_TO_BANGFUN(restoreFunction)) );
     }
     void stackToArray( Stack& s, const RunContext& rc )
     {
-        auto toArrayFun = std::make_shared<FunctionStackToArray>( s );
-        s.push( Value(std::static_pointer_cast<Function>(toArrayFun)) );
+        auto toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
+        s.push( Value(STATIC_CAST_TO_BANGFUN(toArrayFun)) );
     }
 }
 
 
 void RunProgram
 (   Stack& stack,
-    std::shared_ptr<FunctionClosure> pFunction
+    BANGCLOSURE pFunction
 )
 {
 restartTco:
@@ -1030,13 +1095,13 @@ restartTco:
         if (shouldExec && Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
         {
             // "rebind" RunProgram() parameters
-            pFunction = std::dynamic_pointer_cast<FunctionClosure,Function>( calledFun.tofun() );
+            pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
             goto restartTco;
         } // end , closure
     }
 }
     
-void FunctionClosure::apply( Stack& s, const std::shared_ptr<FunctionClosure>& myself )
+void FunctionClosure::apply( Stack& s, CLOSURE_CREF myself )
 {
     RunProgram( s, myself );
 }
@@ -1058,10 +1123,8 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 // run context
 void Ast::PushFun::run( Stack& stack, const RunContext& rc )
 {
-    stack.push( Value(
-            std::static_pointer_cast<Function>(
-                std::make_shared<FunctionClosure>(*this, rc.running())
-            ) ) );
+    auto pfr = NEW_CLOSURE(*this, rc.running());
+    stack.push( Value( STATIC_CAST_TO_BANGFUN(pfr) ) );
 }
 
 class FunctionPossibleTailCall : public Function
@@ -1099,21 +1162,21 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc )
     //~~~ TODO: This can probably be replaced with Function::lexicalMatch()
 //     std::cerr << "TCO inTail=" << rc.inTailMode() << std::hex 
 //               << " recfun=" << PtrToHash(pRecFun_) << " RUNfun=" << PtrToHash(rc.running()->pushfun()) << std::dec << "\n";
-    if (rc.inTailMode() && (rc.running()->pushfun() == pRecFun_))
-    {
-        std::cerr << "TCO OPT!!!!!!\n";
-        std::shared_ptr<FunctionClosure> parent = FunctionClosure::lexicalMatch(rc.running(), pRecFun_);
-        stack.push( Value(std::static_pointer_cast<Function>(parent) ) );
-    } 
-    else
-    {
-        const auto& otherfun = std::make_shared<FunctionClosure>( *pRecFun_, rc.running() );
-        stack.push( Value(std::static_pointer_cast<Function>(otherfun)) );
-    }
+/// /// ///    if (rc.inTailMode() && (rc.running()->pushfun() == pRecFun_))
+/// /// ///    {
+/// /// ///        std::cerr << "TCO OPT!!!!!!\n";
+/// /// ///        std::shared_ptr<FunctionClosure> parent = FunctionClosure::lexicalMatch(rc.running(), pRecFun_);
+/// /// ///        stack.push( Value(std::static_pointer_cast<Function>(parent) ) );
+/// /// ///    } 
+/// /// ///    else
+/// /// ///    {
+/// /// ///        const auto& otherfun = std::make_shared<FunctionClosure>( *pRecFun_, rc.running() );
+/// /// ///        stack.push( Value(std::static_pointer_cast<Function>(otherfun)) );
+/// /// ///    }
 #else
     {
-        const auto& otherfun = std::make_shared<FunctionClosure>( *pRecFun_, rc.running() );
-        stack.push( Value(std::static_pointer_cast<Function>(otherfun)) );
+        const auto& otherfun = NEW_CLOSURE( *pRecFun_, rc.running() );
+        stack.push( Value(STATIC_CAST_TO_BANGFUN(otherfun)) );
     }
 #endif 
 }
@@ -1152,7 +1215,7 @@ void Ast::Apply::run( Stack& stack, const RunContext& rc )
     const Value& v = stack.pop();
 
     if (Ast::Apply::applyOrIsClosure( v, stack, rc ))
-        v.tofun()->apply( stack, std::dynamic_pointer_cast<FunctionClosure,Function>( v.tofun() ) );
+        v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
 }
 
 void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc)
@@ -1163,7 +1226,7 @@ void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc)
     const Value& v = stack.pop();
     
     if (shouldExec && Ast::Apply::applyOrIsClosure( v, stack, rc ))
-        v.tofun()->apply( stack, std::dynamic_pointer_cast<FunctionClosure,Function>( v.tofun() ) );
+        v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
 }
 
 
@@ -1979,14 +2042,14 @@ public:
         return nullptr;
     }
 
-    std::shared_ptr<FunctionClosure> parseToClosure(Stack& stack, const std::shared_ptr<FunctionClosure> parent, bool bDump )
+    BANGCLOSURE parseToClosure(Stack& stack, CLOSURE_CREF parent, bool bDump )
     {
         FILE* fScript = fopen( fileName_.c_str(), "r");
         RegurgeFile filegetter( fScript );
         Ast::PushFun* fun = this->parse( filegetter, bDump );
         fclose( fScript );
         
-        auto closure = std::make_shared<FunctionClosure>(*fun, parent);
+        auto closure = NEW_CLOSURE(*fun, parent);
 
         return closure;
     }
@@ -1995,7 +2058,7 @@ public:
     {
         try
         {
-            std::shared_ptr<FunctionClosure> noFunction;
+            BANGCLOSURE noFunction(nullptr);
             auto closure = parseToClosure( stack, noFunction, bDump );
             RunContext rc( noFunction );
             closure->apply( stack, closure );
@@ -2022,9 +2085,9 @@ void Ast::Require::run( Stack& stack, const RunContext& rc )
         throw std::runtime_error("no filename found for require??");
 
     RequireKeyword me( v.tostr() );
-    std::shared_ptr<FunctionClosure> noFunction;
+    BANGCLOSURE noFunction(nullptr);
     auto closure = me.parseToClosure( stack, noFunction, false );
-    stack.push( Value(std::static_pointer_cast<Function>(closure)) );
+    stack.push( Value(STATIC_CAST_TO_BANGFUN(closure)) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
 

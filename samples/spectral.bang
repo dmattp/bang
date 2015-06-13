@@ -44,7 +44,7 @@ def :AtAv N = {
   N Atv!
 }
 
-150 as N
+999 as N
 
 fun = 1; N times!
 
@@ -83,4 +83,5 @@ vBv vv / -- sqrt!
 -- but honestly I don't think that's a big killer
 
 
--- update: woohoo, after taking primitive operations out of shared_ptr<> usage time for 150 dropped to 2.5s, so only 13.5x 
+-- update: woohoo, after taking primitive operations out of shared_ptr<> usage time for 150 dropped to 2.5s, so only 13.5x
+-- still at 3.2s for MSVC, even with GC 
