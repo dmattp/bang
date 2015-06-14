@@ -124,7 +124,10 @@ namespace {
     }
 }
 
+class Stack;
+class RunContext;
 class Function;
+typedef void (*tfn_primitive)( Stack&, const RunContext& );
 namespace Ast {
     class PushPrimitive;
 }
@@ -179,7 +182,7 @@ public:
 #else
         char     cfun[sizeof(std::shared_ptr<Function>)];
 #endif
-        const Ast::PushPrimitive* funprim;
+        tfn_primitive funprim;
     } v_;
 
     Value( const Value& rhs )
@@ -216,7 +219,7 @@ public:
 #endif 
     }
 
-    Value( const Ast::PushPrimitive* pprim )
+    Value( tfn_primitive pprim )
     : type_( kFunPrimitive )
     {
         v_.funprim = pprim;
@@ -228,6 +231,7 @@ public:
     }
 
     void mutateNoType( double num ) { v_.num = num; } // precondition: previous type was double
+    void mutateNoType( bool b ) { v_.b = b; } // precondition: previous type was double
     void mutatePrimitiveToBool( bool b ) // precondition: previous type doesn't require ~destructor
     {
         type_ = kBool;
@@ -256,7 +260,7 @@ public:
     double tonum()  const { return v_.num; }
     bool   tobool() const { return v_.b; }
     const std::string& tostr() const { return *reinterpret_cast<const std::string*>(v_.cstr); }
-    const Ast::PushPrimitive* tofunprim() const { return v_.funprim; }
+    tfn_primitive tofunprim() const { return v_.funprim; }
     
     void dump( std::ostream& o ) const
     {
@@ -326,16 +330,15 @@ public:
 //         stack_.emplace_back( std::forward(v) );
 //     }
 
-    void push( const Value& v )
-    {
-        stack_.push_back( v );
-    }
+    void push( const Value& v ) { stack_.push_back( v ); }
+    void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
+    void push( double num ) { stack_.emplace_back(num); }
+    void push( bool b ) { stack_.emplace_back(b); }
+    void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
 
-    const Value& loc_top() const
-    {
-        return stack_.back();
-    }
-
+    const Value& loc_top() const { return stack_.back(); }
+    Value& loc_topMutate() { return stack_.back(); }
+    
     Value& loc_topMinus1Mutate()
     {
         return *(&stack_[stack_.size()-2]);
@@ -409,22 +412,9 @@ public:
     const Value& getUpValue( const std::string& uvName ) const;
 };
 
-typedef void (*tfn_primitive)( Stack&, const RunContext& );
 
 namespace Primitives
 {
-    template <class T>
-    void infixnum( Stack& s, T operation )
-    {
-        const Value& v2 = s.pop();
-        const Value& v1 = s.pop();
-
-        if (v1.isnum() && v2.isnum())
-            s.push(Value( operation( v1.tonum(), v2.tonum() ) ));
-        else
-            throw std::runtime_error("Binary operator incompatible types");
-    }
-
     template <class T>
     void infix2to1( Stack& s, T operation )
     {
@@ -466,7 +456,7 @@ namespace Primitives
     
     void stacklen( Stack& s, const RunContext& ctx)
     {
-        s.push(Value(double(s.size())));
+        s.push(double(s.size()));
     }
 
     void swap( Stack& s, const RunContext& ctx)
@@ -479,7 +469,7 @@ namespace Primitives
 
     void drop( Stack& s, const RunContext& ctx)
     {
-        s.pop();
+        s.pop_back();
     }
 
     void nth( Stack& s, const RunContext& ctx)
@@ -494,9 +484,7 @@ namespace Primitives
 
     void dup( Stack& s, const RunContext& ctx)
     {
-        const Value& v1 = s.pop();
-        s.push( v1 );
-        s.push( v1 );
+        s.push( s.loc_top() );
     }
     
     void floor( Stack& s, const RunContext& ctx)
@@ -510,14 +498,14 @@ namespace Primitives
 
     void random( Stack& s, const RunContext& ctx)
     {
-        s.push( Value( double(::rand()) ) );
+        s.push( double(::rand()) );
     }
     
     void lognot( Stack& s, const RunContext& ctx)
     {
-        const Value& v = s.pop();
+        Value& v = s.loc_topMutate();
         if (v.isbool())
-            s.push( Value( !v.tobool() ) );
+            v.mutateNoType( !v.tobool() );
         else
             throw std::runtime_error("Logical NOT operator incompatible type");
     }
@@ -527,7 +515,7 @@ namespace Primitives
         const Value& v2 = s.pop();
         const Value& v1 = s.pop();
         if (v1.isbool() && v2.isbool())
-            s.push( Value( v1.tobool() && v2.tobool() ) );
+            s.push( v1.tobool() && v2.tobool() );
         else
             throw std::runtime_error("Logical AND operator incompatible type");
     }
@@ -536,7 +524,7 @@ namespace Primitives
         const Value& v2 = s.pop();
         const Value& v1 = s.pop();
         if (v1.isbool() && v2.isbool())
-            s.push( Value( v1.tobool() || v2.tobool() ) );
+            s.push( v1.tobool() || v2.tobool() );
         else
             throw std::runtime_error("Logical AND operator incompatible type");
     }
@@ -654,6 +642,7 @@ namespace Ast
 
     class PushPrimitive: public Base
     {
+    protected:
         tfn_primitive primitive_;
         std::string desc_;
     public:
@@ -670,9 +659,25 @@ namespace Ast
         }
 
         virtual void run( Stack& stack, const RunContext& );
-        tfn_primitive getprimitive() const { return primitive_; } // used by apply
     };
 
+    class ApplyPrimitive: public PushPrimitive
+    {
+    public:
+        ApplyPrimitive( tfn_primitive primitive, const std::string& desc )
+        : PushPrimitive( primitive, desc )
+        {
+        }
+
+        virtual void dump( int level, std::ostream& o )
+        {
+            indentlevel(level, o);
+            o << "ApplyPrimitive op='" << desc_ << "'\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& );
+    };
+    
     class PushUpval : public Base
     {
         std::string name_;
@@ -872,7 +877,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o )
         {
             indentlevel(level, o);
-            o << "PushFunctionRec[" << "] => "
+            o << "PushFunctionRec[" << PtrToHash(pRecFun_) << "] => "
               << std::hex << PtrToHash(pRecFun_) << std::dec
               << std::endl;
         }
@@ -1070,7 +1075,7 @@ public:
             else if (str == "push")
             {
                 auto pushit = NEW_BANGFUN(FunctionRestoreStack)( pStack_ );
-                s.push( Value(STATIC_CAST_TO_BANGFUN(pushit)) );
+                s.push( STATIC_CAST_TO_BANGFUN(pushit) );
             }
         }
     }
@@ -1095,13 +1100,13 @@ public:
 namespace Primitives {
     void savestack( Stack& s, const RunContext& rc )
     {
-        auto restoreFunction = NEW_BANGFUN(FunctionRestoreStack)( s );
-        s.push( Value(STATIC_CAST_TO_BANGFUN(restoreFunction)) );
+        const auto& restoreFunction = NEW_BANGFUN(FunctionRestoreStack)( s );
+        s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
     }
     void stackToArray( Stack& s, const RunContext& rc )
     {
-        auto toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
-        s.push( Value(STATIC_CAST_TO_BANGFUN(toArrayFun)) );
+        const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
+        s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
     }
 }
 
@@ -1176,8 +1181,8 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 // run context
 void Ast::PushFun::run( Stack& stack, const RunContext& rc )
 {
-    auto pfr = NEW_CLOSURE(*this, rc.running());
-    stack.push( Value( STATIC_CAST_TO_BANGFUN(pfr) ) );
+    const auto& pfr = NEW_CLOSURE(*this, rc.running());
+    stack.push( STATIC_CAST_TO_BANGFUN(pfr) );
 }
 
 class FunctionPossibleTailCall : public Function
@@ -1229,7 +1234,7 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc )
 #else
     {
         const auto& otherfun = NEW_CLOSURE( *pRecFun_, rc.running() );
-        stack.push( Value(STATIC_CAST_TO_BANGFUN(otherfun)) );
+        stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
     }
 #endif 
 }
@@ -1241,7 +1246,7 @@ bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContex
 {
     if (v.isfunprim())
     {
-        const tfn_primitive pprim = v.tofunprim()->getprimitive();
+        const tfn_primitive pprim = v.tofunprim();
         pprim( stack, rc );
     }
     else if( v.isfun() )
@@ -1285,7 +1290,12 @@ void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc)
 
 void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc )
 {
-    stack.push( Value(this) );
+    stack.push( primitive_ );
+};
+
+void Ast::ApplyPrimitive::run( Stack& stack, const RunContext& rc )
+{
+    primitive_( stack, rc );
 };
 
 
@@ -1933,7 +1943,7 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
 
                     mark.accept();
                     
-                    ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );
+                    ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
                       ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
                       ast_.push_back( new Ast::Apply() ); // haveto apply the swap
                     ast_.push_back( new Ast::Apply() ); // now apply to the object!!
@@ -1950,8 +1960,8 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                 if (prim)
                 {
                     mark.accept();
-                    ast_.push_back( new Ast::PushPrimitive( prim, std::string(&c, (&c)+1) ) );
-                    ast_.push_back( new Ast::Apply() );
+                    ast_.push_back( new Ast::ApplyPrimitive( prim, std::string(&c, (&c)+1) ) );
+                    // ast_.push_back( new Ast::Apply() );
                     continue;
                 }
             }
@@ -1987,7 +1997,18 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                     if (ident.name() == kw)
                     {
                         mark.accept();
-                        ast_.push_back( new Ast::PushPrimitive( prim, kw ) );
+                        eatwhitespace(mark);
+                        char c = mark.getc();
+                        if (c == '!')
+                        {
+                            mark.accept();
+                            ast_.push_back( new Ast::ApplyPrimitive( prim, kw ) );
+                        }
+                        else
+                        {
+                            mark.regurg(c);
+                            ast_.push_back( new Ast::PushPrimitive( prim, kw ) );
+                        }
                         return true;
                     }
                     return false;
@@ -2139,8 +2160,8 @@ void Ast::Require::run( Stack& stack, const RunContext& rc )
 
     RequireKeyword me( v.tostr() );
     BANGCLOSURE noFunction(nullptr);
-    auto closure = me.parseToClosure( stack, noFunction, false );
-    stack.push( Value(STATIC_CAST_TO_BANGFUN(closure)) );
+    const auto& closure = me.parseToClosure( stack, noFunction, false );
+    stack.push( STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
 

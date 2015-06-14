@@ -91,6 +91,9 @@ longlivedtree ItemCheck!
 -- with some cleanup to primitive mutation, 
 -- depth 13 down to 10.3 (msvc+GC) depth 12 down to 4.2 at times (6.2x Lua!)
 
+-- ApplyPrimitive
+-- depth 12 at 3.95 (msvc+GC- 5.8x lua) ; depth 13 is 9.3 (7x lua)
+
 
 
 

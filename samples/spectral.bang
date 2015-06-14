@@ -92,6 +92,8 @@ vBv vv / -- sqrt!
 
 
 
+-- with ApplyPrimitive, MingW is at 2.1 best (11.3x lua).  MSVC+GC is 2.45.  Better and simpler.
+
 
 
 
