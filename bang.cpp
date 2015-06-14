@@ -596,10 +596,12 @@ namespace Ast
             kUnk,
             kApply,
             kConditionalApply,
+            kApplyUpval
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
-        bool isTailable() { return instr_ == kApply || instr_ == kConditionalApply; }
+        bool isTailable() { return instr_ != kUnk; }
+            // return instr_ == kApply || instr_ == kConditionalApply || instr_ == kApplyUpval; }
 
         EAstInstr instr_;
     private:
@@ -640,6 +642,20 @@ namespace Ast
         }
     };
 
+    class NoOp: public Base
+    {
+    public:
+        NoOp() {}
+        
+        virtual void dump( int level, std::ostream& o )
+        {
+            indentlevel(level, o);
+            o << "NoOp\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& ) {}
+    };
+    
     class PushPrimitive: public Base
     {
     protected:
@@ -664,10 +680,9 @@ namespace Ast
     class ApplyPrimitive: public PushPrimitive
     {
     public:
-        ApplyPrimitive( tfn_primitive primitive, const std::string& desc )
-        : PushPrimitive( primitive, desc )
-        {
-        }
+        ApplyPrimitive( PushPrimitive* pp )
+        : PushPrimitive( *pp )
+        {}
 
         virtual void dump( int level, std::ostream& o )
         {
@@ -680,6 +695,7 @@ namespace Ast
     
     class PushUpval : public Base
     {
+    protected:
         std::string name_;
         NthParent uvnumber_; // index in the containing PushFun's array of upvalues
     public:
@@ -696,6 +712,29 @@ namespace Ast
         }
 
         virtual void run( Stack& stack, const RunContext& );
+    };
+
+    class ApplyUpval : public PushUpval
+    {
+    public:
+        ApplyUpval( PushUpval* puv )
+        :  PushUpval( *puv )
+        {
+            instr_ = kApplyUpval;
+        }
+          
+        virtual void dump( int level, std::ostream& o )
+        {
+            indentlevel(level, o);
+            o << "ApplyUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& );
+
+        const Value& getUpValue( const RunContext& rc ) const
+        {
+            return rc.getUpValue( uvnumber_ );
+        }
     };
 
     class PushUpvalByName : public Base
@@ -877,9 +916,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o )
         {
             indentlevel(level, o);
-            o << "PushFunctionRec[" << PtrToHash(pRecFun_) << "] => "
-              << std::hex << PtrToHash(pRecFun_) << std::dec
-              << std::endl;
+            o << "PushFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
         }
 
         virtual void run( Stack& stack, const RunContext& );
@@ -1126,7 +1163,7 @@ restartTco:
     if (astLen < 1)
         return;
 
-    const bool isTailable = ((*pAst)[astLen-1]->isTailable()) && pFunction;
+    const bool isTailable = ((*pAst)[astLen-1]->isTailable()); //  && pFunction;
 
     const int lastInstr = isTailable ? astLen - 1 : astLen;
 
@@ -1145,10 +1182,13 @@ restartTco:
             
     if (isTailable)
     {
-        bool iscond = ((*pAst)[astLen-1]->instr_ == Ast::Base::kConditionalApply);
+        const Ast::Base* const astApply = (*pAst)[astLen-1];
+        bool iscond = (astApply->instr_ == Ast::Base::kConditionalApply);
         bool shouldExec = !iscond || Ast::ConditionalApply::foundTrue( stack );
 
-        const Value& calledFun = stack.pop();
+        const Value& calledFun = (astApply->instr_ == Ast::Base::kApplyUpval)
+            ? dynamic_cast<const Ast::ApplyUpval*>(astApply)->getUpValue( rc )
+            : stack.pop();
         
         if (shouldExec && Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
         {
@@ -1267,6 +1307,14 @@ bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContex
     
     return false;
 }
+
+void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc)
+{
+    const Value& v = this->getUpValue( rc );
+    if (Ast::Apply::applyOrIsClosure( v, stack, rc ))
+        v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
+};
+
 
 void Ast::Apply::run( Stack& stack, const RunContext& rc )
 {
@@ -1821,6 +1869,44 @@ public:
     }
 };
 
+void OptimizeAst( Ast::Program::astList_t& ast )
+{
+    static Ast::NoOp noop;
+    const int end = ast.size() - 1;
+    for (int i = 0; i < end; ++i)
+    {
+        Ast::Base* step = ast[i];
+        if (!dynamic_cast<Ast::ApplyPrimitive*>(step))
+        {
+            Ast::PushPrimitive* pp = dynamic_cast<Ast::PushPrimitive*>(step);
+            if (pp && dynamic_cast<Ast::Apply*>(ast[i+1]))
+            {
+                ast[i] = new Ast::ApplyPrimitive( pp );
+                ast[i+1] = &noop;
+                delete step;
+                continue;
+            }
+        }
+
+        if (!dynamic_cast<Ast::ApplyUpval*>(step))
+        {
+            Ast::PushUpval* pup = dynamic_cast<Ast::PushUpval*>(step);
+            if (pup && dynamic_cast<Ast::Apply*>(ast[i+1]))
+            {
+                 ast[i] = new Ast::ApplyUpval( pup );
+                 ast[i+1] = &noop;
+                 delete pup;
+            }
+        }
+    }
+
+    for (int i = ast.size() - 1; i >= 0; --i)
+    {
+        if (ast[i] == &noop)
+            ast.erase( ast.begin() + i );
+    }
+}
+
 
 Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing )
 {
@@ -1944,8 +2030,8 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                     mark.accept();
                     
                     ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
-                      ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
-                      ast_.push_back( new Ast::Apply() ); // haveto apply the swap
+                    ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
+                       ast_.push_back( new Ast::Apply() ); // haveto apply the swap
                     ast_.push_back( new Ast::Apply() ); // now apply to the object!!
                     continue;
                 }
@@ -1960,8 +2046,8 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                 if (prim)
                 {
                     mark.accept();
-                    ast_.push_back( new Ast::ApplyPrimitive( prim, std::string(&c, (&c)+1) ) );
-                    // ast_.push_back( new Ast::Apply() );
+                    ast_.push_back( new Ast::PushPrimitive( prim, std::string(&c, (&c)+1) ) );
+                    ast_.push_back( new Ast::Apply() );
                     continue;
                 }
             }
@@ -1997,18 +2083,7 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                     if (ident.name() == kw)
                     {
                         mark.accept();
-                        eatwhitespace(mark);
-                        char c = mark.getc();
-                        if (c == '!')
-                        {
-                            mark.accept();
-                            ast_.push_back( new Ast::ApplyPrimitive( prim, kw ) );
-                        }
-                        else
-                        {
-                            mark.regurg(c);
-                            ast_.push_back( new Ast::PushPrimitive( prim, kw ) );
-                        }
+                        ast_.push_back( new Ast::PushPrimitive( prim, kw ) );
                         return true;
                     }
                     return false;
@@ -2075,6 +2150,8 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
         // std::cerr << "EOF found" << std::endl;
         stream.accept();
     }
+
+    OptimizeAst( ast_ );
 }
 
 class RequireKeyword

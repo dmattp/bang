@@ -7,11 +7,18 @@ def :map xform = {
   innermap!
 }
 
+--def :filter predicate = {
+--    def :filter-xform v = {
+--      fun = v; v predicate!?
+--    }
+--    filter-xform map!
+--}
+
+
 def :filter predicate = {
-    def :filter-xform v = {
+    fun v = {
       fun = v; v predicate!?
-    }
-    filter-xform map!
+    } map!
 }
 
 fun = lookup
