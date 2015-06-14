@@ -1,0 +1,19 @@
+
+
+def :make-point = { as y as x
+  fun = lookup
+}
+
+
+def :make-circle = { as radius as point
+  fun = lookup
+}
+
+
+11 22 make-point! fun! aPoint =
+aPoint 300 make-circle! as circle
+
+circle.radius
+circle.point.x
+circle.point.y
+
