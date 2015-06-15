@@ -14,6 +14,8 @@ def :quicksort = {
 
 'lib/iterate.bang' require! .times as times
 
+require_math!.random as random
+
 def :testQuicksort numItems = { 
   random numItems times!
   quicksort!

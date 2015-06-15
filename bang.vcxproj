@@ -42,12 +42,16 @@
     <ClCompile>
       <AdditionalIncludeDirectories>c:\m\home\pkg\boehm-gc\build1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>USE_GC=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!--
+          <PreprocessorDefinitions>USE_GC=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+           -->
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <AdditionalLibraryDirectories>c:\m\home\pkg\boehm-gc\build1;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>gc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+<!--      
+     <AdditionalDependencies>gc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+     -->
       <StackReserveSize>33554423</StackReserveSize>
     </Link>
   </ItemDefinitionGroup>

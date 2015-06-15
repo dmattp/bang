@@ -51,7 +51,12 @@ And there are primitives, until a better library / module system is in place.
 #include <stdio.h>
 #include <ctype.h>
 #include <limits.h>
+#include <sstream>
 
+const char* const BANG_VERSION = "0.001";
+const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
+
+namespace Bang {
 
 class Function;
 class FunctionClosure;
@@ -95,8 +100,6 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
 
 
 
-const char* const BANG_VERSION = "0.001";
-const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
 
 namespace {
     // numword - debugging
@@ -487,19 +490,6 @@ namespace Primitives
         s.push( s.loc_top() );
     }
     
-    void floor( Stack& s, const RunContext& ctx)
-    {
-        const Value& v = s.pop();
-        if (v.isnum())
-            s.push( Value( ::floor(v.tonum()) ) );
-        else
-            throw std::runtime_error("Flor operator incompatible type");
-    }
-
-    void random( Stack& s, const RunContext& ctx)
-    {
-        s.push( double(::rand()) );
-    }
     
     void lognot( Stack& s, const RunContext& ctx)
     {
@@ -820,6 +810,17 @@ namespace Ast
         Program( const astList_t& ast )
         : ast_( ast )
         {}
+
+        Program() {} // empty program
+
+        Program& add( Ast::Base* action ) {
+            ast_.push_back( action );
+            return *this;
+        }
+        Program& add( Ast::Base& action ) {
+            ast_.push_back( &action );
+            return *this;
+        }
         
         virtual void dump( int level, std::ostream& o )
         {
@@ -856,7 +857,7 @@ namespace Ast
         }
 
         void setAst( const Ast::Program& astProgram ) { astProgram_ = new Ast::Program(astProgram); }
-        void setParamName( const std::string& param ) { pParam_ = new std::string(param); }
+        PushFun& setParamName( const std::string& param ) { pParam_ = new std::string(param); return *this; }
         bool hasParam() { return pParam_ ? true : false; }
         std::string getParamName() const { return *pParam_; }
         bool DoesBind( const std::string& varName ) const { return pParam_ && *pParam_ == varName; }
@@ -1280,7 +1281,6 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc )
 }
 
 
-#include <sstream>
 
 bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContext& rc )
 {
@@ -1397,7 +1397,7 @@ class StreamMark : public RegurgeStream
 {
     RegurgeStream& stream_;
     std::string consumned_;
-    StreamMark( const StreamMark&  );
+    //StreamMark( const StreamMark&  );
     StreamMark& operator=( const StreamMark& );
 public:
     StreamMark( RegurgeStream& stream )
@@ -1907,6 +1907,13 @@ void OptimizeAst( Ast::Program::astList_t& ast )
     }
 }
 
+namespace Primitives {
+    #include "mathlib.cpp"
+}
+
+
+    
+
 
 Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing )
 {
@@ -2092,14 +2099,13 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                 if (rwPrimitive( "not",    &Primitives::lognot ) ) continue;
                 if (rwPrimitive( "and",    &Primitives::logand ) ) continue;
                 if (rwPrimitive( "or",     &Primitives::logor  ) ) continue;
-                if (rwPrimitive( "random", &Primitives::random ) ) continue;
                 if (rwPrimitive( "drop",   &Primitives::drop   ) ) continue;
                 if (rwPrimitive( "swap",   &Primitives::swap   ) ) continue;
                 if (rwPrimitive( "dup",    &Primitives::dup    ) ) continue;
                 if (rwPrimitive( "nth",    &Primitives::nth    ) ) continue;
-                if (rwPrimitive( "floor",  &Primitives::floor  ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
                 if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
+                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
 //                if (rwPrimitive( "require",    &Primitives::require    ) ) continue;
             
                 bool bFoundRecFunId = false;
@@ -2153,6 +2159,7 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
 
     OptimizeAst( ast_ );
 }
+
 
 class RequireKeyword
 {
@@ -2241,6 +2248,9 @@ void Ast::Require::run( Stack& stack, const RunContext& rc )
     stack.push( STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
+    
+} // end namespace Bang
+
 
 
 /*
@@ -2274,9 +2284,9 @@ int main( int argc, char* argv[] )
     }
     
 
-    RequireKeyword requireMain( fname );
+    Bang::RequireKeyword requireMain( fname );
 
-    Stack stack;
+    Bang::Stack stack;
     requireMain.parseAndRun( stack, bDump );
     stack.dump( std::cout );
     
