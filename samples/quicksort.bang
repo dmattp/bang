@@ -1,6 +1,5 @@
 
-'lib/hof.bang' require! as hof
-  hof.filter as filter
+'lib/hof.bang' require! .filter as filter
 
 def :quicksort = {
   # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
@@ -14,7 +13,7 @@ def :quicksort = {
 
 'lib/iterate.bang' require! .times as times
 
-require_math!.random as random
+'mathlib' crequire!.random as random
 
 def :testQuicksort numItems = { 
   random numItems times!
@@ -23,7 +22,7 @@ def :testQuicksort numItems = {
 }
 
 fun=
-19000 testQuicksort!
+30 testQuicksort!
 ;1 times!
 
 -- with GC 1.2s

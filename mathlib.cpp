@@ -1,4 +1,10 @@
 
+#include "bang.h"
+
+#include <string>
+#include <math.h>
+#include <stdlib.h>
+
 namespace Math
 {
     void random( Bang::Stack& s, const Bang::RunContext& ctx)
@@ -78,7 +84,8 @@ namespace Math
 } // end namespace Math
 
 
-void require_math( Bang::Stack& stack, const RunContext& )
+extern "C" __declspec(dllexport)
+void bang_open( Bang::Stack* stack, const Bang::RunContext* )
 {
-    stack.push( &Math::lookup );
+    stack->push( &Math::lookup );
 }

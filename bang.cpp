@@ -41,231 +41,47 @@ And there are primitives, until a better library / module system is in place.
 */
 
 #include <iostream>
-#include <vector>
 #include <list>
 #include <string>
 #include <algorithm>
 #include <iterator>
-#include <memory>
 
 #include <stdio.h>
 #include <ctype.h>
 #include <limits.h>
 #include <sstream>
 
+#if defined(_WIN32)
+# include <windows.h> // for load library
+# if !__GNUC__
+#  include <codecvt> // to convert to wstring
+# endif 
+#endif
+
+
 const char* const BANG_VERSION = "0.001";
 const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
 
-namespace Bang {
 
-class Function;
-class FunctionClosure;
+#include "bang.h"
 
 #if USE_GC
-#include  "gc_cpp.h"
-#include "gc_allocator.h"
-extern "C" {
-# include "private/gcconfig.h"
+# include  "gc_cpp.h"
+# include "gc_allocator.h"
+#endif
 
-# ifndef GC_API_PRIV
-#   define GC_API_PRIV GC_API
-# endif
-  GC_API_PRIV void GC_printf(const char * format, ...);
-  /* Use GC private output to reach the same log file.  */
-  /* Don't include gc_priv.h, since that may include Windows system     */
-  /* header files that don't take kindly to this context.               */
-}
-
-typedef Function* bangfunptr_t;
-typedef FunctionClosure* bangclosure_t;
-  #define BANGFUN_CREF bangfunptr_t
-  #define CLOSURE_CREF bangclosure_t
-  #define STATIC_CAST_TO_BANGFUN(f)  static_cast<Function*>( f )
-  #define DYNAMIC_CAST_TO_CLOSURE(f) dynamic_cast<FunctionClosure*>( f )
-  #define NEW_CLOSURE(a,b)           new FunctionClosure( a, b )
-  #define NEW_BANGFUN(A)             new A
-#else
-typedef std::shared_ptr<Function> bangfunptr_t;
-typedef std::shared_ptr<FunctionClosure> bangclosure_t;
-  #define BANGFUN_CREF const bangfunptr_t&
-  #define CLOSURE_CREF const bangclosure_t&
-  #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Function>(f)
-  #define DYNAMIC_CAST_TO_CLOSURE(f) std::dynamic_pointer_cast<FunctionClosure,Function>( f )
-  #define NEW_CLOSURE(a,b)           std::make_shared<FunctionClosure>( a, b )
-  #define NEW_BANGFUN(A)             std::make_shared<A>
-#endif 
-
-#define BANGFUNPTR bangfunptr_t
-#define BANGCLOSURE bangclosure_t
-
-
+namespace Bang {
 
 
 namespace {
-    // numword - debugging
-    // 4 vowels, 16 consonats = 6 bits = CvCvC = 30bits
-    unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
-    {
-        unsigned hash, i;
-        for(hash = i = 0; i < len; ++i)
-        {
-            hash += key[i];
-            hash += (hash << 10);
-            hash ^= (hash >> 6);
-        }
-        hash += (hash << 3);
-        hash ^= (hash >> 11);
-        hash += (hash << 15);
-        return hash;
-    }
-    // numwords would be great for debugging pointers
     template<class T>
     unsigned PtrToHash( const T& ptr )
     {
         return (reinterpret_cast<unsigned>(ptr)&0xFFF0) >> 4;
-//            jenkins_one_at_a_time_hash( reinterpret_cast<const char*>(&ptr), sizeof(T)) & 0xFFF;
     }
 }
 
-class Stack;
-class RunContext;
-class Function;
-typedef void (*tfn_primitive)( Stack&, const RunContext& );
-namespace Ast {
-    class PushPrimitive;
-}
-
-class Value
-{
-    inline void copyme( const Value& rhs )
-    {
-        switch (rhs.type_)
-        {
-#if USE_GC            
-            case kFun: v_.funptr = rhs.v_.funptr; return;
-#else
-            case kFun:  new (v_.cfun) std::shared_ptr<Function>( rhs.tofun() ); return;
-#endif
-            case kStr:  new (v_.cstr) std::string( rhs.tostr() ); return;
-            case kBool: v_.b = rhs.v_.b; return;
-            case kNum:  v_.num = rhs.v_.num; return;
-            case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
-            default: return;
-        }
-    }
-        
-    inline void free_manual_storage()
-    {
-        using namespace std;
-#if !USE_GC            
-        if (type_ == kFun)
-            reinterpret_cast<shared_ptr<Function>*>(v_.cfun)->~shared_ptr<Function>();
-        else
-#endif 
-            if (type_ == kStr)
-            reinterpret_cast<string*>(v_.cstr)->~string();
-    }
-public:
-    enum EValueType
-    {
-        kInvalidUnitialized,
-        kBool,
-        kNum,
-        kStr,
-        kFun,
-        kFunPrimitive
-    };
-
-    union Union {
-        bool     b;
-        double   num;
-        char     cstr[sizeof(std::string)];
-#if USE_GC
-        bangfunptr_t funptr;
-#else
-        char     cfun[sizeof(std::shared_ptr<Function>)];
-#endif
-        tfn_primitive funprim;
-    } v_;
-
-    Value( const Value& rhs )
-    : type_( rhs.type_ )
-    {
-        copyme( rhs );
-    }
-
-    const Value& operator=( const Value& rhs )
-    {
-        free_manual_storage();
-        type_ = rhs.type_;
-        copyme( rhs );
-        return *this;
-    }
-
-    Value() : type_( kInvalidUnitialized ) {}
-    Value( bool b )     : type_( kBool ) { v_.b = b; }
-    Value( double num ) : type_( kNum ) { v_.num = num; }
-
-    Value( const std::string& str )
-    : type_( kStr )
-    {
-        new (v_.cstr) std::string(str);
-    }
-
-    Value( BANGFUN_CREF f )
-    : type_( kFun )
-    {
-#if USE_GC
-        v_.funptr = f;
-#else
-        new (v_.cfun) std::shared_ptr<Function>(f);
-#endif 
-    }
-
-    Value( tfn_primitive pprim )
-    : type_( kFunPrimitive )
-    {
-        v_.funprim = pprim;
-    }
-    
-    ~Value()
-    {
-        free_manual_storage();
-    }
-
-    void mutateNoType( double num ) { v_.num = num; } // precondition: previous type was double
-    void mutateNoType( bool b ) { v_.b = b; } // precondition: previous type was double
-    void mutatePrimitiveToBool( bool b ) // precondition: previous type doesn't require ~destructor
-    {
-        type_ = kBool;
-        v_.b = b;
-    }
-
-    BANGFUN_CREF tofun() const
-    {
-#if USE_GC
-        return v_.funptr;
-#else
-        return *reinterpret_cast<const std::shared_ptr<Function>* >(v_.cfun);
-#endif 
-    }
-
-    EValueType type_;
-
-
-    bool isnum()  const { return type_ == kNum; }
-    bool isbool() const { return type_ == kBool; }
-    bool isfun()  const { return type_ == kFun; }
-    bool isstr()  const { return type_ == kStr; }
-    bool isfunprim()  const { return type_ == kFunPrimitive; }
-    EValueType type() const { return type_; }
-
-    double tonum()  const { return v_.num; }
-    bool   tobool() const { return v_.b; }
-    const std::string& tostr() const { return *reinterpret_cast<const std::string*>(v_.cstr); }
-    tfn_primitive tofunprim() const { return v_.funprim; }
-    
-    void dump( std::ostream& o ) const
+    void Value::dump( std::ostream& o ) const
     {
         if (type_ == kNum)
             o << v_.num;
@@ -275,105 +91,18 @@ public:
             o << '"' << this->tostr() << '"';
         else if (type_ == kFun)
             o << "(function)";
-    }
-}; // end, class Value
-
-class Stack
-{
-    Stack( const Stack& ); // uncopyable
-    struct Bound {
-        int mark;
-        Bound* prev;
-        Bound( int m, Bound *p ) : mark(m), prev(p) {}
-    };
-    friend class FunctionRestoreStack;
-    friend class FunctionStackToArray;
-    std::vector<Value> stack_;
-    Bound* bound_;
-
-    void giveTo( std::vector<Value>& other )
-    {
-        if (!bound_)
-            stack_.swap( other );
-        else
-        {
-            for (auto it = stack_.begin() + bound_->mark; it < stack_.end(); ++it )
-                other.push_back( *it );
-            stack_.erase( stack_.begin() + bound_->mark, stack_.end() );
-        }
+        else if (type_ == kFunPrimitive)
+            o << "(prim.function)";
     }
     
-public:
-    Stack()
-    : bound_(nullptr)
-    {}
-
-    void beginBound()
-    {
-        bound_ = new Bound(stack_.size(), bound_);
-    }
-    
-    void endBound()
-    {
-        if (bound_)
-        {
-            Bound* curr = bound_;
-            bound_ = curr->prev;
-            delete curr;
-        }
-    }
-
-//     void push( const Value& v )
-//     {
-//         stack_.emplace_back(v);
-//     }
-//     template <class T>
-//     void push( T v )
-//     {
-//         stack_.emplace_back( std::forward(v) );
-//     }
-
-    void push( const Value& v ) { stack_.push_back( v ); }
-    void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
-    void push( double num ) { stack_.emplace_back(num); }
-    void push( bool b ) { stack_.emplace_back(b); }
-    void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
-
-    const Value& loc_top() const { return stack_.back(); }
-    Value& loc_topMutate() { return stack_.back(); }
-    
-    Value& loc_topMinus1Mutate()
-    {
-        return *(&stack_[stack_.size()-2]);
-    }
-    
-    Value pop()
-    {
-        Value v( stack_.back() );
-        stack_.pop_back();
-        return v;
-    }
-    void pop_back() { stack_.pop_back(); };
-    
-    const Value& nth( int ndx ) const
-    {
-        return stack_[stack_.size()-1-ndx];
-    }
-
-    int size() const
-    {
-        const int totsz = stack_.size();
-        return bound_ ? totsz - bound_->mark : totsz;
-    }
-
-    void dump( std::ostream& o ) const
+    void Stack::dump( std::ostream& o ) const
     {
         std::for_each
         (   stack_.begin(), stack_.end(),
             [&]( const Value& v ) { v.dump( o ); o << "\n"; }
         );
     }
-}; // end, class Stack
+    
 
 class NthParent {
     int nth_;
@@ -448,14 +177,25 @@ namespace Primitives
             throw std::runtime_error("Binary operator incompatible types");
     }
     
-    void plus ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 + v2; } ); }
+    void plus ( Stack& s, const RunContext& )
+    {
+        if (s.loc_top().isnum())
+            infix2to1( s, [](double v1, double v2) { return v1 + v2; } );
+        else if (s.loc_top().isstr())
+        {
+            const auto& v2 = s.pop();
+            const auto& v1 = s.pop();
+            s.push( v1.tostr() + v2.tostr() );
+        }
+    }
     void minus( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 - v2; } ); }
     void mult ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 * v2; } ); }
     void div  ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 / v2; } ); }
     void lt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 < v2; } ); }
     void gt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 > v2; } ); }
-    void eq   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 == v2; } ); }
     void modulo ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
+    void eq( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 == v2; } ); }
+    
     
     void stacklen( Stack& s, const RunContext& ctx)
     {
@@ -936,20 +676,6 @@ namespace Ast
 // ParamValue will be set when it is invoked, which could happen
 // multiple times in theory.
 class FunctionClosure;
-class Function
-#if USE_GC
-    : public gc
-#endif
-{
-    bool isClosure_;
-    Function( const Function& ); // uncopyable
-public:
-    Function() : isClosure_(false) {}
-    Function( bool isc ) : isClosure_(isc) {};
-    virtual ~Function() {}
-    bool isClosure() { return isClosure_; }
-    virtual void apply( Stack& s, CLOSURE_CREF runningOrMyself ) = 0;
-};
 
 // class FunctionPrimitive : public Function
 // {
@@ -1908,7 +1634,42 @@ void OptimizeAst( Ast::Program::astList_t& ast )
 }
 
 namespace Primitives {
-    #include "mathlib.cpp"
+    //////////////////////////////////////////////////////////////////
+    // yucky system specific code
+    //////////////////////////////////////////////////////////////////
+#if __GNUC__    
+    typedef __attribute__((__stdcall__)) int (*tfn_libopen)( Stack*, const RunContext* );
+#else
+    typedef __declspec(dllexport) int (*tfn_libopen)( Stack*, const RunContext* );
+#endif
+    void crequire( Bang::Stack&s, const RunContext& rc )
+    {
+        const auto& v = s.pop();
+        const auto& libname = v.tostr();
+#if UNICODE
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        std::wstring wpath = converter.from_bytes( libname );
+        const auto& llstr = wpath.c_str();
+#else
+        const auto& llstr = libname.c_str();
+#endif 
+        HMODULE hlib = LoadLibrary( llstr );
+        if (!hlib)
+        {
+            std::cerr << "Could not load library=" << libname << std::endl;
+            return;
+        }
+        auto proc = GetProcAddress( hlib, "bang_open" );
+        if (!proc)
+        {
+            std::cerr << "Could not find 'bang_open()' in library=" << libname << std::endl;
+            return;
+        }
+//         std::cerr << "Calling 'bang_open()' in library=" << libname 
+//                       << " stack=0x" << std::hex <<  (void*)&s << std::dec << std::endl;
+
+        reinterpret_cast<tfn_libopen>(proc)( &s, &rc );
+    }
 }
 
 
@@ -2105,7 +1866,8 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                 if (rwPrimitive( "nth",    &Primitives::nth    ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
                 if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
-                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
+//                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
+                if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
 //                if (rwPrimitive( "require",    &Primitives::require    ) ) continue;
             
                 bool bFoundRecFunId = false;

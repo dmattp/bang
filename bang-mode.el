@@ -40,6 +40,7 @@
 (setq bang-mode-syntax-table
   (let ((st (make-syntax-table)))
     (modify-syntax-entry ?_ "w" st)
+    (modify-syntax-entry ?\' "\"") ; single quotes are strings
     (modify-syntax-entry ?- ". 124b" st) ; open comment
     (modify-syntax-entry ?\n "> b" st)   ; close line comment
     st
