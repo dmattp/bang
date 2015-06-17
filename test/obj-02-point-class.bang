@@ -1,4 +1,5 @@
 
+-- messed up; this does not work:  def :make-point y_ = { as x_
 def :make-point = { as y_ as x_
 
    def :x = x_;
@@ -17,8 +18,8 @@ def :make-point = { as y_ as x_
    fun = lookup
 }
 
-1 2 make-point! fun! aPoint = 
-4 6 make-point! fun! secondPoint = 
+1 2 make-point! as aPoint
+4 6 make-point! as secondPoint
 
 aPoint.x!
 aPoint.y!

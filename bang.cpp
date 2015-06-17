@@ -1342,6 +1342,9 @@ class Parser
                 bool negativeExp = false;
                 c = mark.getc();
 
+                if (c == '+')
+                    c = mark.getc();
+
                 if (c == '-')
                 {
                     c = mark.getc();
