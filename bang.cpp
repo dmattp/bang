@@ -1297,9 +1297,19 @@ class Parser
 
             bool gotDecimal = false;
             bool gotOne = false;
+            bool isNegative = false;
             double val = 0;
             double fractional_adj = 0.1;
             char c = mark.getc();
+
+            if (c=='-')
+            {
+                c = mark.getc();
+                if (!isdigit(c))
+                    throw ErrorNoMatch();
+                mark.accept();
+                isNegative = true;
+            }
 
             while (isdigit(c))
             {
@@ -1326,7 +1336,37 @@ class Parser
                     }
                 }
             }
+
+            if (c == 'e' || c == 'E') // scientific notation
+            {
+                bool negativeExp = false;
+                c = mark.getc();
+
+                if (c == '-')
+                {
+                    c = mark.getc();
+                    if (isdigit(c))
+                    {
+                        negativeExp = true;
+                        mark.accept();
+                    }
+                }
+                double exp = 0;
+                while (isdigit(c))
+                {
+                    exp = exp * 10 + (c - '0');
+                    mark.accept();
+                    c = mark.getc();
+                }
+                if (negativeExp)
+                    exp = exp * -1;
+                
+                val = val * ::pow(10,exp);
+            }
+            
             value_ = val;
+            if (isNegative)
+                value_ = value_ * -1.0;
             if (!gotOne)
                 throw ErrorNoMatch();
         }
