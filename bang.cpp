@@ -1760,6 +1760,7 @@ namespace Primitives {
 #endif
     void crequire( Bang::Stack&s, const RunContext& rc )
     {
+#if defined(_WIN32)
         const auto& v = s.pop();
         const auto& libname = v.tostr();
 #if UNICODE
@@ -1785,6 +1786,7 @@ namespace Primitives {
 //                       << " stack=0x" << std::hex <<  (void*)&s << std::dec << std::endl;
 
         reinterpret_cast<tfn_libopen>(proc)( &s, &rc );
+#endif
     }
 }
 

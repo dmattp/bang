@@ -1,8 +1,6 @@
-PATH=c:/mingw/bin:$PATH
-
 USE_GC=0
-#include build/linux.mak
-include build/win32.mak
+include build/linux.mak
+#include build/win32.mak
 -include build/site.mak
 
 all:: bang$(EXT_EXE) #-- mathlib.dll
