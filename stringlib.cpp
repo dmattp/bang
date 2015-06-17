@@ -1,0 +1,87 @@
+
+#include "bang.h"
+
+#include <string>
+#include <stdlib.h>
+#include <algorithm>
+
+namespace String
+{
+    using namespace Bang;
+    void checkstrtype( const Bang::Value& v )
+    {
+        if (!v.isstr())
+            throw std::runtime_error("String lib incompatible type");
+    }
+
+    void len( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        checkstrtype(s.loc_top());
+        s.push( double(s.loc_top().tostr().size()) );
+    }
+
+    void sub( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        const Value& sEnd = s.pop();
+        if (!sEnd.isnum())
+            throw std::runtime_error("String lib incompatible type");
+        const Value& sBeg = s.pop();
+        if (!sBeg.isnum())
+            throw std::runtime_error("String lib incompatible type");
+        const Value& vStr = s.pop();
+        checkstrtype( vStr );
+        s.push( vStr.tostr().substr( sBeg.tonum(), sEnd.tonum()-sBeg.tonum()+1 ) );
+    }
+
+    void to_bytes( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        checkstrtype(s.loc_top());
+        const Value& v = s.pop();
+        const auto& str = v.tostr();
+        std::for_each( str.begin(), str.end(),
+            [&]( char c ) { s.push( double((unsigned char)c) ); } );
+    }
+    
+    void from_bytes( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        std::string created;
+        const int stacklen = s.size();
+        if (stacklen > 0)
+        {
+            for (int i = stacklen - 1; i >= 0; --i )
+                created.push_back( (char)s.nth(i).tonum() );
+            for (int i = stacklen - 1; i >= 0; --i )
+                s.pop_back();
+        }
+        s.push( created );
+    }
+    
+    void lookup( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        const Bang::Value& v = s.pop();
+        if (!v.isstr())
+            throw std::runtime_error("String library '.' operator expects string");
+        const auto& str = v.tostr();
+
+        const Bang::tfn_primitive p =
+            (  str == "len"    ? &len
+            :  str == "sub"    ? &sub
+            :  str == "to-bytes"   ? &to_bytes
+            :  str == "from-bytes"   ? &from_bytes
+            :  nullptr
+            );
+
+        if (p)
+            s.push( p );
+        else
+            throw std::runtime_error("String library does not implement" + str);
+    }
+    
+} // end namespace Math
+
+
+extern "C" __declspec(dllexport)
+void bang_open( Bang::Stack* stack, const Bang::RunContext* )
+{
+    stack->push( &String::lookup );
+}

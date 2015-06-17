@@ -307,6 +307,7 @@ static tfn_primitive bangprimforchar( int c )
     :  c == '=' ? Primitives::eq
     :  c == '*' ? Primitives::mult
     :  c == '/' ? Primitives::div
+    :  c == '\\' ? Primitives::drop
     :  c == '%' ? Primitives::modulo
     :  c == '(' ? Primitives::beginStackBound
     :  c == ')' ? Primitives::endStackBound

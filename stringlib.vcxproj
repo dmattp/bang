@@ -11,7 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{9877DDCA-C476-4560-9F75-AE6C681F9B63}</ProjectGuid>
+    <ProjectGuid>{9877DDCA-4560-C476-9F75-AE6C681F9B63}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>radrug</RootNamespace>
   </PropertyGroup>
@@ -90,7 +90,7 @@
   </ItemDefinitionGroup>
   
   <ItemGroup>
-    <ClCompile Include="mathlib.cpp" />
+    <ClCompile Include="stringlib.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
