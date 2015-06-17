@@ -1,0 +1,23 @@
+
+Roadmap / Upcoming Releases
+
+* String Library
+* I/O Library
+
+v0.002
+
+* Add Minimal Math Library
+* Add Minimal REPL
+* Boehm GC Integration (flakey)
+
+v0.001  Initial Release
+
+Features
+
+* First class functions with lexical closure (possibly not fully working)
+* Self Recursion with (possibly not quite working) tail call optimization
+* A handful of number and boolean operators
+* A handful of stack operators
+** Stack boundinging with parens
+** save-stack! and stack-to-array! (tentative but practical)
+* "lookup" keyword for immutable records and objects and library / module system

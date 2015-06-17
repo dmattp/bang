@@ -6,6 +6,7 @@
 
 #define PBIND(...) do {} while (0)
 
+
 /*
   Keywords
     fun fun! as def
@@ -59,7 +60,7 @@ And there are primitives, until a better library / module system is in place.
 #endif
 
 
-const char* const BANG_VERSION = "0.001";
+const char* const BANG_VERSION = "0.002";
 const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
 
 
@@ -69,6 +70,11 @@ const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
 # include  "gc_cpp.h"
 # include "gc_allocator.h"
 #endif
+
+namespace {
+    bool gReplMode(false);
+    bool gDumpMode(false);
+}
 
 namespace Bang {
 
@@ -350,6 +356,17 @@ struct AstExecFail {
 
 namespace Ast
 {
+    class EofMarker : public Base
+    {
+    public:
+        virtual void dump( int level, std::ostream& o )
+        {
+            indentlevel(level, o);
+            o << "<<< EOF >>>\n";
+        }
+        virtual void run( Stack& stack, const RunContext& );
+    };
+    
     class PushLiteral : public Base
     {
         Value v_;
@@ -372,20 +389,6 @@ namespace Ast
         }
     };
 
-    class NoOp: public Base
-    {
-    public:
-        NoOp() {}
-        
-        virtual void dump( int level, std::ostream& o )
-        {
-            indentlevel(level, o);
-            o << "NoOp\n";
-        }
-
-        virtual void run( Stack& stack, const RunContext& ) {}
-    };
-    
     class PushPrimitive: public Base
     {
     protected:
@@ -551,7 +554,8 @@ namespace Ast
         : ast_( ast )
         {}
 
-        Program() {} // empty program
+        Program()  // empty program ~~~ who uses this? hmm
+        {}
 
         Program& add( Ast::Base* action ) {
             ast_.push_back( action );
@@ -637,12 +641,6 @@ namespace Ast
         }
 
         virtual void run( Stack& stack, const RunContext& );
-
-        const std::vector<Ast::Base*>* getProgramAst()
-        {
-            return astProgram_->getAst();
-        }
-        
     }; // end, class Ast::PushFun
 
 
@@ -772,16 +770,19 @@ public:
     // the pedant in me says "bind" should return a new type, a "BoundFunction" or something;
     // that honestly may clear some of the confusion up... what color is the bike under your desk,
     // object lifetimes and all that, no mutation...
+    // but some of that may fall out with optimizations to separate out function that don't bind a param
     void bindParams( Stack& s ) 
     {
         if (pushfun_->hasParam()) // bind parameter
             paramValue_ = s.pop();
     }
 
-    const std::vector<Ast::Base*>* getProgramAst()
+    Ast::Program* getProgram() const
     {
-        return pushfun_->getProgramAst();
+        return pushfun_->getProgram();
     }
+
+    CLOSURE_CREF getParent() const { return pParent_; }
 
     Ast::PushFun* pushfun() { return pushfun_; }
 
@@ -877,13 +878,12 @@ namespace Primitives {
 
 void RunProgram
 (   Stack& stack,
-    BANGCLOSURE pFunction
+    BANGCLOSURE pFunction,
+    Ast::Program* pProgram
 )
 {
 restartTco:
-    pFunction->bindParams( stack );
-
-    const std::vector<Ast::Base*>* const pAst = pFunction->getProgramAst();
+    const std::vector<Ast::Base*>* const pAst = pProgram->getAst();
 
     const int astLen = pAst->size();
 
@@ -906,7 +906,17 @@ restartTco:
     {
         throw AstExecFail( (*pAst)[i], e );
     }
-            
+
+    /* The logic here is pretty dang ugly because we have to handle "Apply" for
+     * all cases, especially after the tree optimization which added a bunch of
+     * new "Apply+X" operations.  We can probably fix the tree optimization to
+     * mark operations as Tailable in the optimization phase, rather than
+     * querying at runtime which should both help speed and clean up some
+     * of this logic, e.g., no reason to include calls to primitives here.
+     * Hmm, except that a ApplyUpval or plain old Apply needs to check the type
+     * of the upval or thing on the stack, so we still have to do this check.
+     * Meh.  It will all be much cleaner when i switch the whole thing to
+     * bytecode I guess. */
     if (isTailable)
     {
         const Ast::Base* const astApply = (*pAst)[astLen-1];
@@ -921,6 +931,8 @@ restartTco:
         {
             // "rebind" RunProgram() parameters
             pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
+            pFunction->bindParams( stack );
+            pProgram = pFunction->getProgram();
             goto restartTco;
         } // end , closure
     }
@@ -928,7 +940,8 @@ restartTco:
     
 void FunctionClosure::apply( Stack& s, CLOSURE_CREF myself )
 {
-    RunProgram( s, myself );
+    myself->bindParams( s );
+    RunProgram( s, myself, this->getProgram() );
 }
 
 
@@ -1166,42 +1179,88 @@ public:
     }
 };
 
-
-class RegurgeFile : public RegurgeStream
+class RegurgeIo  : public RegurgeStream
 {
     std::list<char> regurg_;
-    FILE* f_;
-public:
-    RegurgeFile( FILE* f )
-    : f_(f)
-    {}
+protected:
+    int getcud()
+    {
+        char rv;
+        
+        if (regurg_.empty())
+            return EOF;
 
+        rv = regurg_.back();
+        regurg_.pop_back();
+
+        return rv;
+    }
+public:
     void regurg( char c )
     {
         regurg_.push_back(c);
     }
 
     void accept() {}
+};
+
+class RegurgeStdinRepl : public RegurgeIo
+{
+    bool atEof_;
+public:
+    RegurgeStdinRepl()
+    : atEof_(false)
+    {}
 
     char getc()
     {
-        char rv;
+        int icud = RegurgeIo::getcud();
 
-        if (regurg_.empty())
+        if (icud != EOF)
+            return icud;
+
+        if (atEof_)
+            throw ErrorEof();
+        
+        int istream = fgetc(stdin);
+        if (istream == EOF || istream == 0x0d || istream == 0x0a) // CR
         {
-            int i = fgetc(f_);
-            if (i==EOF)
-                throw ErrorEof();
-            rv = i;
+//            std::cout << "Got char=" << istream << "\n";
+            atEof_ = true;
+            return 0x0a; // LF is close enough
         }
         else
         {
-            rv = regurg_.back();
-            regurg_.pop_back();
+//            std::cout << "Got char=" << istream << "\n";
+            return istream;
         }
-        return rv;
     }
 };
+
+
+class RegurgeFile : public RegurgeIo
+{
+    FILE* f_;
+public:
+    RegurgeFile( FILE* f )
+    : f_(f)
+    {}
+
+    char getc()
+    {
+        int icud = RegurgeIo::getcud();
+
+        if (icud != EOF)
+            return icud;
+        
+        int istream = fgetc(f_);
+        if (istream==EOF)
+            throw ErrorEof();
+        else
+            return istream;
+    }
+};
+    
 
 
 
@@ -1209,11 +1268,19 @@ bool eatwhitespace( StreamMark& stream )
 {
     bool bGotAny = false;
     StreamMark mark( stream );
-    while (isspace(mark.getc()))
+    try
+    {
+        while (isspace(mark.getc()))
+        {
+            bGotAny = true;
+            mark.accept();
+        }
+    }
+    catch (const ErrorEof& )
     {
         bGotAny = true;
-        mark.accept();
     }
+
     return bGotAny;
 }
 
@@ -1499,7 +1566,7 @@ class Parser
             Program program( mark, pNewFun_, pRecParsing );
 
             pNewFun_->setAst( program.ast() );
-            
+
             mark.accept();
         }
         bool hasPostApply() const { return postApply_; }
@@ -1584,9 +1651,9 @@ class Parser
     
     Program* program_;
 public:
-    Parser( StreamMark& mark )
+    Parser( StreamMark& mark, Ast::PushFun* pCurrentFun )
     {
-        program_ = new Program( mark, nullptr, nullptr ); // 0,0,0 = no current function, no self-name
+        program_ = new Program( mark, pCurrentFun, nullptr ); // 0,0,0 = no current function, no self-name
     }
 
     Ast::Program astProgram()
@@ -1597,7 +1664,18 @@ public:
 
 void OptimizeAst( Ast::Program::astList_t& ast )
 {
-    static Ast::NoOp noop;
+    class NoOp : public Ast::Base
+    {
+    public:
+        virtual void dump( int level, std::ostream& o )
+        {
+            indentlevel(level, o);
+            o << "NoOp\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) {}
+    };
+    static NoOp noop;
+    
     const int end = ast.size() - 1;
     for (int i = 0; i < end; ++i)
     {
@@ -1912,43 +1990,44 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
         } // end, while true
 
         stream.accept();
+        OptimizeAst( ast_ );
     }
     catch (const ErrorEof&)
     {
-        // std::cerr << "EOF found" << std::endl;
+//        std::cerr << "EOF found" << std::endl;
         stream.accept();
+        if (gReplMode)
+            ast_.push_back( new Ast::EofMarker() );
+        OptimizeAst( ast_ );
     }
-
-    OptimizeAst( ast_ );
 }
 
 
 class RequireKeyword
 {
     const std::string fileName_;
+    bool stdin_;
 public:
-    RequireKeyword( const std::string& fn )
-    : fileName_(fn)
-    {}
-    
-    Ast::PushFun* parse( RegurgeFile& stream, bool bDump )
+    RequireKeyword( const char* fname )
+    :  fileName_( fname ? fname : "" ),
+       stdin_( !fname )
+    {
+    }
+
+    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, Ast::PushFun* self )
     {
         StreamMark mark(stream);
 
         try
         {
-            Parser parser( mark );
+            Parser parser( mark, self );
 
-            Ast::Program* pProgram = new Ast::Program( parser.astProgram() );
-
-            Ast::PushFun* fun = new Ast::PushFun(0);
-
-            fun->setAst( *pProgram );
-
+            Ast::Program* p = new Ast::Program( parser.astProgram() );
+            
             if (bDump)
-                pProgram->dump( 0, std::cerr );
+                p->dump( 0, std::cerr );
 
-            return fun;
+            return p;
         }
         catch (const ErrorEof& )
         {
@@ -1957,20 +2036,46 @@ public:
         catch (const std::runtime_error& e )
         {
             std::cerr << "Runtime parse error: " << e.what() << std::endl;
+            throw e;
         }
 
         return nullptr;
     }
-
-    BANGCLOSURE parseToClosure(Stack& stack, CLOSURE_CREF parent, bool bDump )
+    
+    Ast::PushFun* parseNoParent( RegurgeIo& stream, bool bDump )
     {
-        FILE* fScript = fopen( fileName_.c_str(), "r");
-        RegurgeFile filegetter( fScript );
-        Ast::PushFun* fun = this->parse( filegetter, bDump );
-        fclose( fScript );
-        
-        auto closure = NEW_CLOSURE(*fun, parent);
+        Ast::PushFun* fun = new Ast::PushFun(nullptr);
 
+        Ast::Program* pProgram = parseToProgram( stream, bDump, fun );
+
+        fun->setAst( *pProgram );
+
+//        std::cerr << "Returning fr. parseNoParent\n";
+        return fun;
+    }
+
+    BANGCLOSURE parseToClosureNoParent(Stack& stack, bool bDump )
+    {
+        Ast::PushFun* fun;
+
+        if (stdin_)
+        {
+            RegurgeStdinRepl strmStdin;
+            fun = this->parseNoParent( strmStdin, bDump );
+        }
+        else
+        {
+            FILE* fstream = fopen( fileName_.c_str(), "r");
+            RegurgeFile strmFile( fstream );
+            fun = this->parseNoParent( strmFile, bDump );
+            fclose( fstream );
+//            std::cerr << "Returned fr. parseNoParent\n";
+        }
+
+        BANGCLOSURE noParentClosure(nullptr);
+        auto closure = NEW_CLOSURE(*fun, noParentClosure);
+
+//        std::cerr << "Returning fr. parseToClosureNoParent\n";
         return closure;
     }
     
@@ -1978,10 +2083,10 @@ public:
     {
         try
         {
-            BANGCLOSURE noFunction(nullptr);
-            auto closure = parseToClosure( stack, noFunction, bDump );
-            RunContext rc( noFunction );
+            auto closure = parseToClosureNoParent( stack, bDump );
+//            std::cerr << "Returned fr. parseToClosureNoParent, applying\n";
             closure->apply( stack, closure );
+//            std::cerr << "parseAndRun:: closure applied\n";
         }
         catch( const std::exception& e )
         {
@@ -1997,6 +2102,30 @@ public:
     }
 }; // end, class RequireKeyword
 
+void repl_prompt()
+{
+    std::cout << "Bang! " << std::flush;
+}
+
+void Ast::EofMarker::run( Stack& stack, const RunContext& rc )
+{
+//    std::cerr << "Found EOF!" << std::endl;
+
+    stack.dump( std::cout );
+    repl_prompt();
+    
+    CLOSURE_CREF self = rc.running();
+    RequireKeyword req(nullptr);
+    RegurgeStdinRepl strmStdin;
+    try {
+        Ast::Program *pProgram = req.parseToProgram( strmStdin, gDumpMode, self->pushfun() );
+        RunProgram( stack, self, pProgram );
+    } catch (const std::exception& e ) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+}
+    
+
 
 void Ast::Require::run( Stack& stack, const RunContext& rc )
 {
@@ -2004,9 +2133,9 @@ void Ast::Require::run( Stack& stack, const RunContext& rc )
     if (!v.isstr())
         throw std::runtime_error("no filename found for require??");
 
-    RequireKeyword me( v.tostr() );
+    RequireKeyword me( v.tostr().c_str() );
     BANGCLOSURE noFunction(nullptr);
-    const auto& closure = me.parseToClosure( stack, noFunction, false );
+    const auto& closure = me.parseToClosureNoParent( stack, false );
     stack.push( STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
@@ -2026,7 +2155,7 @@ Test against reference output:
  */
 int main( int argc, char* argv[] )
 {
-    std::cerr << "BANG v" << BANG_VERSION << " - hello!" << std::endl;
+    std::cerr << "Bang! v" << BANG_VERSION << " - Welcome!" << std::endl;
 
     bool bDump = false;
     if (argc > 1)
@@ -2041,16 +2170,30 @@ int main( int argc, char* argv[] )
     const char* fname = argv[1];
     if (argc < 2)
     {
-        bDump = true;
-        fname = kDefaultScript;
+        // bDump = true;
+        fname = nullptr; // kDefaultScript;
+        gReplMode = true;
+        Bang::repl_prompt();
     }
-    
 
-    Bang::RequireKeyword requireMain( fname );
+    gDumpMode = bDump;
 
     Bang::Stack stack;
-    requireMain.parseAndRun( stack, bDump );
-    stack.dump( std::cout );
+
+    do
+    {
+        try
+        {
+            Bang::RequireKeyword requireMain( fname );
+            requireMain.parseAndRun( stack, bDump );
+            stack.dump( std::cout );
+        }
+        catch( const std::exception& e )
+        {
+            std::cerr << "Error: " << e.what() << std::endl;
+        }
+    }
+    while (gReplMode);
     
     std::cerr << "toodaloo!" << std::endl;
 }

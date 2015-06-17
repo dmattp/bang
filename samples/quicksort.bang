@@ -22,7 +22,7 @@ def :testQuicksort numItems = {
 }
 
 fun=
-30 testQuicksort!
+19000 testQuicksort!
 ;1 times!
 
 -- with GC 1.2s
