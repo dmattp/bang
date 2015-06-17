@@ -2,6 +2,10 @@
 #include <memory>
 #include <vector>
 
+#if USE_GC
+# include "gc_cpp.h"
+# include "gc_allocator.h"
+#endif
 
 namespace Bang
 {

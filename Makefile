@@ -1,25 +1,28 @@
 PATH=c:/mingw/bin:$PATH
 
 USE_GC=0
-PATH_BOEHM=c:\m\home\pkg\boehm-gc\build1
+#include build/linux.mak
+include build/win32.mak
+-include build/site.mak
+
+all:: bang$(EXT_EXE) #-- mathlib.dll
+all:: mathlib$(EXT_SO)
+all:: stringlib$(EXT_SO)
+
 CPPFLAGS += --std=c++11 -O2
 
-all:: bang.exe #-- mathlib.dll
-all:: mathlib.dll
-all:: stringlib.dll
-
-bang.exe: bang.cpp bang.h Makefile
 ifeq (1,$(USE_GC))
-	$(CXX) $(CPPFLAGS) -D USE_GC=1 -I $(PATH_BOEHM)\include -Wl,--stack,33554432 bang.cpp -L$(PATH_BOEHM) -lgc -o $@
-else
-	$(CXX) $(CPPFLAGS) -Wl,--stack,33554432 $< -o $@
+ CPPFLAGS_GC=-D USE_GC=1 -I $(PATH_BOEHM)\include
+ LDFLAGS_GC=-L$(PATH_BOEHM) -lgc
 endif
 
+bang$(EXT_EXE): bang.cpp bang.h Makefile
+	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC) -Wl,--stack,33554432 $< $(LDFLAGS_GC) -o $@
 
-mathlib.dll: mathlib.cpp bang.h
+mathlib$(EXT_SO): mathlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
 
-stringlib.dll: stringlib.cpp bang.h
+stringlib$(EXT_SO): stringlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
 
 #  -Wl,--out-implib,$(@:.dll=.a)

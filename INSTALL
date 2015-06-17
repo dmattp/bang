@@ -1,0 +1,22 @@
+Bang! supports two build mechanisms, GNU toolchain / GNU Make and MSVC / MSBuild project files.
+
+GNU Toolchain / Makefile
+=================================
+Edit Makefile to customize options for your build.  There are typical configuration files in the
+[build] directory which provide reasonable settings for either a typical MinGW build (build/win32.mak)
+or a typical linux build (build/linux.mak).
+
+MSVC / MSBuild / .vcxproj files
+=================================
+There are several .vcxproj files, one for the main intrepreter (bang.vcxproj) and others for the
+compiled libraries (stringlib.vcxproj and mathlib.vcxproj).  These can generally be built from
+the command line using e.g., "MSBuild /p:Configuration=Release bang.vcxproj", or they can be
+opened in visual studio and built from within the IDE.
+
+Building with Boehm GC
+=================================
+For GNU builds, set the USE_GC variable in Makefile to 1.  In your [build/site.mak] specify path
+to the Boehm header / library files as needed.
+
+For MSVC builds, edit [build/site.props] to set location of Boehm GC build header and library directories.
+

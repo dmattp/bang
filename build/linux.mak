@@ -1,0 +1,2 @@
+EXT_SO=.so
+EXT_EXE=

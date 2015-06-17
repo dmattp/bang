@@ -63,13 +63,7 @@ And there are primitives, until a better library / module system is in place.
 const char* const BANG_VERSION = "0.002";
 const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
 
-
 #include "bang.h"
-
-#if USE_GC
-# include  "gc_cpp.h"
-# include "gc_allocator.h"
-#endif
 
 namespace {
     bool gReplMode(false);
