@@ -336,17 +336,18 @@ namespace Ast
     class Base
     {
     public:
-        virtual void dump( int, std::ostream& o ) = 0;
-        virtual void run( Stack& stack, const RunContext& ) = 0;
+        virtual void dump( int, std::ostream& o ) const = 0;
+        virtual void run( Stack& stack, const RunContext& ) const = 0;
         enum EAstInstr {
             kUnk,
             kApply,
             kConditionalApply,
-            kApplyUpval
+            kApplyUpval,
+            kApplyFun
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
-        bool isTailable() { return instr_ != kUnk; }
+        bool isTailable() const { return instr_ != kUnk && instr_ != kApplyFun; }
             // return instr_ == kApply || instr_ == kConditionalApply || instr_ == kApplyUpval; }
 
         EAstInstr instr_;
@@ -354,11 +355,11 @@ namespace Ast
     };
 }
 
-Ast::Base* gFailedAst = nullptr;
+const Ast::Base* gFailedAst = nullptr;
 struct AstExecFail {
-    Ast::Base* pStep;
+    const Ast::Base* pStep;
     std::runtime_error e;
-    AstExecFail( Ast::Base* step, const std::runtime_error& e )
+    AstExecFail( const Ast::Base* step, const std::runtime_error& e )
     : pStep(step), e(e)
     {}
 };
@@ -369,19 +370,19 @@ namespace Ast
     class EofMarker : public Base
     {
     public:
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "<<< EOF >>>\n";
         }
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
     
     class PushLiteral : public Base
     {
         Value v_;
     public:
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "PushLiteral v=";
@@ -393,7 +394,7 @@ namespace Ast
         : v_(v)
         {}
 
-        virtual void run( Stack& stack, const RunContext& )
+        virtual void run( Stack& stack, const RunContext& ) const
         {
             stack.push( v_ );
         }
@@ -411,29 +412,29 @@ namespace Ast
         {
         }
 
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "PushPrimitive op='" << desc_ << "'\n";
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
 
     class ApplyPrimitive: public PushPrimitive
     {
     public:
-        ApplyPrimitive( PushPrimitive* pp )
+        ApplyPrimitive( const PushPrimitive* pp )
         : PushPrimitive( *pp )
         {}
 
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "ApplyPrimitive op='" << desc_ << "'\n";
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
     
     class PushUpval : public Base
@@ -448,31 +449,31 @@ namespace Ast
         {
         }
 
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "PushUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
 
     class ApplyUpval : public PushUpval
     {
     public:
-        ApplyUpval( PushUpval* puv )
+        ApplyUpval( const PushUpval* puv )
         :  PushUpval( *puv )
         {
             instr_ = kApplyUpval;
         }
           
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "ApplyUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
 
         const Value& getUpValue( const RunContext& rc ) const
         {
@@ -484,25 +485,25 @@ namespace Ast
     {
     public:
         PushUpvalByName() {}
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "PushUpvalByName\n";
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
 
     class Require : public Base
     {
     public:
         Require() {}
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "Require\n";
         }
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
 
     
@@ -510,7 +511,7 @@ namespace Ast
     {
     public:
         Apply() : Base( kApply ) {}
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "Apply";
@@ -519,7 +520,7 @@ namespace Ast
             o << std::endl;
         }
         
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
         static bool applyOrIsClosure( const Value& v, Stack& stack, const RunContext& );
     };
 
@@ -530,13 +531,13 @@ namespace Ast
         ConditionalApply()
         : Base( kConditionalApply )
         {}
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "ConditionalApply\n";
         }
         
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
 
         static bool foundTrue( Stack& stack )
         {
@@ -555,9 +556,9 @@ namespace Ast
     class Program //  : public Base
     {
     public:
-        typedef std::vector<Ast::Base*> astList_t;
+        typedef std::vector<const Ast::Base*> astList_t;
     private:
-        std::vector<Ast::Base*> ast_;
+        astList_t ast_;
 
     public:
         Program( const astList_t& ast )
@@ -576,17 +577,17 @@ namespace Ast
             return *this;
         }
         
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "Program\n";
             std::for_each
             (   ast_.begin(), ast_.end(),
-                [&]( Ast::Base* ast ) { ast->dump( level+1, o ); }
+                [&]( const Ast::Base* ast ) { ast->dump( level+1, o ); }
             );
         }
 
-        const std::vector<Ast::Base*>* getAst() { return &ast_; }
+        const astList_t* getAst() { return &ast_; }
 
         // void run( Stack& stack, std::shared_ptr<Function> pFunction ); 
     }; // end, class Ast::Program
@@ -594,29 +595,51 @@ namespace Ast
 
     class PushFun : public Base
     {
-        PushFun* pParentFun_;
+    protected:
+        mutable const PushFun* pParentFun_;
         Ast::Program*  astProgram_;
         std::string* pParam_;
 
     public:
-        Ast::PushFun* parent() { return pParentFun_; }
+        const Ast::PushFun* parent() const { return pParentFun_; }
         
         Ast::Program* getProgram() const { return astProgram_; }
 
-        PushFun( Ast::PushFun* pParentFun )
+        PushFun( const Ast::PushFun* pParentFun )
         : pParentFun_(pParentFun),
           astProgram_( nullptr ),
           pParam_(nullptr)
         {
         }
 
+        // ugly.
+        void reparent( const PushFun* newparent ) const { pParentFun_ = newparent; }
+        void reparentKids( const PushFun* oldParent )
+        {
+            const Program::astList_t* pkids = astProgram_->getAst();
+            if (!pkids)
+            {
+                std::cerr << "NO KIDS!||\n";
+                return;
+            }
+            const Program::astList_t& kids = *pkids;
+            for (int i = 0; i < kids.size(); ++i)
+            {
+//                try {
+                const Ast::PushFun* kid = dynamic_cast<const Ast::PushFun*>( kids[i] );
+                if (kid)
+                    kid->reparent( this ); // assert(kid->pParentFun_==oldParent);
+//                } catch( ... ) {}   
+            }
+        }
+        
         void setAst( const Ast::Program& astProgram ) { astProgram_ = new Ast::Program(astProgram); }
         PushFun& setParamName( const std::string& param ) { pParam_ = new std::string(param); return *this; }
-        bool hasParam() { return pParam_ ? true : false; }
+        bool hasParam() const { return pParam_ ? true : false; }
         std::string getParamName() const { return *pParam_; }
         bool DoesBind( const std::string& varName ) const { return pParam_ && *pParam_ == varName; }
 
-        const NthParent FindBinding( const std::string& varName )
+        const NthParent FindBinding( const std::string& varName ) const
         {
             if (this->DoesBind(varName))
             {
@@ -633,7 +656,7 @@ namespace Ast
             }
         }
         
-        virtual void dumpshort( int level, std::ostream& o )
+        virtual void dumpshort( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << std::hex << PtrToHash(this) << std::dec <<
@@ -643,15 +666,35 @@ namespace Ast
         }
 
 
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             this->dumpshort( level, o );
             o << ":";  
             astProgram_->dump( level, o );
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     }; // end, class Ast::PushFun
+
+    class ApplyFun : public PushFun
+    {
+    public:
+        ApplyFun( const PushFun* pf )
+        : PushFun( *pf )
+        {
+            instr_ = kApplyFun;
+        }
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << std::hex << PtrToHash(this) << std::dec <<
+                " ApplyFun(" << (pParam_ ? *pParam_ : "--") << ")";
+            o << ":";  
+            astProgram_->dump( level, o );
+        }
+        virtual void run( Stack& stack, const RunContext& ) const;
+    };
 
 
     class PushFunctionRec : public Base
@@ -662,13 +705,13 @@ namespace Ast
         : pRecFun_( other )
         {}
 
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "PushFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
         }
 
-        virtual void run( Stack& stack, const RunContext& );
+        virtual void run( Stack& stack, const RunContext& ) const;
     };
     
     
@@ -706,12 +749,12 @@ class FunctionClosure;
 // shorter
 class FunctionClosure : public Function
 {
-    Ast::PushFun* pushfun_;                      // permanent
+    const Ast::PushFun* pushfun_;                      // permanent
     BANGCLOSURE pParent_;  // set when pushed??
     Value paramValue_;                          // set when applied??
 
 public:
-    static BANGCLOSURE lexicalMatch(BANGCLOSURE start, Ast::PushFun* target)
+    static BANGCLOSURE lexicalMatch(BANGCLOSURE start, const Ast::PushFun* target)
     {
         
         while (start && start->pushfun_ != target)
@@ -724,7 +767,7 @@ public:
         return start;
     }
     
-    FunctionClosure( Ast::PushFun& pushfun, BANGCLOSURE pParent )
+    FunctionClosure( const Ast::PushFun& pushfun, BANGCLOSURE pParent )
     : Function(true),
       pushfun_( &pushfun ),
       pParent_( FunctionClosure::lexicalMatch( pParent, pushfun.parent() ) ) // pParent_ ) // this is the running Closure which "pushed" this function
@@ -794,7 +837,7 @@ public:
 
     CLOSURE_CREF getParent() const { return pParent_; }
 
-    Ast::PushFun* pushfun() { return pushfun_; }
+    const Ast::PushFun* pushfun() { return pushfun_; }
 
     void apply( Stack& s, CLOSURE_CREF myself );
     
@@ -893,7 +936,7 @@ void RunProgram
 )
 {
 restartTco:
-    const std::vector<Ast::Base*>* const pAst = pProgram->getAst();
+    const Ast::Program::astList_t* const pAst = pProgram->getAst();
 
     const int astLen = pAst->size();
 
@@ -933,18 +976,37 @@ restartTco:
         bool iscond = (astApply->instr_ == Ast::Base::kConditionalApply);
         bool shouldExec = !iscond || Ast::ConditionalApply::foundTrue( stack );
 
-        const Value& calledFun = (astApply->instr_ == Ast::Base::kApplyUpval)
-            ? dynamic_cast<const Ast::ApplyUpval*>(astApply)->getUpValue( rc )
-            : stack.pop();
-        
-        if (shouldExec && Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+        if (!shouldExec)
         {
-            // "rebind" RunProgram() parameters
-            pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
-            pFunction->bindParams( stack );
-            pProgram = pFunction->getProgram();
-            goto restartTco;
-        } // end , closure
+            if (astApply->instr_ == Ast::Base::kApply || astApply->instr_ == Ast::Base::kConditionalApply)
+                stack.pop_back();
+        }
+        else
+        {
+            if (astApply->instr_ == Ast::Base::kApplyFun)
+            {
+                const Ast::ApplyFun* afn = dynamic_cast<const Ast::ApplyFun*>(astApply);
+                pFunction = NEW_CLOSURE(*afn, rc.running());
+                pFunction->bindParams(stack);
+                pProgram = afn->getProgram();
+                goto restartTco;
+            }
+            else
+            {
+                const Value& calledFun = (astApply->instr_ == Ast::Base::kApplyUpval)
+                    ? dynamic_cast<const Ast::ApplyUpval*>(astApply)->getUpValue( rc )
+                : stack.pop();
+        
+                if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+                {
+                    // "rebind" RunProgram() parameters
+                    pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
+                    pFunction->bindParams( stack );
+                    pProgram = pFunction->getProgram();
+                    goto restartTco;
+                } // end , closure
+            }
+        }
     }
 }
     
@@ -969,18 +1031,24 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 // PushFun::run is what runs when a lambda is pushed on the
 // stack.  At this point we "grab" the parent from the
 // run context
-void Ast::PushFun::run( Stack& stack, const RunContext& rc )
+void Ast::PushFun::run( Stack& stack, const RunContext& rc ) const
 {
     const auto& pfr = NEW_CLOSURE(*this, rc.running());
     stack.push( STATIC_CAST_TO_BANGFUN(pfr) );
 }
 
+void Ast::ApplyFun::run( Stack& stack, const RunContext& rc ) const
+{
+    const auto& pfr = NEW_CLOSURE(*this, rc.running());
+    pfr->apply( stack, pfr );
+}
+    
 class FunctionPossibleTailCall : public Function
 {
 public:
 };
 
-void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc )
+void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
 #if 0
     // this is weird okay, if we're making a tail call, we *should* reuse the thing; if we're 
@@ -1057,7 +1125,7 @@ bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContex
     return false;
 }
 
-void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc)
+void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc) const
 {
     const Value& v = this->getUpValue( rc );
     if (Ast::Apply::applyOrIsClosure( v, stack, rc ))
@@ -1065,7 +1133,7 @@ void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc)
 };
 
 
-void Ast::Apply::run( Stack& stack, const RunContext& rc )
+void Ast::Apply::run( Stack& stack, const RunContext& rc ) const
 {
     const Value& v = stack.pop();
 
@@ -1073,7 +1141,7 @@ void Ast::Apply::run( Stack& stack, const RunContext& rc )
         v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
 }
 
-void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc)
+void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc) const
 {
     const bool shouldExec = Ast::ConditionalApply::foundTrue(stack);
 
@@ -1085,18 +1153,18 @@ void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc)
 }
 
 
-void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc )
+void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
 {
     stack.push( primitive_ );
 };
 
-void Ast::ApplyPrimitive::run( Stack& stack, const RunContext& rc )
+void Ast::ApplyPrimitive::run( Stack& stack, const RunContext& rc ) const
 {
     primitive_( stack, rc );
 };
 
 
-void Ast::PushUpval::run( Stack& stack, const RunContext& rc)
+void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
 {
     stack.push( rc.getUpValue( uvnumber_ ) );
 };
@@ -1105,7 +1173,7 @@ void Ast::PushUpval::run( Stack& stack, const RunContext& rc)
 //
 // This is really sort of 'experiment' code to make a quick&dirty object system /
 // immutable record sort of thing
-void Ast::PushUpvalByName::run( Stack& stack, const RunContext& rc)
+void Ast::PushUpvalByName::run( Stack& stack, const RunContext& rc) const
 {
     const Value& vName = stack.pop();
     
@@ -1156,7 +1224,7 @@ public:
     : stream_( stream )
     {}
 
-    void dump( std::ostream& out, const std::string& context )
+    void dump( std::ostream& out, const std::string& context ) const
     {
         out << "  {{SM @ " << context << "}}: consumned=[[" << consumned_ << "\n";
     }
@@ -1413,7 +1481,7 @@ class Parser
     {
         Ast::Program::astList_t ast_;
     public:
-        Program( StreamMark&, Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing );
+        Program( StreamMark&, const Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing );
 
         const Ast::Program::astList_t& ast() { return ast_; }
     };
@@ -1561,7 +1629,7 @@ class Parser
     public:
         ~Fundef() { delete pNewFun_; }
         
-        Fundef( StreamMark& stream, Ast::PushFun* pParentFun, ParsingRecursiveFunStack* pRecParsing )
+        Fundef( StreamMark& stream, const Ast::PushFun* pParentFun, ParsingRecursiveFunStack* pRecParsing )
         :  postApply_(false),
            pNewFun_(nullptr)
         {
@@ -1623,7 +1691,7 @@ class Parser
             mark.accept();
         }
         bool hasPostApply() const { return postApply_; }
-        Ast::PushFun* stealPushFun() { auto rc = pNewFun_; pNewFun_ = nullptr; return rc; }
+        const Ast::PushFun* stealPushFun() { auto rc = pNewFun_; pNewFun_ = nullptr; return rc; }
     }; // end, class Fundef
 
 
@@ -1634,7 +1702,7 @@ class Parser
         Ast::PushFun* pWithDefFun_;
     public:
         ~Defdef() { delete pDefFun_; delete pWithDefFun_; }
-        Defdef( StreamMark& stream, Ast::PushFun* pParentFun, ParsingRecursiveFunStack* pRecParsing )
+        Defdef( StreamMark& stream, const Ast::PushFun* pParentFun, ParsingRecursiveFunStack* pRecParsing )
         :  postApply_(false),
            pDefFun_(nullptr),
            pWithDefFun_(nullptr)
@@ -1704,7 +1772,7 @@ class Parser
     
     Program* program_;
 public:
-    Parser( StreamMark& mark, Ast::PushFun* pCurrentFun )
+    Parser( StreamMark& mark, const Ast::PushFun* pCurrentFun )
     {
         program_ = new Program( mark, pCurrentFun, nullptr ); // 0,0,0 = no current function, no self-name
     }
@@ -1720,23 +1788,23 @@ void OptimizeAst( Ast::Program::astList_t& ast )
     class NoOp : public Ast::Base
     {
     public:
-        virtual void dump( int level, std::ostream& o )
+        virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "NoOp\n";
         }
-        virtual void run( Stack& stack, const RunContext& ) {}
+        virtual void run( Stack& stack, const RunContext& ) const {}
     };
     static NoOp noop;
     
     const int end = ast.size() - 1;
     for (int i = 0; i < end; ++i)
     {
-        Ast::Base* step = ast[i];
-        if (!dynamic_cast<Ast::ApplyPrimitive*>(step))
+        const Ast::Base* step = ast[i];
+        if (!dynamic_cast<const Ast::ApplyPrimitive*>(step))
         {
-            Ast::PushPrimitive* pp = dynamic_cast<Ast::PushPrimitive*>(step);
-            if (pp && dynamic_cast<Ast::Apply*>(ast[i+1]))
+            const Ast::PushPrimitive* pp = dynamic_cast<const Ast::PushPrimitive*>(step);
+            if (pp && dynamic_cast<const Ast::Apply*>(ast[i+1]))
             {
                 ast[i] = new Ast::ApplyPrimitive( pp );
                 ast[i+1] = &noop;
@@ -1745,14 +1813,27 @@ void OptimizeAst( Ast::Program::astList_t& ast )
             }
         }
 
-        if (!dynamic_cast<Ast::ApplyUpval*>(step))
+        if (!dynamic_cast<const Ast::ApplyUpval*>(step))
         {
-            Ast::PushUpval* pup = dynamic_cast<Ast::PushUpval*>(step);
-            if (pup && dynamic_cast<Ast::Apply*>(ast[i+1]))
+            const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(step);
+            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
             {
                  ast[i] = new Ast::ApplyUpval( pup );
                  ast[i+1] = &noop;
                  delete pup;
+            }
+        }
+
+        if (0 && !dynamic_cast<const Ast::ApplyFun*>(step))
+        {
+            const Ast::PushFun* pup = dynamic_cast<const Ast::PushFun*>(step);
+            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
+            {
+                Ast::ApplyFun* newfun = new Ast::ApplyFun( pup );
+                newfun->reparentKids(pup); // ugly
+                ast[i] = newfun;
+                ast[i+1] = &noop;
+                delete pup;
             }
         }
     }
@@ -1809,7 +1890,7 @@ namespace Primitives {
     
 
 
-Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing )
+Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing )
 {
 //    std::cerr << "enter Program fun=" << pCurrentFun << "\n";
     try
@@ -2070,7 +2151,7 @@ public:
     {
     }
 
-    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, Ast::PushFun* self )
+    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::PushFun* self )
     {
         StreamMark mark(stream);
 
@@ -2163,7 +2244,7 @@ void repl_prompt()
     std::cout << "Bang! " << std::flush;
 }
 
-void Ast::EofMarker::run( Stack& stack, const RunContext& rc )
+void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
 {
 //    std::cerr << "Found EOF!" << std::endl;
 
@@ -2183,7 +2264,7 @@ void Ast::EofMarker::run( Stack& stack, const RunContext& rc )
     
 
 
-void Ast::Require::run( Stack& stack, const RunContext& rc )
+void Ast::Require::run( Stack& stack, const RunContext& rc ) const
 {
     const auto& v = stack.pop(); // get file name
     if (!v.isstr())
