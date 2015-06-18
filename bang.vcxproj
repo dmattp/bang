@@ -38,7 +38,6 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
 
-      <!--
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
     <ClCompile>
           <PreprocessorDefinitions>USE_GC=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -47,6 +46,7 @@
       <AdditionalDependencies>gc.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+      <!--
            -->
   
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">

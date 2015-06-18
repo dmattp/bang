@@ -137,7 +137,6 @@ void indentlevel( int level, std::ostream& o )
 class FunctionClosure;
 class RunContext
 {
-    // Function& runfun_;
     friend class FunctionClosure;
 public:
     CLOSURE_CREF pActiveFun_;
@@ -728,22 +727,6 @@ namespace Ast
 // multiple times in theory.
 class FunctionClosure;
 
-// class FunctionPrimitive : public Function
-// {
-//     tfn_primitive pfn_;
-// public:
-//     FunctionPrimitive( tfn_primitive pfn ) // for primitives / built-in C functions ***AND MAIN BODY***
-//     : pfn_( pfn )
-//     {}
-
-//     void apply( Stack& s, const std::shared_ptr<FunctionClosure>& running )
-//     {
-//         RunContext ctx( running );
-//         pfn_( s, ctx );
-//     }
-// };
-
-
 //~~~ @todo: maybe separate out closure which binds a variable from
 // one which doesn't?  If nothing else this could make upvalue lookup chain
 // shorter
@@ -752,29 +735,23 @@ class FunctionClosure : public Function
     const Ast::PushFun* pushfun_;                      // permanent
     BANGCLOSURE pParent_;  // set when pushed??
     Value paramValue_;                          // set when applied??
-
+    friend class Ast::PushFunctionRec;
 public:
     static BANGCLOSURE lexicalMatch(BANGCLOSURE start, const Ast::PushFun* target)
     {
-        
         while (start && start->pushfun_ != target)
-            start = start->pParent_;
-
-        // move to highest matching parent to avoid deeply nesting inner loops!
-        while (start && start->pParent_ && start->pParent_->pushfun_ == target)
             start = start->pParent_;
         
         return start;
     }
     
-    FunctionClosure( const Ast::PushFun& pushfun, BANGCLOSURE pParent )
+    FunctionClosure( const Ast::PushFun& pushfun, CLOSURE_CREF pParent )
     : Function(true),
       pushfun_( &pushfun ),
-      pParent_( FunctionClosure::lexicalMatch( pParent, pushfun.parent() ) ) // pParent_ ) // this is the running Closure which "pushed" this function
-//      pParent_( pushfun.activeParentFunction() ) // pParent_ ) // this is the running Closure which "pushed" this function
-//      pParent_( pParent_ ) 
+      pParent_( pParent ) 
     {
-        PBIND(std::cerr << "Create closure, Function=" << this << " pushfun=" << std::hex << PtrToHash(pushfun_) << std::dec << "\n";
+        PBIND(
+            std::cerr << "Create closure, Function=" << this << " pushfun=" << std::hex << PtrToHash(pushfun_) << std::dec << "\n";
         if (!pParent)
             std::cerr << " *** no running parent ***\n";
         else        
@@ -782,17 +759,18 @@ public:
             std::cerr << "\n  Active/Running/Parent function binds pushfun=";
             pParent->pushfun_->dumpshort( 2, std::cerr );
         };
-        if (!pParent_)
-            std::cerr << " *** no active pushfun parent ***\n";
-        else        
-        {
-            std::cerr << "\n  Last Active PUSHFUN Parent function=";
-                pParent_->pushfun_->dumpshort( 2, std::cerr );
-        }
-        std::cerr << std::endl);
+//         if (!pParent_)
+//             std::cerr << " *** no active pushfun parent ***\n";
+//         else        
+//         {
+//             std::cerr << "\n  Last Active PUSHFUN Parent function=";
+//                 pParent_->pushfun_->dumpshort( 2, std::cerr );
+//         }
+            std::cerr << std::endl;
+             );
     }
 
-//    std::shared_ptr<FunctionClosure> parent() { return pParent_; }
+//    BANGCLOSURE parent() { return pParent_; }
 
     const Value& paramValue() const // const std::string& uvName ) const
     {
@@ -1043,58 +1021,13 @@ void Ast::ApplyFun::run( Stack& stack, const RunContext& rc ) const
     pfr->apply( stack, pfr );
 }
     
-class FunctionPossibleTailCall : public Function
-{
-public:
-};
 
 void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-#if 0
-    // this is weird okay, if we're making a tail call, we *should* reuse the thing; if we're 
-    // _not_ making a tail call, you sort of need to re-bind?  It's odd... but I think
-    // that for TCO to work properly, we need to know at this point whether to smash
-    // over the parent bindings or whether to create new bindings.  Grr, that's ugly but
-    // here, i think, is where it finally falls out.  And the only place, I guess, that
-    // you really are able to smash the parent bindings is on tail call on the function
-    // to itself, _or_ on a tail call on an inner program when that program is itself
-    // in tail call position in the function which called it.  That will be fun to
-    // get right for sure.  Until then, no true tail calls, sorry!  But at least this
-    // memory comes off the heap rather than the stack, so that's something.
-
-    //  maybe do something like walk up the runcontext and as long as everybody
-    // through the parent is in tail call position it's okay? ie, set a flag
-    // in the runcontext structure when we're in tail call position or something
-    // and that way I can check here in this function
-
-    //  But I guess the easy / "scala" TCO is, if the runcontext PushFun _is_
-    //  the same as the PushFunctionRec pushFun (ie, I am calling back from
-    //  myself) _and_ the runContext says hey, you're in the tail call position
-    //  buddy-o, then I can say okay, it's hereby safe to blow away the
-    //  previous running thingamajoogie and over-bind his values; there's some
-    //  obvious optimization there also that should handle functions with
-    //  multiple parameters... 
-
-    //~~~ TODO: This can probably be replaced with Function::lexicalMatch()
-//     std::cerr << "TCO inTail=" << rc.inTailMode() << std::hex 
-//               << " recfun=" << PtrToHash(pRecFun_) << " RUNfun=" << PtrToHash(rc.running()->pushfun()) << std::dec << "\n";
-/// /// ///    if (rc.inTailMode() && (rc.running()->pushfun() == pRecFun_))
-/// /// ///    {
-/// /// ///        std::cerr << "TCO OPT!!!!!!\n";
-/// /// ///        std::shared_ptr<FunctionClosure> parent = FunctionClosure::lexicalMatch(rc.running(), pRecFun_);
-/// /// ///        stack.push( Value(std::static_pointer_cast<Function>(parent) ) );
-/// /// ///    } 
-/// /// ///    else
-/// /// ///    {
-/// /// ///        const auto& otherfun = std::make_shared<FunctionClosure>( *pRecFun_, rc.running() );
-/// /// ///        stack.push( Value(std::static_pointer_cast<Function>(otherfun)) );
-/// /// ///    }
-#else
-    {
-        const auto& otherfun = NEW_CLOSURE( *pRecFun_, rc.running() );
-        stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
-    }
-#endif 
+    BANGCLOSURE myself = FunctionClosure::lexicalMatch( rc.running(), pRecFun_ );
+    CLOSURE_CREF myselfsParent = myself->getParent();
+    const auto& otherfun = NEW_CLOSURE( *pRecFun_, myselfsParent );
+    stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
 }
 
 
