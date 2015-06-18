@@ -81,20 +81,28 @@ namespace {
     }
 }
 
-    void Value::dump( std::ostream& o ) const
+    void Value::tostring( std::ostream& o ) const
     {
         if (type_ == kNum)
             o << v_.num;
         else if (type_ == kBool)
             o << (v_.b ? "true" : "false");
         else if (type_ == kStr)
-            o << '"' << this->tostr() << '"';
+            o << this->tostr();
         else if (type_ == kFun)
             o << "(function)";
         else if (type_ == kFunPrimitive)
             o << "(prim.function)";
+        else
+            o << "(???)";
     }
-    
+
+
+    void Value::dump( std::ostream& o ) const
+    {
+        this->tostring(o);
+    }
+
     void Stack::dump( std::ostream& o ) const
     {
         std::for_each
@@ -258,11 +266,18 @@ namespace Primitives
         else
             throw std::runtime_error("Logical AND operator incompatible type");
     }
+
+    void tostring( Stack& s, const RunContext& ctx )
+    {
+        const Value& v1 = s.pop();
+        std::ostringstream os;
+        v1.tostring( os );
+        s.push( os.str() );
+    }
     
     void printone( Stack& s, const RunContext& ctx )
     {
         const Value& v1 = s.pop();
-
         std::cout << "V=";
         v1.dump( std::cout );
         std::cout << std::endl;
@@ -831,7 +846,7 @@ public:
         {
             const auto& str = msg.tostr();
             if (str == "#")
-                s.push( double(s.size()) );
+                s.push( double(pStack_->size()) );
             else if (str == "push")
             {
                 auto pushit = NEW_BANGFUN(FunctionRestoreStack)( pStack_ );
@@ -1986,6 +2001,7 @@ Parser::Program::Program( StreamMark& stream, Ast::PushFun* pCurrentFun, Parsing
                 if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
 //                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
+                if (rwPrimitive( "tostring", &Primitives::tostring    ) ) continue;
 //                if (rwPrimitive( "require",    &Primitives::require    ) ) continue;
             
                 bool bFoundRecFunId = false;

@@ -16,8 +16,9 @@ namespace String
 
     void len( Bang::Stack& s, const Bang::RunContext& ctx)
     {
-        checkstrtype(s.loc_top());
-        s.push( double(s.loc_top().tostr().size()) );
+        const auto& v = s.pop();
+        checkstrtype(v);
+        s.push( double(v.tostr().size()) );
     }
 
     void sub( Bang::Stack& s, const Bang::RunContext& ctx)

@@ -1,7 +1,10 @@
 USE_GC=0
-include build/linux.mak
-#include build/win32.mak
+
 -include build/site.mak
+
+ifeq (,$(BUILD_FOR)) # if site.mak doesn't include a target (linux.mak,win32.mak) default to linux
+ include build/linux.mak
+endif
 
 all:: bang$(EXT_EXE) #-- mathlib.dll
 all:: mathlib$(EXT_SO)

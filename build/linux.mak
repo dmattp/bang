@@ -1,2 +1,3 @@
 EXT_SO=.so
 EXT_EXE=
+BUILD_FOR=linux

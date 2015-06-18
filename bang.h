@@ -1,6 +1,7 @@
 
 #include <memory>
 #include <vector>
+#include <ostream>
 
 #if USE_GC
 # include "gc_cpp.h"
@@ -171,6 +172,8 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         bool   tobool() const { return v_.b; }
         const std::string& tostr() const { return *reinterpret_cast<const std::string*>(v_.cstr); }
         tfn_primitive tofunprim() const { return v_.funprim; }
+
+        void tostring( std::ostream& ) const;
     
         void dump( std::ostream& o ) const;
     }; // end, class Value
@@ -191,7 +194,11 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         void giveTo( std::vector<Value>& other )
         {
             if (!bound_)
+            {
+//                 other = stack_;
+//                 stack_.clear();
                 stack_.swap( other );
+            }
             else
             {
                 for (auto it = stack_.begin() + bound_->mark; it < stack_.end(); ++it )
