@@ -61,7 +61,7 @@ And there are primitives, until a better library / module system is in place.
 
 
 const char* const BANG_VERSION = "0.002";
-const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\tmp\\gurger.bang";
+const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\test\\7.bang";
 
 #include "bang.h"
 
@@ -346,7 +346,7 @@ namespace Ast
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
-        bool isTailable() const { return instr_ != kUnk && instr_ != kApplyFun; }
+        bool isTailable() const { return instr_ != kUnk; } //  && instr_ != kApplyFun; }
             // return instr_ == kApply || instr_ == kConditionalApply || instr_ == kApplyUpval; }
 
         EAstInstr instr_;
@@ -595,13 +595,11 @@ namespace Ast
     class PushFun : public Base
     {
     protected:
-        mutable const PushFun* pParentFun_;
+        const PushFun* pParentFun_;
         Ast::Program*  astProgram_;
         std::string* pParam_;
 
     public:
-        const Ast::PushFun* parent() const { return pParentFun_; }
-        
         Ast::Program* getProgram() const { return astProgram_; }
 
         PushFun( const Ast::PushFun* pParentFun )
@@ -612,25 +610,25 @@ namespace Ast
         }
 
         // ugly.
-        void reparent( const PushFun* newparent ) const { pParentFun_ = newparent; }
-        void reparentKids( const PushFun* oldParent )
-        {
-            const Program::astList_t* pkids = astProgram_->getAst();
-            if (!pkids)
-            {
-                std::cerr << "NO KIDS!||\n";
-                return;
-            }
-            const Program::astList_t& kids = *pkids;
-            for (int i = 0; i < kids.size(); ++i)
-            {
-//                try {
-                const Ast::PushFun* kid = dynamic_cast<const Ast::PushFun*>( kids[i] );
-                if (kid)
-                    kid->reparent( this ); // assert(kid->pParentFun_==oldParent);
-//                } catch( ... ) {}   
-            }
-        }
+//         void reparent( const PushFun* newparent ) const { pParentFun_ = newparent; }
+//         void reparentKids( const PushFun* oldParent )
+//         {
+//             const Program::astList_t* pkids = astProgram_->getAst();
+//             if (!pkids)
+//             {
+//                 std::cerr << "NO KIDS!||\n";
+//                 return;
+//             }
+//             const Program::astList_t& kids = *pkids;
+//             for (int i = 0; i < kids.size(); ++i)
+//             {
+// //                try {
+//                 const Ast::PushFun* kid = dynamic_cast<const Ast::PushFun*>( kids[i] );
+//                 if (kid)
+//                     kid->reparent( this ); // assert(kid->pParentFun_==oldParent);
+// //                } catch( ... ) {}   
+//             }
+//         }
         
         void setAst( const Ast::Program& astProgram ) { astProgram_ = new Ast::Program(astProgram); }
         PushFun& setParamName( const std::string& param ) { pParam_ = new std::string(param); return *this; }
@@ -789,10 +787,11 @@ public:
     // system.  obviously if it's "a hit" you can optimize out much of this cost
     const Value& getUpValue( const std::string& uvName )
     {
+//        std::cerr << "LOOKING FOR DYNAMIC UPVAL=\"" << uvName << "\"\n";
         const NthParent uvnum = pushfun_->FindBinding(uvName);
         if (uvnum == kNoParent)
         {
-            std::cerr << "Error Looking for dynamic upval=\"" << uvName << '"';
+//            std::cerr << "Error Looking for dynamic upval=\"" << uvName << '"';
             throw std::runtime_error("Could not find dynamic upval");
         }
         return getUpValue( uvnum );
@@ -1734,6 +1733,24 @@ void OptimizeAst( Ast::Program::astList_t& ast )
     for (int i = 0; i < end; ++i)
     {
         const Ast::Base* step = ast[i];
+        if (1 && !dynamic_cast<const Ast::ApplyFun*>(step))
+        {
+            const Ast::PushFun* pup = dynamic_cast<const Ast::PushFun*>(step);
+            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
+            {
+//                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
+                Ast::ApplyFun* newfun = new Ast::ApplyFun( pup );
+//                newfun->reparentKids(pup); // ugly
+                ast[i] = newfun;
+                ast[i+1] = &noop;
+                
+                // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
+                // 'reparent' or redesign this thing
+                ++i;
+                continue;
+            }
+        }
+        
         if (!dynamic_cast<const Ast::ApplyPrimitive*>(step))
         {
             const Ast::PushPrimitive* pp = dynamic_cast<const Ast::PushPrimitive*>(step);
@@ -1742,6 +1759,7 @@ void OptimizeAst( Ast::Program::astList_t& ast )
                 ast[i] = new Ast::ApplyPrimitive( pp );
                 ast[i+1] = &noop;
                 delete step;
+                ++i;
                 continue;
             }
         }
@@ -1754,21 +1772,11 @@ void OptimizeAst( Ast::Program::astList_t& ast )
                  ast[i] = new Ast::ApplyUpval( pup );
                  ast[i+1] = &noop;
                  delete pup;
+                 ++i;
+                 continue;
             }
         }
 
-        if (0 && !dynamic_cast<const Ast::ApplyFun*>(step))
-        {
-            const Ast::PushFun* pup = dynamic_cast<const Ast::PushFun*>(step);
-            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-            {
-                Ast::ApplyFun* newfun = new Ast::ApplyFun( pup );
-                newfun->reparentKids(pup); // ugly
-                ast[i] = newfun;
-                ast[i+1] = &noop;
-                delete pup;
-            }
-        }
     }
 
     for (int i = ast.size() - 1; i >= 0; --i)
@@ -2242,6 +2250,7 @@ int main( int argc, char* argv[] )
     {
         // bDump = true;
         fname = nullptr; // kDefaultScript;
+//        fname = kDefaultScript;
         gReplMode = true;
         Bang::repl_prompt();
     }
