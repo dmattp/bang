@@ -1,3 +1,4 @@
+fun = 19000; # 2 <? as N
 
 'lib/hof.bang' require! .filter as filter
 
@@ -22,7 +23,7 @@ def :testQuicksort numItems = {
 }
 
 fun=
-19000 testQuicksort!
+N testQuicksort!
 ;1 times!
 
 -- with GC 1.2s

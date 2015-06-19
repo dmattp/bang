@@ -716,14 +716,85 @@ namespace Ast
 
 
 
-        
+#if !USE_GC
+template< class Tp >    
+struct FcStack
+{
+    FcStack<Tp>* prev;
+    static FcStack<Tp>* head;
+};
 
+template <class Tp>
+FcStack<Tp>* FcStack<Tp>::head(nullptr);
 
+class FunctionClosure;
+
+//    static int gAllocated;
+
+template <class Tp>
+struct SimpleAllocator
+{
+    typedef Tp value_type;
+    SimpleAllocator(/*ctor args*/) {}
+    template <class T> SimpleAllocator(const SimpleAllocator<T>& other){}
+    template <class U> struct rebind { typedef SimpleAllocator<U> other; };
+    
+    Tp* allocate(std::size_t n)
+    {
+        FcStack<Tp>* hdr;
+        if (FcStack<Tp>::head)
+        {
+            hdr = FcStack<Tp>::head;
+            FcStack<Tp>::head = hdr->prev;
+        }
+        else
+        {
+            hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
+//            ++gAllocated;
+        }
+        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
+//        std::cerr << "ALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << mem << " size=" << n << " sizeof<shptr>=" << sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
+        return mem;
+    }
+    void deallocate(Tp* p, std::size_t n)
+    {
+        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
+        --hdr;
+        static char freeOne;
+        if ((++freeOne & 0xF) == 0)
+        {
+//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
+//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
+//            --gAllocated;
+            free( hdr );
+        }
+        else
+        {
+            hdr->prev = FcStack<Tp>::head;
+            FcStack<Tp>::head = hdr;
+        }
+    }
+    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
+    void destroy(Tp* p) { p->~Tp(); }
+};
+template <class T, class U>
+bool operator==(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
+{
+    return &a == &b;
+}
+template <class T, class U>
+bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
+{
+    return &a != &b;
+}
+
+#endif 
+
+    
 // Function should be Constructed when the PushFun is pushed,
 // thereby binding to the pushing context and preserving upvalues.
 // ParamValue will be set when it is invoked, which could happen
 // multiple times in theory.
-class FunctionClosure;
 
 //~~~ @todo: maybe separate out closure which binds a variable from
 // one which doesn't?  If nothing else this could make upvalue lookup chain
@@ -735,6 +806,7 @@ class FunctionClosure : public Function
     Value paramValue_;                          // set when applied??
     friend class Ast::PushFunctionRec;
 public:
+
     static BANGCLOSURE lexicalMatch(BANGCLOSURE start, const Ast::PushFun* target)
     {
         while (start && start->pushfun_ != target)
@@ -791,7 +863,7 @@ public:
         const NthParent uvnum = pushfun_->FindBinding(uvName);
         if (uvnum == kNoParent)
         {
-//            std::cerr << "Error Looking for dynamic upval=\"" << uvName << '"';
+            std::cerr << "Error Looking for dynamic upval=\"" << uvName << "\"\n";
             throw std::runtime_error("Could not find dynamic upval");
         }
         return getUpValue( uvnum );
@@ -819,6 +891,15 @@ public:
     void apply( Stack& s, CLOSURE_CREF myself );
     
 }; // end, class FunctionClosure
+
+
+#if !USE_GC    
+SimpleAllocator< std::shared_ptr<FunctionClosure> > gFuncloseAlloc;
+
+# undef  NEW_CLOSURE
+# define NEW_CLOSURE(a,b)           std::allocate_shared<FunctionClosure>( gFuncloseAlloc, a, b )
+#endif 
+    
 
 class FunctionRestoreStack : public Function
 {
@@ -2244,6 +2325,13 @@ int main( int argc, char* argv[] )
             argv[1] = argv[2];
             --argc;
         }
+
+        if (std::string("-i") == argv[1])
+        {
+            gReplMode = true;
+            argv[1] = argv[2];
+            --argc;
+        }
     }
     const char* fname = argv[1];
     if (argc < 2)
@@ -2252,13 +2340,15 @@ int main( int argc, char* argv[] )
         fname = nullptr; // kDefaultScript;
 //        fname = kDefaultScript;
         gReplMode = true;
-        Bang::repl_prompt();
     }
 
     gDumpMode = bDump;
 
     Bang::Stack stack;
 
+    if (gReplMode)
+        Bang::repl_prompt();
+    
     do
     {
         try

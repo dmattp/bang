@@ -50,12 +50,13 @@
     <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;\usr\lib;$(SolutionDir)$(Configuration)\;c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\debug;C:\Dev\PCS_SDKS\JAG\NewDev\PlatformSystemsSDK\Lib\NT-VS10\Debug;..\Debug;..\..\n2\build\src\$(Configuration)</LibraryPath>
   </PropertyGroup>
 
+  <Import Project="build/bang.props" />
+
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <SuppressStartupBanner>false</SuppressStartupBanner>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);c:/Dev/PCS_SDKS/JAG/NewDev/PlatformSystemsSDK/Include/;C:\m\n2proj\bang</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RADRUG_LIMITED;WIN32;_WINDOWS;_USRDLL;RADRUG_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>

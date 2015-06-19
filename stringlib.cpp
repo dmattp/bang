@@ -34,6 +34,15 @@ namespace String
         s.push( vStr.tostr().substr( sBeg.tonum(), sEnd.tonum()-sBeg.tonum()+1 ) );
     }
 
+    void lt( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        const Value& sRt = s.pop();
+        const Value& sLt = s.pop();
+        checkstrtype( sLt );
+        checkstrtype( sRt );
+        s.push( sLt.tostr() < sRt.tostr() );
+    }
+    
     void to_bytes( Bang::Stack& s, const Bang::RunContext& ctx)
     {
         checkstrtype(s.loc_top());
@@ -67,6 +76,7 @@ namespace String
         const Bang::tfn_primitive p =
             (  str == "len"    ? &len
             :  str == "sub"    ? &sub
+            :  str == "lt"     ? &lt
             :  str == "to-bytes"   ? &to_bytes
             :  str == "from-bytes"   ? &from_bytes
             :  nullptr

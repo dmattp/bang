@@ -243,6 +243,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         void push( bool b ) { stack_.emplace_back(b); }
         void push( int i ) { stack_.emplace_back(double(i)); }
         void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
+        void push( const std::string& s ) { stack_.emplace_back(s); }
 
         const Value& loc_top() const { return stack_.back(); }
         Value& loc_topMutate() { return stack_.back(); }

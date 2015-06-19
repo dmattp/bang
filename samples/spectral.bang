@@ -1,3 +1,6 @@
+fun = 150; # 2 <? as N
+
+
 def :times totalTimes = { fun! loopFun =
     def :innerLoop remain = {
       loopFun!
@@ -44,7 +47,6 @@ def :AtAv N = {
   N Atv!
 }
 
-150 as N
 
 fun = 1; N times!
 
