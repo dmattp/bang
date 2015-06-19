@@ -903,31 +903,30 @@ SimpleAllocator< std::shared_ptr<FunctionClosure> > gFuncloseAlloc;
 
 class FunctionRestoreStack : public Function
 {
-    std::shared_ptr< std::vector<Value> > pStack_;
+    std::vector<Value> stack_;
 public:
     FunctionRestoreStack( Stack& s )
-    : pStack_( std::make_shared<std::vector<Value>>() )
+    //    : pStack_( std::make_shared<std::vector<Value>>() )
     {
-        s.giveTo( *pStack_ );
+        s.giveTo( stack_ );
     }
-    FunctionRestoreStack( const std::shared_ptr< std::vector<Value> >& pStack )
-    : pStack_( pStack )
+    FunctionRestoreStack( const std::vector<Value>& s )
+    : stack_(s)
     {
     }
     virtual void apply( Stack& s, CLOSURE_CREF running )
     {
-        std::copy( pStack_->begin(), pStack_->end(), std::back_inserter( s.stack_ ) );
+        std::copy( stack_.begin(), stack_.end(), std::back_inserter( s.stack_ ) );
     }
 };
 
 class FunctionStackToArray : public Function
 {
-    std::shared_ptr< std::vector<Value> > pStack_;
+    std::vector<Value> stack_;
 public:
     FunctionStackToArray( Stack& s )
-    : pStack_( std::make_shared<std::vector<Value>>() )
     {
-        s.giveTo( *pStack_ );
+        s.giveTo( stack_ );
     }
 
     //~~~ i still think, sort of, that the shared_ptr here should be to myself
@@ -941,16 +940,16 @@ public:
         const Value& msg = s.pop();
         if (msg.isnum())
         {
-            s.push( (*pStack_)[int(msg.tonum())] );
+            s.push( stack_[int(msg.tonum())] );
         }
         else if (msg.isstr())
         {
             const auto& str = msg.tostr();
             if (str == "#")
-                s.push( double(pStack_->size()) );
+                s.push( double(stack_.size()) );
             else if (str == "push")
             {
-                auto pushit = NEW_BANGFUN(FunctionRestoreStack)( pStack_ );
+                auto pushit = NEW_BANGFUN(FunctionRestoreStack)( stack_ );
                 s.push( STATIC_CAST_TO_BANGFUN(pushit) );
             }
         }
