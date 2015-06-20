@@ -350,9 +350,11 @@ namespace Ast
             kApply,
             kApplyUpval,
             kApplyFun,
+            kApplyFunRec,
             kTCOApply,
             kTCOApplyUpval,
-            kTCOApplyFun
+            kTCOApplyFun,
+            kTCOApplyFunRec
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
@@ -367,6 +369,7 @@ namespace Ast
             {
                 case kApply:      instr_ = kTCOApply;      break;
                 case kApplyFun:   instr_ = kTCOApplyFun;   break;
+                case kApplyFunRec:   instr_ = kTCOApplyFunRec;   break;
                 case kApplyUpval: instr_ = kTCOApplyUpval; break;
             }
         }
@@ -718,8 +721,9 @@ namespace Ast
 
     class PushFunctionRec : public Base
     {
-        Ast::PushFun* pRecFun_;
+    protected:
     public:
+        Ast::PushFun* pRecFun_;
         PushFunctionRec( Ast::PushFun* other )
         : pRecFun_( other )
         {}
@@ -728,6 +732,22 @@ namespace Ast
         {
             indentlevel(level, o);
             o << "PushFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
+        }
+
+        virtual void run( Stack& stack, const RunContext& ) const;
+    };
+
+    class ApplyFunctionRec : public PushFunctionRec
+    {
+    public:
+        ApplyFunctionRec( const Ast::PushFunctionRec* pfr )
+        : PushFunctionRec( *pfr )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
@@ -1023,7 +1043,20 @@ restartTco:
                     goto restartTco;
                 }
                 break;
-                    
+
+                case Ast::Base::kTCOApplyFunRec:
+                {
+                    // no dynamic cast, should be safe since we know the type from instr_
+                    const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr); 
+                    BANGCLOSURE myself = FunctionClosure::lexicalMatch( pFunction, afn->pRecFun_ );
+                    CLOSURE_CREF myselfsParent = myself->getParent();
+                    pFunction = NEW_CLOSURE( *(afn->pRecFun_), myselfsParent );
+                    pFunction->bindParams(stack);
+                    pProgram = afn->pRecFun_->getProgram();
+                    goto restartTco;
+                }
+                break;
+                
                 case Ast::Base::kTCOApplyUpval:
                 {
                     // no dynamic cast, should be safe since we know the type from instr_
@@ -1120,6 +1153,15 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
     stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
 }
 
+    
+void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
+{
+    BANGCLOSURE myself = FunctionClosure::lexicalMatch( rc.running(), pRecFun_ );
+    CLOSURE_CREF myselfsParent = myself->getParent();
+    const auto& pfr = NEW_CLOSURE( *pRecFun_, myselfsParent );
+    pfr->apply( stack, pfr );
+    // stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
+}
 
 
 bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContext& rc )
@@ -1829,6 +1871,24 @@ void OptimizeAst( Ast::Program::astList_t& ast )
             {
 //                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
                 Ast::ApplyFun* newfun = new Ast::ApplyFun( pup );
+//                newfun->reparentKids(pup); // ugly
+                ast[i] = newfun;
+                ast[i+1] = &noop;
+                
+                // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
+                // 'reparent' or redesign this thing
+                ++i;
+                continue;
+            }
+        }
+
+        if (1 && !dynamic_cast<const Ast::ApplyFunctionRec*>(step))
+        {
+            const Ast::PushFunctionRec* pup = dynamic_cast<const Ast::PushFunctionRec*>(step);
+            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
+            {
+//                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
+                Ast::ApplyFunctionRec* newfun = new Ast::ApplyFunctionRec( pup );
 //                newfun->reparentKids(pup); // ugly
                 ast[i] = newfun;
                 ast[i+1] = &noop;
