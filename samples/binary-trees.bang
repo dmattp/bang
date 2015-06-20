@@ -1,4 +1,4 @@
-# 1 < ? 12; as N
+# 1 < ? 13; as N
 
 -- The Computer Language Benchmarks Game
 -- http://benchmarksgame.alioth.debian.org/
@@ -61,7 +61,7 @@ N as maxdepth
 
 maxdepth 1 + as stretchdepth
 0 stretchdepth BottomUpTree! as stretchtree
-stretchdepth stretchtree ItemCheck! 'stretch tree of depth=%@ check=%@'  print!
+stretchdepth stretchtree ItemCheck! 'stretch tree of depth=%@ check=%@\n'  print!
 
 0 maxdepth BottomUpTree! as longlivedtree
 
@@ -73,8 +73,7 @@ fun depth_div2 = {
   0 fun = { 1 depth BottomUpTree! ItemCheck! +
               0 1 - depth BottomUpTree! ItemCheck! + } iterations times!
   as check
-  iterations 2* tostring! ' trees of depth =' +
-  depth tostring! +  ' check=' + check tostring! + @
+  iterations 2* depth check '%@ trees of depth = %@ check=%@\n' print!
 } mindepth 2 / maxdepth 2 / range!
 
 longlivedtree ItemCheck! as lltcheck

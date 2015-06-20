@@ -19,100 +19,52 @@ Or they can be as complicated as you wish to make them, with all the abstractive
 
 Bang! is less than a month old and many features are incomplete and specifications are tentative.  The current implementation is naive but usable.  Very little optimization and endurance testing has been applied, and there are probably issues that make it unsuitable for production environments.  But it does demonstrate the concepts and runs small scripts with bearable performance.
 
-# Let's See it Already
-
-
-This section will give an overview of the language starting with the foundations and some explanation of the reasoning behind the language design.
+# Introduction
 
 ## Functional Foundation
 
-So what does Bang! code look like? The central construct in Bang! is the function.
+The central construct in Bang! is the function. First class functions are arguably the single most malleable single language facility, so Bang! attempts to keep this central concept simple and close to the surface.  All Bang! functions take at most a single parameter which keeps the implementation simple, but lexical scoping allows creation of functions with any number of parameters.
 
-First class functions are arguably the most malleable single language facility.  Generations of functional languages such as lisp have shown that every computing concept can be implemented using just functions.
-
-Bang!'s philosophy is to keep this central construct simple and close to the surface. All Bang! functions take at most a single parameter which keeps the implementation simple, but lexical scoping allows creation of functions with any number of parameters as we will see.
-
-All functions have access to a working stack.  Parameters are pushed onto the stack when calling a function, and the called function pops values off the stack as necessary.
+All functions have access to a working stack.  Literals (numbers, strings, booleans, or functions) are pushed to the stack when encountered in the program. When functions are applied they pop values off the stack as necessary.
 
 A function to square a number is written like this:
 
      fun number = number number *
 
-When this function is called it first pops the top value off the stack, binding it to the symbolic name "number".  Then the function pushes the received value twice and multiplies.  The multiplication operator pops the first two values off the stack, multiplies, and pushes the result.
+A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator pops the top value from the stack and applies the function.  When a function accepting a parameter is applied, the top value from the stack is popped of and bound to the symbolic name given to the parameter, in this case 'number'.  Then the function body is executed, which pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  Multiply pops two values off the stack, multiplies, and pushes the result.
 
-Literals - numbers, strings, and booleans; are simply written as needed.  When the interpreter encounters a literal it pushes the literal value immediately onto the program's working stack.
-
-A function written like the one above is a _function literal_.  When the interpreter encounters a function literal, it pushes it onto the stack just like any other literal.
-
-So a Bang! program simply consists of pushing values onto the program stack then applying those values to a function. E.g.,
+So a Bang! program simply consists of pushing values onto the program stack then applying those values to functions.  Minimally this resembles the common "reverse polish notation" style calculators.
 
        3.14
        60
        *
     > 188.4
 
-At the end of a program Bang! simply dumps the contents remaining on the stack and you have your program output.  So, if we want to square a number, we could use the square function above:
+At the end of a program Bang! simply dumps the contents remaining on the stack and you have your program output.
 
        3
-       fun number = number number *
+       fun number = { number number * }!
     > 9
 
-This is the general idea.  The program above is not exactly Bang! syntax though, because theres a trick to using _function literals_.  The bang interpreter, encountering the above program simply pushes the _function literal_ onto the stack. It isn't applied to the argument and the result of the program is a stack with two values (a number and a function literal) still sitting on it, dumb and happy.
+Semicolons can be used to terminate a function body and braces will close multiple levels of open function scopes.  Many languages have a distinct concept for variables, but in bang there is only the function construct.  "Variables" are simply function parameters which are bound to a function parameter with a symbolic name.  The variable can then be used inside the function body, so each variable declaration essentially opens a new function body.
 
-       3
-       fun number = number number *
-    > 3
-    > (function)
+Bang! provides a shorthand keyword, "as", which implies an immediate application of the subsequent function body:
 
-To apply a function you use the apply operator, "!". Now there's a little trick to distinguish where the function body ends and if necessary we use a ';' to terminate a function body.
+    3.14159 as Pi
+    ...
 
-So proper Bang! syntax to calculate "3 squared" would be
+is equivalent to
 
-       3
-       fun number = number number *;
-       !
-    > 9  
+    3.14159 fun Pi = { ... } !
 
-I use a "tower" style here but it's not strictly necessary as whitespace is not important.  The above program could also be written as:
+This makes variable declarations read more naturally.  Function values can be bound to symbalic names similarly, allowing named functions.
 
-       3 fun number = number number *;!
-    > 9  
-    
-Straightforward enough, though it looks a bit awkward with the line noise style "*;!" swearing at the end.
+      3.14 as PI
+      fun radius = radius radius * PI *; as CalculateArea
+      25.0 CalculateArea!
+    > 1962.5    
 
-To make things easier, there is a shorthand syntax using the "fun!" keyword which tells the parser to automatically add an "apply" operation at the end of the function body.
-
-So the program becomes:
-
-       3 fun! number = number number *
-    > 9  
-    
-In this case, our program source ends after the function body so there is no longer any need for the semicolon, either.  Looks a bit nicer.
-
-There is another keyword syntax Bang! provides in place of the "fun!" statement - "as". When you apply the function, the parameter gets popped of the stack and "bound" to the function's (single) parameter.  So you say in effect, "use 3 'as' the variable called number" in the following function body.  With "as" you can drop the "=" sign too, so the program looks like this:
-
-       3 as number
-       number number *
-    > 9
-
-Now keep in mind that all these programs are _exactly the same_ internally.  We've just changed to keywords that provide slightly different syntax to make the code look nicer.
-
-The "as" keyword syntax works quite naturally for defining variables.  For example, let's say we want to find the area of a circle:
-
-       3.14 as Pi
-       12   as radius
-       radius radius * Pi *
-    > 452.16
-
-If we want to name a function, we can do that with "as" also:
-
-       fun n = n n *; as squared
-       3.14 as Pi
-       12 as radius
-       radius squared! Pi *
-    > 452.16
-
-Values bound to symbolic names are pushed to the stack the same way as literals; the runtime simply looks up the value bound to the symbolic name and pushes it onto the stack when it encounters a free identifier.
+When the program's end of file is reached, any open function bodies are closed.  So with a single "function-with-one-parameter" construct we can create symbolic variables, anonymous functions, and named functions. 
 
 Now what if we need a function more than a single parameter? Here's where the inherent power of first class functions and lexical closures show their stuff.  Without defining any additional language syntax, we can actually already construct functions that take as many variables as we like.
 
