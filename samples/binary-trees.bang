@@ -36,11 +36,11 @@ def :BottomUpTree = { as depth as item
 --  'BottomUpTree depth=' depth tostring! + @
   depth 0 >
 ? {
-  item item + as i
+  item item + -- as i
   depth 1 - as nextDepth
 --    local left, right = BottomUpTree(i-1, depth), BottomUpTree(i, depth)
-  i 1 - nextDepth BottomUpTree! as left
-  i nextDepth BottomUpTree! as right
+  dup! 1 - nextDepth BottomUpTree! as left
+  nextDepth BottomUpTree! as right
 --  'create tree+subtrees item=' item tostring! +@
   fun = item left right
   }

@@ -62,14 +62,15 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
             }
         }
 
-        inline void moveme(  Value&& rhs )
+        inline void moveme( Value&& rhs )
         {
             switch (rhs.type_)
             {
 #if USE_GC            
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
-                case kFun:  new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
+                case kFun:
+                    new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
 #endif
                 case kStr:  new (v_.cstr) std::string( std::move(rhs.tostr()) ); return;
                 case kBool: v_.b = rhs.v_.b; return;
@@ -153,6 +154,12 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
             new (v_.cstr) std::string(str);
         }
 
+        Value( std::string&& str )
+        : type_( kStr )
+        {
+            new (v_.cstr) std::string(std::move(str));
+        }
+        
         Value( BANGFUN_CREF f )
         : type_( kFun )
         {
@@ -163,6 +170,18 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
 #endif 
         }
 
+        // these really dont seem to help much, probably for reasons
+        // i don't quite understand.  not fully grokking move semantics yet
+        Value( BANGFUNPTR&& f )
+        : type_( kFun )
+        {
+#if USE_GC
+            v_.funptr = f;
+#else
+            new (v_.cfun) std::shared_ptr<Function>(std::move(f));
+#endif 
+        }
+        
         Value( tfn_primitive pprim )
         : type_( kFunPrimitive )
         {
@@ -272,11 +291,14 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
 
         void push( const Value& v ) { stack_.push_back( v ); }
         void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
+//        void push( BANGCLOSURE&& fun ) { stack_.emplace_back( fun ); }
         void push( double num ) { stack_.emplace_back(num); }
         void push( bool b ) { stack_.emplace_back(b); }
         void push( int i ) { stack_.emplace_back(double(i)); }
         void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
         void push( const std::string& s ) { stack_.emplace_back(s); }
+        void push( std::string&& s ) { stack_.emplace_back(std::move(s)); }
+        void push( BANGFUNPTR&& f ) { stack_.emplace_back(std::move(f)); }
 
         const Value& loc_top() const { return stack_.back(); }
         Value& loc_topMutate() { return stack_.back(); }

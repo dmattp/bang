@@ -8,14 +8,12 @@ all:: bang$(EXT_EXE) #-- mathlib.dll
 all:: mathlib$(EXT_SO)
 all:: stringlib$(EXT_SO)
 
-CPPFLAGS += --std=c++11 -O2 -fPIC
+CPPFLAGS += --std=c++11 -O2
 
 ifeq (1,$(USE_GC))
  LDFLAGS_GC=-L$(DIR_BOEHM_LIB) -lgc
  CPPFLAGS_GC=-D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)
 endif
-
-BIGSTACK=-Wl,--stack,33554432
 
 bang$(EXT_EXE): bang.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) -o $@

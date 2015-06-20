@@ -21,9 +21,9 @@ def :range = { as last as first as do-me
 }
 
 def :A j = { as i
-  i j + 1 - as ij
+  i j + 1 - 
   1.0
-    ij ij 1 - * 0.5 * i +
+    swap! dup! 1 - * 0.5 * i +
   /
 }
 
@@ -68,7 +68,7 @@ as vBv
 
 0
 fun i = {
-  i v! as vi vi vi * +
+  i v! dup! * +
 } 0 N 1 - range!
 as vv
 

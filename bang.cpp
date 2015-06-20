@@ -277,11 +277,18 @@ namespace Primitives
     void printone( Stack& s, const RunContext& ctx )
     {
         const Value& v1 = s.pop();
-        std::cout << "V=";
+        //std::cout << "V=";
         v1.dump( std::cout );
         std::cout << std::endl;
     }
 
+    void print( Stack& s, const RunContext& ctx )
+    {
+        const Value& vfmt = s.pop();
+        vfmt.dump( std::cout );
+        std::cout << std::endl;
+    }
+    
     void beginStackBound( Stack& s, const RunContext& ctx )
     {
         s.beginBound();
@@ -2133,6 +2140,7 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                 if (rwPrimitive( "swap",   &Primitives::swap   ) ) continue;
                 if (rwPrimitive( "dup",    &Primitives::dup    ) ) continue;
                 if (rwPrimitive( "nth",    &Primitives::nth    ) ) continue;
+                if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
                 if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
 //                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
