@@ -10,5 +10,4 @@ out.*.out
 *.manifest
 *.lastbuildstate
 *.bad
-test-ref
 build/site.mak
