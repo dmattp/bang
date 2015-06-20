@@ -11,7 +11,7 @@ def :times totalTimes = { fun! loopFun =
 }
 
 
-def :range = { as last as first as do-me
+def :range last = { as first as do-me
    def :inner current = {
       current do-me!
       current last <
@@ -27,19 +27,31 @@ def :range = { as last as first as do-me
 --  /
 --}
 
-def :A = { -- as i
-  1 nth!  -- i j i 
-  + 1 -   -- i (i+j-1 aka ij)
-  dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
-  +
-  1.0 swap! /
-}
+--- --- def :A = { -- as i
+--- ---   1 nth!  -- i j i 
+--- ---   + 1 -   -- i (i+j-1 aka ij)
+--- ---   dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
+--- ---   +
+--- ---   1.0 swap! /
+--- --- }
 
 def :Av N = {
   stack-to-array! as input
   fun i = { -- local a = 0
      0 fun j = { -- for j=1,N do a = a + x[j] * A(i, j) end
-       j 1 - input! i j A! * +
+       j 1 - input!
+
+  i j i
+--    i dup! j swap!
+
+-- A! 
+  -- 1 nth!  -- i j i
+  + 1 -   -- i (i+j-1 aka ij)
+  dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
+  +
+  1.0 swap! /
+
+       * +
      } 1 N range!     
   } 1 N range!
 }
@@ -48,7 +60,20 @@ def :Atv N = {
   stack-to-array! as input
   fun i = { -- local a = 0
      0 fun j = { -- for j=1,N do a = a + x[j] * A(j, i) end
-       j 1 - input! j i A! * +
+       j 1 - input!
+
+       j i j
+       --  j i 1 nth!  -- i j i 
+--        j dup! i swap!
+
+  + 1 -   -- i (i+j-1 aka ij)
+  dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
+  +
+  1.0 swap! /
+
+--A!
+
+* +
      } 1 N range!     
   } 1 N range!
 }
