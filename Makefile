@@ -10,7 +10,8 @@ all:: mathlib$(EXT_SO)
 all:: arraylib$(EXT_SO)
 all:: stringlib$(EXT_SO)
 
-CPPFLAGS += --std=c++11 -O2
+CPPOPTLEVEL ?= -O2
+CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
 
 ifeq (1,$(USE_GC))
  LDFLAGS_GC=-L$(DIR_BOEHM_LIB) -lgc
