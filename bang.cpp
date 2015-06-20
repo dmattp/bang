@@ -46,6 +46,7 @@ And there are primitives, until a better library / module system is in place.
 #include <string>
 #include <algorithm>
 #include <iterator>
+#include <functional>
 
 #include <stdio.h>
 #include <ctype.h>
@@ -285,8 +286,47 @@ namespace Primitives
     void print( Stack& s, const RunContext& ctx )
     {
         const Value& vfmt = s.pop();
-        vfmt.dump( std::cout );
-        std::cout << std::endl;
+        const auto& fmt = vfmt.tostr();
+        const int fmtlen = fmt.size();
+
+        std::function<void(size_t)> subpar;
+
+        subpar = [&]( size_t pos ) {
+            using namespace std;
+            auto found_x = fmt.rfind( "%@", pos );
+            auto found_s = fmt.rfind( "%s", pos );
+            auto found =
+            (  found_x != string::npos ?
+                (   found_s != string::npos
+                ?   max( found_x, found_s )
+                :   found_x
+                )
+            :   found_s
+            );
+            if (found == string::npos)
+            {
+                if (pos == string::npos)
+                    std::cout << fmt;
+                else    
+                    std::cout << fmt.substr( 0, pos + 1 );
+            }
+            else
+            {
+                const Value& v = s.pop();
+                if (found > 0)
+                    subpar( found - 1 );
+                v.tostring(std::cout); //  << v.tostring(); // "XXX";
+                size_t afterParam = found + 2;
+                if (pos==std::string::npos)
+                    std::cout << fmt.substr( afterParam ); //
+                else
+                    std::cout << fmt.substr( afterParam, pos - afterParam + 1 );
+            }
+        };
+
+        subpar( std::string::npos );
+        
+        //std::cout << std::endl;
     }
     
     void beginStackBound( Stack& s, const RunContext& ctx )
@@ -1578,7 +1618,21 @@ class Parser
             {
                 auto bi = std::back_inserter(content_);
                 for (char cstr = mark.getc(); cstr != delim; cstr = mark.getc())
+                {
+                    if (cstr == '\\')
+                    {
+                        char c = mark.getc();
+                        switch (c) {
+                            case 'n':  cstr = '\n'; break;
+                            case '"':  cstr = '"';  break;
+                            case '\'': cstr = '\''; break;
+                            case '\\': cstr = '\\'; break;
+                            case 'r':  cstr = '\r'; break;
+                            default: cstr = '?'; break;
+                        }
+                    }
                     *bi++ = cstr;
+                }
                 mark.accept();
             }
             else

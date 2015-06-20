@@ -61,8 +61,7 @@ N as maxdepth
 
 maxdepth 1 + as stretchdepth
 0 stretchdepth BottomUpTree! as stretchtree
-'stretch tree of depth=' stretchdepth tostring! +
-' check=' + stretchtree ItemCheck! tostring! +@
+stretchdepth stretchtree ItemCheck! 'stretch tree of depth=%@ check=%@'  print!
 
 0 maxdepth BottomUpTree! as longlivedtree
 
