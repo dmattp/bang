@@ -20,11 +20,19 @@ def :range = { as last as first as do-me
    first inner!
 }
 
-def :A j = { as i
-  i j + 1 - 
-  1.0
-    swap! dup! 1 - * 0.5 * i +
-  /
+--def :A j = { as i
+--  i j + 1 -
+--  1.0
+--    swap! dup! 1 - * 0.5 * i +
+--  /
+--}
+
+def :A = { -- as i
+  1 nth!  -- i j i 
+  + 1 -   -- i (i+j-1 aka ij)
+  dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
+  +
+  1.0 swap! /
 }
 
 def :Av N = {
