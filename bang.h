@@ -61,6 +61,23 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
                 default: return;
             }
         }
+
+        inline void moveme(  Value&& rhs )
+        {
+            switch (rhs.type_)
+            {
+#if USE_GC            
+                case kFun: v_.funptr = rhs.v_.funptr; return;
+#else
+                case kFun:  new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
+#endif
+                case kStr:  new (v_.cstr) std::string( std::move(rhs.tostr()) ); return;
+                case kBool: v_.b = rhs.v_.b; return;
+                case kNum:  v_.num = rhs.v_.num; return;
+                case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
+                default: return;
+            }
+        }
         
         inline void free_manual_storage()
         {
@@ -102,11 +119,27 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
             copyme( rhs );
         }
 
+        Value( Value&& rhs )
+        : type_( rhs.type_ )
+        {
+            // std::cerr << "got move cons\n";
+            moveme( std::move(rhs) );
+        }
+        
+
         const Value& operator=( const Value& rhs )
         {
             free_manual_storage();
             type_ = rhs.type_;
             copyme( rhs );
+            return *this;
+        }
+
+        const Value& operator=( Value&& rhs )
+        {
+            free_manual_storage();
+            type_ = rhs.type_;
+            moveme( std::move(rhs) );
             return *this;
         }
 
@@ -195,9 +228,9 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         {
             if (!bound_)
             {
-//                 other = stack_;
-//                 stack_.clear();
-                stack_.swap( other );
+                 other = stack_;
+                 stack_.clear();
+//                stack_.swap( other );
             }
             else
             {
@@ -255,7 +288,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
     
         Value pop()
         {
-            Value v( stack_.back() );
+            Value v( std::move(stack_.back()) );
             stack_.pop_back();
             return v;
         }
@@ -291,5 +324,3 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
     };
     
 } // end, namespace Bang
-
-
