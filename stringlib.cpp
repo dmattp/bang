@@ -91,7 +91,10 @@ namespace String
 } // end namespace Math
 
 
-extern "C" __declspec(dllexport)
+extern "C" 
+#if _WINDOWS
+__declspec(dllexport)
+#endif
 void bang_open( Bang::Stack* stack, const Bang::RunContext* )
 {
     stack->push( &String::lookup );
