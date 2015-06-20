@@ -1,21 +1,19 @@
 
-
 def :map xform = {
   def :innermap = {
-    fun val = innermap! val xform!;
-    # 1 > ?
+    # 0 > ?
+    as val innermap! val xform!
   }
   innermap!
 }
 
-def :Zilter predicate = {
-    def :Zilter-xform v = {
-      fun = v; v predicate!?
-    }
-    Zilter-xform map!
+def :filter predicate = {
+    fun v = {
+      v predicate! ? v
+    } map!
 }
 
 def :more-than-seven v =  v 7 >;
 
    5 3 15 7 4 12 8
-more-than-seven Zilter!
+more-than-seven filter!

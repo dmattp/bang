@@ -2,7 +2,8 @@
 def :times totalTimes = { fun! loopFun =
     def :innerLoop remain = {
       loopFun!
-      fun= remain 1 - innerLoop!; remain 1 >?
+      remain 1 >
+      ? remain 1 - innerLoop!
     }
     totalTimes innerLoop!
 }

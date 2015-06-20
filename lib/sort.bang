@@ -1,16 +1,17 @@
 def :map xform = {
   def :innermap = {
-    fun val = innermap! val xform!;
-    # 1 > ?
+    # 0 > ?
+    as val innermap! val xform!
   }
   innermap!
 }
 
 def :filter predicate = {
     fun v = {
-      fun = v; v predicate!?
+      v predicate! ? v
     } map!
 }
+
 
 def :eqFromLt lt = {
    fun obj2 = as obj1
@@ -30,11 +31,17 @@ def :make-qsort = { as opLt
     # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
     save-stack! as theStack
    
-     theStack! fun = pivotValue opLt!; filter! qsort-inner # 1 >?
-    (theStack! fun = pivotValue opEq!; filter!)
-    (theStack! fun = pivotValue opGt!; filter! qsort-inner # 1 >?)
+   theStack! fun = pivotValue opLt!; filter! # 1 > ? qsort-inner!;
+  (theStack! fun = pivotValue opEq!; filter!)
+  (theStack! fun = pivotValue opGt!; filter! # 1 > ? qsort-inner!;)
   }
   qsort-inner
+}
+
+def :quicksort = {
+  # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
+  save-stack! as theStack
+ 
 }
 
 -- create a sort function which orders objects on the stack by the given field

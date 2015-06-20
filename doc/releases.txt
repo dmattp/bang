@@ -1,8 +1,12 @@
 
 Roadmap / Upcoming Releases
 
-* String Library
 * I/O Library
+
+v0.003
+
+* (very) Minimal String Library
+* Replace ConditionalApply with IfElse
 
 v0.002
 

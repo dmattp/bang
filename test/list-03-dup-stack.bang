@@ -11,11 +11,12 @@
 def :ndup-stack = {
   def :inner list = { as element
     fun = element list!; as newList
-    fun = newList inner!; # 1 >?
+    # 0 > ? newList inner!;
     element
-    fun = newList; # 3 <? -- return list if I've emptied the stack
-    fun x = { as y x y } # 3 >? -- otherwise swap the previous list with my element
-                                   -- so that the new list remains at the top of the stack
+    # 2 <
+    ? newList-- return list if I've emptied the stack
+    : as x as y x y -- otherwise swap the previous list with my element
+                    -- so that the new list remains at the top of the stack
   }
   fun=; inner!
 }

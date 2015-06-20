@@ -6,9 +6,9 @@ def :quicksort = {
   # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
   save-stack! as theStack
  
-   theStack! fun = pivotValue <; filter! quicksort # 1 >?
+   theStack! fun = pivotValue <; filter! # 1 > ? quicksort!;
   (theStack! fun = pivotValue =; filter!)
-  (theStack! fun = pivotValue >; filter! quicksort # 1 >?)
+  (theStack! fun = pivotValue >; filter! # 1 > ? quicksort!;)
 }
 
 

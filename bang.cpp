@@ -181,7 +181,7 @@ namespace Primitives
             s.pop_back();
         }
         else
-            throw std::runtime_error("Binary operator incompatible types");
+            throw std::runtime_error("Binary operator.b incompatible types");
     }
     
     void plus ( Stack& s, const RunContext& )
@@ -339,17 +339,30 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const = 0;
         enum EAstInstr {
             kUnk,
+            kBreakProg,
             kApply,
-            kConditionalApply,
             kApplyUpval,
-            kApplyFun
+            kApplyFun,
+            kTCOApply,
+            kTCOApplyUpval,
+            kTCOApplyFun
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
-        bool isTailable() const { return instr_ != kUnk; } //  && instr_ != kApplyFun; }
+        bool isTailable() const { return instr_ != kUnk && instr_ != kBreakProg; } //  && instr_ != kApplyFun; }
             // return instr_ == kApply || instr_ == kConditionalApply || instr_ == kApplyUpval; }
 
         EAstInstr instr_;
+
+        void convertToTailCall()
+        {
+            switch (instr_)
+            {
+                case kApply:      instr_ = kTCOApply;      break;
+                case kApplyFun:   instr_ = kTCOApplyFun;   break;
+                case kApplyUpval: instr_ = kTCOApplyUpval; break;
+            }
+        }
     private:
     };
 }
@@ -366,6 +379,18 @@ struct AstExecFail {
 
 namespace Ast
 {
+    class BreakProg : public Base
+    {
+    public:
+        BreakProg() : Base( kBreakProg ) {}
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "---\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+        {}
+    };
     class EofMarker : public Base
     {
     public:
@@ -376,7 +401,7 @@ namespace Ast
         }
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-    
+
     class PushLiteral : public Base
     {
         Value v_;
@@ -429,6 +454,9 @@ namespace Ast
 
         virtual void dump( int level, std::ostream& o ) const
         {
+            if (gFailedAst == this)
+                o << "FAIL *** ";
+//            o << this << " ";
             indentlevel(level, o);
             o << "ApplyPrimitive op='" << desc_ << "'\n";
         }
@@ -524,38 +552,13 @@ namespace Ast
     };
 
 
-    class ConditionalApply : public Base
-    {
-    public:
-        ConditionalApply()
-        : Base( kConditionalApply )
-        {}
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ConditionalApply\n";
-        }
-        
-        virtual void run( Stack& stack, const RunContext& ) const;
-
-        static bool foundTrue( Stack& stack )
-        {
-            const Value& vTest = stack.pop();
-    
-            if (!vTest.isbool())
-                throw std::runtime_error("Called conditional apply without boolean");
-
-            return vTest.tobool();
-        }
-    };
-
     class PushFun;
 
     // never loaded directly into program tree - always a member of PushFun
     class Program //  : public Base
     {
     public:
-        typedef std::vector<const Ast::Base*> astList_t;
+        typedef std::vector<Ast::Base*> astList_t;
     private:
         astList_t ast_;
 
@@ -590,8 +593,41 @@ namespace Ast
 
         // void run( Stack& stack, std::shared_ptr<Function> pFunction ); 
     }; // end, class Ast::Program
-        
 
+
+    class IfElse : public Base
+    {
+        Ast::Program* if_;
+        Ast::Program* else_;
+    public:
+        IfElse( Ast::Program* if__, Ast::Program* else__ )
+        : if_(if__),
+          else_( else__ )
+        {}
+
+        Ast::Program* branchTaken( Stack& stack ) const
+        {
+            bool isCond = stack.loc_top().tobool();
+            stack.pop_back();
+            return isCond ? if_ : else_;
+        }
+        
+        void run( Stack& stack, const RunContext& rc ) const;
+        
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "If";
+            if_->dump( level, o );
+            if (else_)
+            {
+                indentlevel(level, o);
+                o << "Else";
+                else_->dump( level, o );
+            }
+        }
+    };
+    
     class PushFun : public Base
     {
     protected:
@@ -609,27 +645,6 @@ namespace Ast
         {
         }
 
-        // ugly.
-//         void reparent( const PushFun* newparent ) const { pParentFun_ = newparent; }
-//         void reparentKids( const PushFun* oldParent )
-//         {
-//             const Program::astList_t* pkids = astProgram_->getAst();
-//             if (!pkids)
-//             {
-//                 std::cerr << "NO KIDS!||\n";
-//                 return;
-//             }
-//             const Program::astList_t& kids = *pkids;
-//             for (int i = 0; i < kids.size(); ++i)
-//             {
-// //                try {
-//                 const Ast::PushFun* kid = dynamic_cast<const Ast::PushFun*>( kids[i] );
-//                 if (kid)
-//                     kid->reparent( this ); // assert(kid->pParentFun_==oldParent);
-// //                } catch( ... ) {}   
-//             }
-//         }
-        
         void setAst( const Ast::Program& astProgram ) { astProgram_ = new Ast::Program(astProgram); }
         PushFun& setParamName( const std::string& param ) { pParam_ = new std::string(param); return *this; }
         bool hasParam() const { return pParam_ ? true : false; }
@@ -820,27 +835,7 @@ public:
       pushfun_( &pushfun ),
       pParent_( pParent ) 
     {
-        PBIND(
-            std::cerr << "Create closure, Function=" << this << " pushfun=" << std::hex << PtrToHash(pushfun_) << std::dec << "\n";
-        if (!pParent)
-            std::cerr << " *** no running parent ***\n";
-        else        
-        {
-            std::cerr << "\n  Active/Running/Parent function binds pushfun=";
-            pParent->pushfun_->dumpshort( 2, std::cerr );
-        };
-//         if (!pParent_)
-//             std::cerr << " *** no active pushfun parent ***\n";
-//         else        
-//         {
-//             std::cerr << "\n  Last Active PUSHFUN Parent function=";
-//                 pParent_->pushfun_->dumpshort( 2, std::cerr );
-//         }
-            std::cerr << std::endl;
-             );
     }
-
-//    BANGCLOSURE parent() { return pParent_; }
 
     const Value& paramValue() const // const std::string& uvName ) const
     {
@@ -859,7 +854,6 @@ public:
     // system.  obviously if it's "a hit" you can optimize out much of this cost
     const Value& getUpValue( const std::string& uvName )
     {
-//        std::cerr << "LOOKING FOR DYNAMIC UPVAL=\"" << uvName << "\"\n";
         const NthParent uvnum = pushfun_->FindBinding(uvName);
         if (uvnum == kNoParent)
         {
@@ -957,21 +951,6 @@ public:
 };
 
 
-    
-// class FunctionRequire : public Function
-// {
-//     std::string v_;
-// public:
-//     FunctionRequire( const std::string& v ) : v_(v)
-//     {
-//         s.giveTo( stack_ );
-//     }
-//     virtual void apply( Stack& s, const std::shared_ptr<FunctionClosure>& running )
-//     {
-//     }
-// };
-
-
 namespace Primitives {
     void savestack( Stack& s, const RunContext& rc )
     {
@@ -993,77 +972,95 @@ void RunProgram
 )
 {
 restartTco:
-    const Ast::Program::astList_t* const pAst = pProgram->getAst();
-
-    const int astLen = pAst->size();
-
-    if (astLen < 1)
-        return;
-
-    const bool isTailable = ((*pAst)[astLen-1]->isTailable()); //  && pFunction;
-
-    const int lastInstr = isTailable ? astLen - 1 : astLen;
-
     RunContext rc( pFunction );
 
-    int i = 0;
+    const Ast::Base* const* ppInstr = &(pProgram->getAst()->front());
+
+#if 0    
+    auto ApplyValue = [&]( const Value& calledFun ) -> bool
+    {
+        if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+        {
+            // "rebind" RunProgram() parameters
+            pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
+            pFunction->bindParams( stack );
+            pProgram = pFunction->getProgram();
+            return true;
+        } // end , closure
+        else
+            return false;
+    };
+#endif 
+    
     try
     {
-        for (; i < lastInstr; ++i)
-            (*pAst)[i]->run( stack, rc );
+        while (true)
+        {
+            const Ast::Base* pInstr = *ppInstr++;
+            switch (pInstr->instr_)
+            {
+                case Ast::Base::kBreakProg:
+                    return;
+
+                default:
+                    pInstr->run( stack, rc );
+                    break;
+
+                case Ast::Base::kTCOApplyFun:
+                {
+                    // no dynamic cast, should be safe since we know the type from instr_
+                    const Ast::ApplyFun* afn = reinterpret_cast<const Ast::ApplyFun*>(pInstr); 
+                    pFunction = NEW_CLOSURE(*afn, rc.running());
+                    pFunction->bindParams(stack);
+                    pProgram = afn->getProgram();
+                    goto restartTco;
+                }
+                break;
+                    
+                case Ast::Base::kTCOApplyUpval:
+                {
+                    // no dynamic cast, should be safe since we know the type from instr_
+#if 0
+                    if (ApplyValue( reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc ) ))
+                        goto restartTco;
+#else
+                    const Value& calledFun = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc );
+                    if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+                    {
+                        // "rebind" RunProgram() parameters
+                        pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
+                        pFunction->bindParams( stack );
+                        pProgram = pFunction->getProgram();
+                        goto restartTco;
+                    } // end , closure
+#endif 
+                }
+                break;
+
+                case Ast::Base::kTCOApply:
+                {
+#if 0
+                    if (ApplyValue( stack.pop() ))
+                        goto restartTco;
+#else
+                    const Value& calledFun = stack.pop();
+                    if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+                    {
+                        // "rebind" RunProgram() parameters
+                        pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
+                        pFunction->bindParams( stack );
+                        pProgram = pFunction->getProgram();
+                        goto restartTco;
+                    } // end , closure
+#endif 
+                }
+                break;
+            } // end,instr switch
+        }
     }
     catch (const std::runtime_error& e)
     {
-        throw AstExecFail( (*pAst)[i], e );
-    }
-
-    /* The logic here is pretty dang ugly because we have to handle "Apply" for
-     * all cases, especially after the tree optimization which added a bunch of
-     * new "Apply+X" operations.  We can probably fix the tree optimization to
-     * mark operations as Tailable in the optimization phase, rather than
-     * querying at runtime which should both help speed and clean up some
-     * of this logic, e.g., no reason to include calls to primitives here.
-     * Hmm, except that a ApplyUpval or plain old Apply needs to check the type
-     * of the upval or thing on the stack, so we still have to do this check.
-     * Meh.  It will all be much cleaner when i switch the whole thing to
-     * bytecode I guess. */
-    if (isTailable)
-    {
-        const Ast::Base* const astApply = (*pAst)[astLen-1];
-        bool iscond = (astApply->instr_ == Ast::Base::kConditionalApply);
-        bool shouldExec = !iscond || Ast::ConditionalApply::foundTrue( stack );
-
-        if (!shouldExec)
-        {
-            if (astApply->instr_ == Ast::Base::kApply || astApply->instr_ == Ast::Base::kConditionalApply)
-                stack.pop_back();
-        }
-        else
-        {
-            if (astApply->instr_ == Ast::Base::kApplyFun)
-            {
-                const Ast::ApplyFun* afn = dynamic_cast<const Ast::ApplyFun*>(astApply);
-                pFunction = NEW_CLOSURE(*afn, rc.running());
-                pFunction->bindParams(stack);
-                pProgram = afn->getProgram();
-                goto restartTco;
-            }
-            else
-            {
-                const Value& calledFun = (astApply->instr_ == Ast::Base::kApplyUpval)
-                    ? dynamic_cast<const Ast::ApplyUpval*>(astApply)->getUpValue( rc )
-                : stack.pop();
-        
-                if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
-                {
-                    // "rebind" RunProgram() parameters
-                    pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
-                    pFunction->bindParams( stack );
-                    pProgram = pFunction->getProgram();
-                    goto restartTco;
-                } // end , closure
-            }
-        }
+        throw AstExecFail( *ppInstr, e );
     }
 }
     
@@ -1073,6 +1070,13 @@ void FunctionClosure::apply( Stack& s, CLOSURE_CREF myself )
     RunProgram( s, myself, this->getProgram() );
 }
 
+    void Ast::IfElse::run( Stack& stack, const RunContext& rc ) const
+    {
+        Ast::Program* p = this->branchTaken(stack);
+        if (p)
+            RunProgram( stack, rc.running(), p );
+    }
+    
 
 const Value& RunContext::getUpValue( NthParent uvnumber ) const
 {
@@ -1153,16 +1157,16 @@ void Ast::Apply::run( Stack& stack, const RunContext& rc ) const
         v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
 }
 
-void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc) const
-{
-    const bool shouldExec = Ast::ConditionalApply::foundTrue(stack);
+// void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc) const
+// {
+//     const bool shouldExec = Ast::ConditionalApply::foundTrue(stack);
 
-    // always pop the function, even if not taken, for consistency's sake
-    const Value& v = stack.pop();
+//     // always pop the function, even if not taken, for consistency's sake
+//     const Value& v = stack.pop();
     
-    if (shouldExec && Ast::Apply::applyOrIsClosure( v, stack, rc ))
-        v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
-}
+//     if (shouldExec && Ast::Apply::applyOrIsClosure( v, stack, rc ))
+//         v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
+// }
 
 
 void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
@@ -1315,13 +1319,11 @@ public:
         int istream = fgetc(stdin);
         if (istream == EOF || istream == 0x0d || istream == 0x0a) // CR
         {
-//            std::cout << "Got char=" << istream << "\n";
             atEof_ = true;
             return 0x0a; // LF is close enough
         }
         else
         {
-//            std::cout << "Got char=" << istream << "\n";
             return istream;
         }
     }
@@ -1703,7 +1705,7 @@ class Parser
             mark.accept();
         }
         bool hasPostApply() const { return postApply_; }
-        const Ast::PushFun* stealPushFun() { auto rc = pNewFun_; pNewFun_ = nullptr; return rc; }
+        Ast::PushFun* stealPushFun() { auto rc = pNewFun_; pNewFun_ = nullptr; return rc; }
     }; // end, class Fundef
 
 
@@ -1812,7 +1814,7 @@ void OptimizeAst( Ast::Program::astList_t& ast )
     const int end = ast.size() - 1;
     for (int i = 0; i < end; ++i)
     {
-        const Ast::Base* step = ast[i];
+        Ast::Base* step = ast[i];
         if (1 && !dynamic_cast<const Ast::ApplyFun*>(step))
         {
             const Ast::PushFun* pup = dynamic_cast<const Ast::PushFun*>(step);
@@ -1863,6 +1865,16 @@ void OptimizeAst( Ast::Program::astList_t& ast )
     {
         if (ast[i] == &noop)
             ast.erase( ast.begin() + i );
+    }
+
+    const int astLen = ast.size();
+    if (astLen > 1) // last instr should always be "kBreakProg"
+    {
+        Ast::Base* possibleTail = ast[astLen-2];
+        if (possibleTail->isTailable() && ast[astLen-1]->instr_ == Ast::Base::kBreakProg)
+        {
+            possibleTail->convertToTailCall();
+        }
     }
 }
 
@@ -1987,6 +1999,11 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                 bHasOpenBracket = true;
                 continue;
             }
+            else if (c == ':')
+            {
+//                std::cerr << "  got : breakout\n";
+                break; // second half of else clause, break back to higher level Program parsing
+            }
             else if (c == '}')
             {
                 // If I opened the bracket, then eat it; if not, let it go, let it go- up, up, up!
@@ -2007,8 +2024,34 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
             }
             else if (c == '?')
             {
+//                std::cerr << "found if-else\n";
+                // ast_.push_back( new Ast::ConditionalApply() );
                 mark.accept();
-                ast_.push_back( new Ast::ConditionalApply() );
+                try
+                {
+                    Program ifBranch( stream, pCurrentFun, pRecParsing );
+                    Ast::Program* ifProg = new Ast::Program( ifBranch.ast() );
+                    Ast::Program* elseProg = nullptr;
+                    eatwhitespace(stream);
+                    c = mark.getc();
+                    if (c != ':')
+                    {
+                        mark.regurg(c); // no single char operator found
+                    }
+                    else
+                    {
+                        mark.accept();
+//                        std::cerr << "  found else clause\n";
+                        Program elseBranch( stream, pCurrentFun, pRecParsing );
+                        elseProg = new Ast::Program( elseBranch.ast() );
+                    }
+                        
+                    ast_.push_back( new Ast::IfElse( ifProg, elseProg ) );
+                }
+                catch (...)
+                {
+                    std::cerr << "?? error on ifelse\n";
+                }
                 continue;
             }
             else if (c == '.') // "Object Method / Message / Dereference / Index" operator 
@@ -2021,15 +2064,6 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                 try
                 {
                     Identifier methodName( mark );
-                    mark.accept();
-
-//                    char c = mark.getc();
-                    
-                    // std::cerr << "Char-after Message='" << c << "'\n";
-                    
-//                     if (c != '!')
-//                         std::runtime_error("Message name must be followed by '!'");
-
                     mark.accept();
                     
                     ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
@@ -2148,14 +2182,16 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
         } // end, while true
 
         stream.accept();
+        ast_.push_back( new Ast::BreakProg() );
         OptimizeAst( ast_ );
     }
     catch (const ErrorEof&)
     {
-//        std::cerr << "EOF found" << std::endl;
         stream.accept();
         if (gReplMode)
             ast_.push_back( new Ast::EofMarker() );
+        else
+            ast_.push_back( new Ast::BreakProg() );
         OptimizeAst( ast_ );
     }
 }
@@ -2208,7 +2244,6 @@ public:
 
         fun->setAst( *pProgram );
 
-//        std::cerr << "Returning fr. parseNoParent\n";
         return fun;
     }
 
@@ -2227,13 +2262,11 @@ public:
             RegurgeFile strmFile( fstream );
             fun = this->parseNoParent( strmFile, bDump );
             fclose( fstream );
-//            std::cerr << "Returned fr. parseNoParent\n";
         }
 
         BANGCLOSURE noParentClosure(nullptr);
         auto closure = NEW_CLOSURE(*fun, noParentClosure);
 
-//        std::cerr << "Returning fr. parseToClosureNoParent\n";
         return closure;
     }
     
@@ -2242,20 +2275,20 @@ public:
         try
         {
             auto closure = parseToClosureNoParent( stack, bDump );
-//            std::cerr << "Returned fr. parseToClosureNoParent, applying\n";
-            closure->apply( stack, closure );
-//            std::cerr << "parseAndRun:: closure applied\n";
+            try
+            {
+                closure->apply( stack, closure );
+            }
+            catch( AstExecFail ast )
+            {
+                gFailedAst = ast.pStep;
+                closure->getProgram()->dump( 0, std::cerr );
+                std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
+            }
         }
         catch( const std::exception& e )
         {
             std::cerr << "Runtime exec Error: " << e.what() << std::endl;
-        }
-        catch( AstExecFail ast )
-        {
-            gFailedAst = ast.pStep;
-            std::cerr << "Runtime AST exec Error: " << ast.e.what() << std::endl;
-            //~~~  //~~~  //~~~
-            // fun->getProgramAst()->dump( 0, std::cerr );
         }
     }
 }; // end, class RequireKeyword

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+   <PropertyGroup Label="Globals" Condition="'$(Platform)'=='Win32'">
+     <DIR_BOEHM_GC_HDR>c:\m\home\pkg\boehm-gc\build1\include</DIR_BOEHM_GC_HDR>
+     <DIR_BOEHM_GC_LIB>c:\m\home\pkg\boehm-gc\build1</DIR_BOEHM_GC_LIB>
+   </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+    <ClCompile>
+          <PreprocessorDefinitions>USE_GC=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+          <AdditionalIncludeDirectories>$(DIR_BOEHM_GC_HDR);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(DIR_BOEHM_GC_LIB);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>gc.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+   
+</Project>
+

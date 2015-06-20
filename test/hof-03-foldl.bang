@@ -1,8 +1,8 @@
 
 
 def :Foldl operator = {
-  fun = operator! operator Foldl!;
-  # 2 >?
+  # 1 > ?
+  operator! operator Foldl!
 }
 
 

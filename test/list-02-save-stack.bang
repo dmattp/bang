@@ -2,8 +2,7 @@
 def :my-save-stack = {
   def :inner list = { as element
       fun = element list!; as newList
-      fun = newList inner!; # 1 >?
-      fun= newList; # 2 <?
+      # 0 > ? newList inner! : newList
   }
   fun=; inner!
 }

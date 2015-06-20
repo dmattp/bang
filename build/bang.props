@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup Label="Globals" Condition="'$(Platform)'=='Win32'">
+    <DIR_BANG_SRC>c:\m\n2proj\bang</DIR_BANG_SRC>
+   </PropertyGroup>
+  
+   <!--
+       <Import Project="$(DIR_BANG_SRC)/build/gc.props" />
+    -->
+
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+    <ClCompile>
+          <AdditionalIncludeDirectories>$(DIR_BANG_SRC);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  
+</Project>
+

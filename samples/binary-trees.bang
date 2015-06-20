@@ -1,4 +1,4 @@
-fun = 12; # 2 <? as N
+# 1 < ? 12; as N
 
 -- The Computer Language Benchmarks Game
 -- http://benchmarksgame.alioth.debian.org/
@@ -7,49 +7,53 @@ def :pow2 n = {
    1
    def :inner remain = {
      2 *
-     fun=remain 1 - inner!; remain 1 >?
+     remain 1 >
+   ? remain 1 - inner!
    }
-   fun = n inner!; n 1 >?
+   n 1 > ? n inner!
 }
 
-def :range last = { as first as do-me
-   def :inner current = {
-      current do-me!
-      fun = current 1 + inner!; current last <?
-   }
-   first inner!
-}
 def :times totalTimes = { fun! loopFun =
     def :innerLoop remain = {
       loopFun!
-      fun= remain 1 -; remain 1 >?
-      innerLoop remain 1 >?
+      remain 1 >
+    ? remain 1 - innerLoop!
     }
     totalTimes innerLoop!
 }
 
-def :BottomUpTree depth = { as item
-  depth 0 > as hasMore
-  fun = {
-      fun = item
-  } hasMore not!?
-  fun = {
-    item item + as i
-    depth 1 - as nextDepth
+
+def :range = { as last as first as do-me
+   def :inner current = {
+      current do-me!
+      current last <
+    ? current 1 + inner!
+   }
+   first inner!
+}
+
+def :BottomUpTree = { as depth as item
+--  'BottomUpTree depth=' depth tostring! + @
+  depth 0 >
+? {
+  item item + as i
+  depth 1 - as nextDepth
 --    local left, right = BottomUpTree(i-1, depth), BottomUpTree(i, depth)
-    i 1 - nextDepth BottomUpTree! as left
-    i nextDepth BottomUpTree! as right
-    fun = item left right
-  } hasMore?
+  i 1 - nextDepth BottomUpTree! as left
+  i nextDepth BottomUpTree! as right
+--  'create tree+subtrees item=' item tostring! +@
+  fun = item left right
+  }
+: fun = item
 }
 
 def :ItemCheck tree = {
   (tree!
-  fun= {
-    as tRight as tLeft
---    'oneItem='@ oneItem@
-    tLeft ItemCheck! + tRight ItemCheck! -
-  } # 2 >?)
+  -- 'exp tree size=' # tostring! + @
+   # 1 >
+ ? { as tRight as tLeft
+   tLeft ItemCheck! + tRight ItemCheck! - }
+   )
 }
 
 4 as mindepth
@@ -57,8 +61,8 @@ N as maxdepth
 
 maxdepth 1 + as stretchdepth
 0 stretchdepth BottomUpTree! as stretchtree
-'stretch tree of depth'@ stretchdepth@
-'check: '@  stretchtree ItemCheck! @
+'stretch tree of depth=' stretchdepth tostring! +
+' check=' + stretchtree ItemCheck! tostring! +@
 
 0 maxdepth BottomUpTree! as longlivedtree
 
@@ -70,11 +74,14 @@ fun depth_div2 = {
   0 fun = { 1 depth BottomUpTree! ItemCheck! +
               0 1 - depth BottomUpTree! ItemCheck! + } iterations times!
   as check
-  'n iterations =' iterations 2*@ ' of depth =' depth@ ' check=' check@
+  iterations 2* tostring! ' trees of depth =' +
+  depth tostring! +  ' check=' + check tostring! + @
 } mindepth 2 / maxdepth 2 / range!
 
-longlivedtree ItemCheck!
-'llt depth='@ maxdepth@ 'check='@ @
+longlivedtree ItemCheck! as lltcheck
+'llt depth=' maxdepth tostring! + ' check=' + lltcheck tostring! +@
+
+
 ----io.write(string.format("long lived tree of depth %d\t check: %d\n",
 ----  maxdepth, ItemCheck(longlivedtree)))
 

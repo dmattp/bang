@@ -1,9 +1,8 @@
 
-
 def :map xform = {
   def :innermap = {
-    fun val = innermap! val xform!;
-    # 1 > ?
+    # 0 > ?
+    as val innermap! val xform!
   }
   innermap!
 }
