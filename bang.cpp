@@ -425,6 +425,19 @@ struct AstExecFail {
     : pStep(step), e(e)
     {}
 };
+
+struct ParseFail : public std::runtime_error
+{
+    std::string mywhat( const std::string& where, const std::string& emsg ) const
+    {
+        std::ostringstream oss;
+        oss << " in " << where << ": " << emsg;
+        return oss.str();
+    }
+    ParseFail( const std::string& where, const std::string& emsg )
+    : std::runtime_error( mywhat( where, emsg ) )
+    {}
+};
     
 
 namespace Ast
@@ -1312,6 +1325,7 @@ public:
     virtual char getc() = 0;
     virtual void accept() = 0;
     virtual void regurg( char ) = 0;
+    virtual std::string sayWhere() { return "(unsure where)"; }
     virtual ~RegurgeStream() {}
 };
 
@@ -1328,6 +1342,10 @@ public:
     StreamMark( StreamMark& stream )
     : stream_( stream )
     {}
+
+    virtual std::string sayWhere() {
+        return stream_.sayWhere();
+    }
 
     void dump( std::ostream& out, const std::string& context ) const
     {
@@ -1379,7 +1397,7 @@ protected:
         return rv;
     }
 public:
-    void regurg( char c )
+    virtual void regurg( char c )
     {
         regurg_.push_back(c);
     }
@@ -1394,6 +1412,7 @@ public:
     RegurgeStdinRepl()
     : atEof_(false)
     {}
+    
 
     char getc()
     {
@@ -1421,24 +1440,74 @@ public:
 
 class RegurgeFile : public RegurgeIo
 {
+    std::string filename_;
     FILE* f_;
+    struct Location {
+        int lineno_;
+        int linecol_;
+        void advance( char c ) {
+//            std::cerr << "ADV: " << c << "\n";
+            if (c=='\n') {
+                ++lineno_;
+                linecol_ = 0;
+            } else {
+                ++linecol_;
+            }
+        }
+        void rewind( char c ) {
+//            std::cerr << "REW: " << c << "\n";
+            if (c=='\n') {
+                --lineno_;
+                linecol_ = -1;
+            } else {
+                --linecol_;
+            }
+
+        }
+        Location() : lineno_(1), linecol_(0) {}
+    } loc_;
+//    Location err_;
 public:
-    RegurgeFile( FILE* f )
-    : f_(f)
-    {}
+    RegurgeFile( const std::string& filename )
+    : filename_( filename )
+    {
+        f_ = fopen( filename.c_str(), "r");
+    }
+    ~RegurgeFile()
+    {
+        fclose(f_);
+    }
+    virtual std::string sayWhere()
+    {
+        std::ostringstream oss;
+        oss << "FILE=" << filename_ << " L" << loc_.lineno_ << " C" << loc_.linecol_;
+        return oss.str();
+    }
 
     char getc()
     {
         int icud = RegurgeIo::getcud();
 
         if (icud != EOF)
+        {
+            loc_.advance( icud );
             return icud;
+        }
         
         int istream = fgetc(f_);
         if (istream==EOF)
             throw ErrorEof();
         else
+        {
+            loc_.advance( istream );
             return istream;
+        }
+    }
+
+    virtual void regurg( char c )
+    {
+        loc_.rewind(c);
+        RegurgeIo::regurg(c);
     }
 };
     
@@ -1797,7 +1866,7 @@ class Parser
                 if (c != '=') // this seems unneccesary sometimes. therefore "as"
                 {
                     std::cerr << "got '" << c << "', expecting '='\n";
-                    throw std::runtime_error("function def must be followed by '='"); // throw ErrorNoMatch();
+                    throw ParseFail( mark.sayWhere(), "function def must be followed by '='"); 
                 }
             }
 
@@ -1837,7 +1906,7 @@ class Parser
             if (c != ':')
             {
                 std::cerr << "got '" << c << "' expecting ':'" << std::endl;
-                throw std::runtime_error("def name must start with ':'");
+                throw ParseFail( mark.sayWhere(), "def name must start with ':'");
             }
 
             pDefFun_ =  new Ast::PushFun( pParentFun );
@@ -1851,7 +1920,7 @@ class Parser
             }
             catch ( const ErrorNoMatch& )
             {
-                throw std::runtime_error("identifier must follow \"def :\"");
+                throw ParseFail( mark.sayWhere(), "identifier must follow \"def :\"");
             }
 
             try
@@ -1867,7 +1936,7 @@ class Parser
             if (mark.getc() != '=') // this seems unneccesary
             {
                 std::cerr << "got '" << c << "', expecting '='\n";
-                throw std::runtime_error("function def must be followed by '='"); // throw ErrorNoMatch();
+                throw ParseFail( mark.sayWhere(), "function def must be followed by '='"); // throw ErrorNoMatch();
             }
 
             // std::string defFunName = pWithDefFun_->getParamName();
@@ -2280,7 +2349,7 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                     if (upvalNumber == kNoParent)
                     {
                         std::cerr << "Could not find binding for var=" << ident.name() << " fun=" << (void*)pCurrentFun << std::endl;
-                        throw std::runtime_error("Unbound variable");
+                        throw ParseFail( mark.sayWhere(), "Unbound variable" );
                     }
 
 //////                    char c = mark.getc();
@@ -2299,7 +2368,7 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
             catch( const ErrorNoMatch& )
             {
                 std::cerr << "Cannot parse at '" << c << "'" << std::endl;
-                throw std::runtime_error("unparseable token");
+                throw ParseFail( mark.sayWhere(), "unparseable token");
             }
         } // end, while true
 
@@ -2351,7 +2420,7 @@ public:
         }
         catch (const std::runtime_error& e )
         {
-            std::cerr << "Runtime parse error: " << e.what() << std::endl;
+            std::cerr << "Runtime parse error b01: " << e.what() << std::endl;
             throw e;
         }
 
@@ -2380,10 +2449,16 @@ public:
         }
         else
         {
-            FILE* fstream = fopen( fileName_.c_str(), "r");
-            RegurgeFile strmFile( fstream );
-            fun = this->parseNoParent( strmFile, bDump );
-            fclose( fstream );
+            RegurgeFile strmFile( fileName_ );
+            try
+            {
+                fun = this->parseNoParent( strmFile, bDump );
+            }
+            catch( const ParseFail& e )
+            {
+                std::cerr << "Error parsing program: " << e.what();
+                throw e;
+            }
         }
 
         BANGCLOSURE noParentClosure(nullptr);
@@ -2394,19 +2469,19 @@ public:
     
     void parseAndRun(Stack& stack, bool bDump)
     {
+        BANGCLOSURE closure;
+
+        closure = parseToClosureNoParent( stack, bDump );
+            
         try
         {
-            auto closure = parseToClosureNoParent( stack, bDump );
-            try
-            {
-                closure->apply( stack, closure );
-            }
-            catch( AstExecFail ast )
-            {
-                gFailedAst = ast.pStep;
-                closure->getProgram()->dump( 0, std::cerr );
-                std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
-            }
+            closure->apply( stack, closure );
+        }
+        catch( AstExecFail ast )
+        {
+            gFailedAst = ast.pStep;
+            closure->getProgram()->dump( 0, std::cerr );
+            std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
         }
         catch( const std::exception& e )
         {

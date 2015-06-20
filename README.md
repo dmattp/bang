@@ -2,11 +2,11 @@ Bang! Copyright (c) 2015 David M. Placek (MIT License)
 
 # The Bang! Programming Language
 
-Bang! is a small experimental functional language developed with the goal of offering language constructs with the most abstractive power and minimum implementation complexity.
+Bang! is a minimal functional language that provides lexically scoped first class functions in a simple language with a minimalist syntax.
 
-Bang! offers first class functions with lexical scope in a simple language with a minimalist syntax.  Bang! employs a postfix notation to avoid the need for syntax complexities often encountered in infix and prefix languages, while offering a few niceties to give the postfix environment a conventional feel.
+Bang! was developed with the goal of offering language constructs with the most abstractive power and minimum complexity.  A stack-based program model and postfix syntax are employed for syntactic simplicity.  Recursion with tail call optimization is provided for iteration, and dynamic binding lookup supports module namespaces and a simple object / record syntax.
 
-"Bang! for the buck" was the idea here.  Keep the language small and the feel light, but start with a solid foundation.
+"Bang! for the buck" is the idea here.  Keep the language small and the feel light, but start with a solid foundation.
 
 Programs can be as simple as:
 
