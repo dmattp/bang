@@ -25,7 +25,7 @@ Bang! is less than a month old and many features are incomplete and specificatio
 
 The central construct in Bang! is the function. First class functions are arguably the single most malleable single language facility, so Bang! attempts to keep this central concept simple and close to the surface.  All Bang! functions take at most a single parameter which keeps the implementation simple, but lexical scoping allows creation of functions with any number of parameters.
 
-All functions have access to a working stack.  Literals (numbers, strings, booleans, or functions) are pushed to the stack when encountered in the program. When functions are applied they pop values off the stack as necessary.
+All functions have access to a working stack.  Literals (numbers, strings, booleans, or functions) are pushed to the stack when encountered in the program. When functions are applied they pop their arguments off the working stack and can push results back onto the stack.
 
 A function to square a number is written like this:
 

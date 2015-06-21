@@ -2,6 +2,6 @@
 
     125   'samples/spectral.bang'     require! save-stack! drop!
     10    'samples/binary-trees.bang' require! save-stack! drop!
---    19000 'samples/quicksort.bang'    require! save-stack! drop!
+    19000 'samples/quicksort.bang'    require! save-stack! drop!
 
 ; N times!
