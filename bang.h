@@ -3,6 +3,13 @@
 #include <vector>
 #include <ostream>
 
+
+#if defined(_WIN32)
+# define DLLEXPORT _declspec(dllexport)
+#else
+# define DLLEXPORT
+#endif 
+
 #if USE_GC
 # include "gc_cpp.h"
 # include "gc_allocator.h"
@@ -148,6 +155,12 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         Value( bool b )     : type_( kBool ) { v_.b = b; }
         Value( double num ) : type_( kNum ) { v_.num = num; }
 
+        Value( const char* str )
+        : type_( kStr )
+        {
+            new (v_.cstr) std::string(str);
+        }
+        
         Value( const std::string& str )
         : type_( kStr )
         {
@@ -194,7 +207,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         }
 
         void mutateNoType( double num ) { v_.num = num; } // precondition: previous type was double
-        void mutateNoType( bool b ) { v_.b = b; } // precondition: previous type was double
+        void mutateNoType( bool b ) { v_.b = b; } // precondition: previous type was bool
         void mutatePrimitiveToBool( bool b ) // precondition: previous type doesn't require ~destructor
         {
             type_ = kBool;
@@ -297,6 +310,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         void push( int i ) { stack_.emplace_back(double(i)); }
         void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
         void push( const std::string& s ) { stack_.emplace_back(s); }
+        void push( const char* s ) { stack_.emplace_back(s); }
         void push( std::string&& s ) { stack_.emplace_back(std::move(s)); }
         void push( BANGFUNPTR&& f ) { stack_.emplace_back(std::move(f)); }
 

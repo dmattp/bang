@@ -62,7 +62,8 @@ And there are primitives, until a better library / module system is in place.
 
 
 const char* const BANG_VERSION = "0.002";
-const char* const kDefaultScript = "c:\\m\\n2proj\\bang\\test\\7.bang";
+
+#define kDefaultScript "c:\\m\\n2proj\\bang\\tmp\\binding.bang";
 
 #include "bang.h"
 
@@ -161,13 +162,13 @@ namespace Primitives
         const Value& v2 = s.loc_top();
         Value& v1 = s.loc_topMinus1Mutate();
 
-        if (v1.isnum() && v2.isnum())
+//        if (v1.isnum() && v2.isnum())
         {
             v1.mutateNoType( operation( v1.tonum(), v2.tonum() ) );
             s.pop_back();
         }
-        else
-            throw std::runtime_error("Binary operator incompatible types");
+//         else
+//             throw std::runtime_error("Binary operator incompatible types");
     }
 
     template <class T>
@@ -176,25 +177,26 @@ namespace Primitives
         const Value& v2 = s.loc_top();
         Value& v1 = s.loc_topMinus1Mutate();
 
-        if (v1.isnum() && v2.isnum())
+//        if (v1.isnum() && v2.isnum())
         {
             v1.mutatePrimitiveToBool( operation( v1.tonum(), v2.tonum() ) );
             s.pop_back();
         }
-        else
-            throw std::runtime_error("Binary operator.b incompatible types");
+//         else
+//             throw std::runtime_error("Binary operator.b incompatible types");
     }
     
     void plus ( Stack& s, const RunContext& )
     {
-        if (s.loc_top().isnum())
-            infix2to1( s, [](double v1, double v2) { return v1 + v2; } );
-        else if (s.loc_top().isstr())
+//        if (s.loc_top().isnum())
+        if (s.loc_top().isstr())
         {
             const auto& v2 = s.pop();
             const auto& v1 = s.pop();
             s.push( v1.tostr() + v2.tostr() );
         }
+        else
+            infix2to1( s, [](double v1, double v2) { return v1 + v2; } );
     }
     void minus( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 - v2; } ); }
     void mult ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 * v2; } ); }
@@ -203,7 +205,9 @@ namespace Primitives
     void gt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 > v2; } ); }
     void modulo ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
     void eq( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 == v2; } ); }
-    
+
+    void increment( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() + 1 ); }
+    void decrement( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() - 1 ); }
     
     void stacklen( Stack& s, const RunContext& ctx)
     {
@@ -467,6 +471,7 @@ namespace Ast
 
     class PushLiteral : public Base
     {
+    public:
         Value v_;
     public:
         virtual void dump( int level, std::ostream& o ) const
@@ -489,7 +494,9 @@ namespace Ast
 
     class PushPrimitive: public Base
     {
-    protected:
+//        friend void OptimizeAst( std::vector<Ast::Base*>& ast );
+
+    public:
         tfn_primitive primitive_;
         std::string desc_;
     public:
@@ -510,6 +517,7 @@ namespace Ast
 
     class ApplyPrimitive: public PushPrimitive
     {
+//        friend void OptimizeAst( std::vector<Ast::Base*>& ast );
     public:
         ApplyPrimitive( const PushPrimitive* pp )
         : PushPrimitive( *pp )
@@ -1159,7 +1167,7 @@ restartTco:
     
 void FunctionClosure::apply( Stack& s, CLOSURE_CREF myself )
 {
-    myself->bindParams( s );
+    this->bindParams( s );
     RunProgram( s, myself, this->getProgram() );
 }
 
@@ -1969,7 +1977,8 @@ public:
     }
 };
 
-void OptimizeAst( Ast::Program::astList_t& ast )
+void OptimizeAst( std::vector<Ast::Base*>& ast )
+//void OptimizeAst( Ast::Program::astList_t& ast )
 {
     class NoOp : public Ast::Base
     {
@@ -1982,9 +1991,16 @@ void OptimizeAst( Ast::Program::astList_t& ast )
         virtual void run( Stack& stack, const RunContext& ) const {}
     };
     static NoOp noop;
+
+    auto delNoops = [&]() {
+        for (int i = ast.size() - 1; i >= 0; --i)
+        {
+            if (ast[i] == &noop)
+                ast.erase( ast.begin() + i );
+        }
+    };
     
-    const int end = ast.size() - 1;
-    for (int i = 0; i < end; ++i)
+    for (int i = 0; i < ast.size() - 1; ++i)
     {
         Ast::Base* step = ast[i];
         if (1 && !dynamic_cast<const Ast::ApplyFun*>(step))
@@ -2048,15 +2064,36 @@ void OptimizeAst( Ast::Program::astList_t& ast )
                  continue;
             }
         }
-
     }
 
-    for (int i = ast.size() - 1; i >= 0; --i)
+    delNoops();
+
+    for (int i = 0; i < ast.size() - 1; ++i)
     {
-        if (ast[i] == &noop)
-            ast.erase( ast.begin() + i );
+        const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
+        if (plit && plit->v_.isnum() && plit->v_.tonum() == 1.0)
+        {
+            Ast::ApplyPrimitive* pprim = dynamic_cast<Ast::ApplyPrimitive*>(ast[i+1]);
+            if (pprim)
+            {
+                if (pprim->primitive_ == &Primitives::plus)
+                {
+                    pprim->primitive_ = &Primitives::increment;
+                    pprim->desc_ = "increment";
+                    ast[i] = &noop;
+                }
+                else if (pprim->primitive_ == &Primitives::minus)
+                {
+                    pprim->primitive_ = &Primitives::decrement;
+                    pprim->desc_ = "decrement";
+                    ast[i] = &noop;
+                }
+            }
+        }
     }
 
+    delNoops();
+    
     const int astLen = ast.size();
     if (astLen > 1) // last instr should always be "kBreakProg"
     {
@@ -2565,10 +2602,13 @@ int main( int argc, char* argv[] )
     const char* fname = argv[1];
     if (argc < 2)
     {
-        // bDump = true;
+#ifdef kDefaultScript
+        bDump = true;
+        fname = kDefaultScript;
+#else
         fname = nullptr; // kDefaultScript;
-//        fname = kDefaultScript;
         gReplMode = true;
+#endif 
     }
 
     gDumpMode = bDump;
