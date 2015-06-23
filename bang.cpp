@@ -65,7 +65,7 @@ And there are primitives, until a better library / module system is in place.
 #endif
 
 
-const char* const BANG_VERSION = "0.002";
+const char* const BANG_VERSION = "0.003";
 
 // #define kDefaultScript "c:\\m\\n2proj\\bang\\tmp\\binding.bang";
 
