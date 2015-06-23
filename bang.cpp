@@ -1,11 +1,15 @@
-//////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
 // Bang! language interpreter
 // (C) 2015 David M. Placek
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
 #define PBIND(...) do {} while (0)
-
+#define OPTIMIZATION 0
+#define HAVE_FUNCTIONS 0
+#define HAVE_RECURSIVE_FUNCTIONS 1
+#define HAVE_PARTIAL_FUNCTIONS 1
+#define HAVE_PARTIAL_OPTIMIZATION 1
 
 /*
   Keywords
@@ -63,7 +67,10 @@ And there are primitives, until a better library / module system is in place.
 
 const char* const BANG_VERSION = "0.002";
 
-#define kDefaultScript "c:\\m\\n2proj\\bang\\tmp\\binding.bang";
+// #define kDefaultScript "c:\\m\\n2proj\\bang\\tmp\\binding.bang";
+
+//~~~temporary #define for refactoring
+#define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 
 #include "bang.h"
 
@@ -73,6 +80,45 @@ namespace {
 }
 
 namespace Bang {
+
+
+    class NthParent {
+        int nth_;
+    public:
+        explicit NthParent( int n ) : nth_(n) {}
+        NthParent operator++() const { return NthParent(nth_+1); }
+        NthParent operator--() const { return NthParent(nth_-1); }
+        bool operator==( NthParent other ) const { return nth_ == other.nth_; }
+        int toint() const { return nth_; } // use judiciously, please
+    };
+
+    static const NthParent kNoParent=NthParent(INT_MAX);
+
+
+    namespace Ast { class CloseValue; }
+    class Upvalue
+    {
+    private:
+        const Ast::CloseValue* closer_; // contains the symbolic name to which the upvalue is bound
+        SHAREDUPVALUE parent_;  // the upvalue chain
+        Value v_; // the value itself
+    public:
+        Upvalue( const Ast::CloseValue* closer, SHAREDUPVALUE_CREF parent, const Value& v )
+        : closer_( closer ), parent_( parent ), v_( v )
+        {
+        }
+
+        const Value& getUpValue( NthParent uvnumber )
+        {
+            return (uvnumber == NthParent(0)) ? v_ : parent_->getUpValue( --uvnumber );
+        }
+
+        // lookup by string / name is expensive; used for experimental object
+        // system.  obviously if it's "a hit" you can optimize out much of this cost
+        const Value& getUpValue( const std::string& uvName );
+    };
+
+    
 
 
 namespace {
@@ -114,18 +160,6 @@ namespace {
     }
     
 
-class NthParent {
-    int nth_;
-public:
-    explicit NthParent( int n ) : nth_(n) {}
-    NthParent operator++() const { return NthParent(nth_+1); }
-    NthParent operator--() const { return NthParent(nth_-1); }
-    bool operator==( NthParent other ) const { return nth_ == other.nth_; }
-    int toint() const { return nth_; } // use judiciously, please
-};
-
-static const NthParent kNoParent=NthParent(INT_MAX);
-
 
 void indentlevel( int level, std::ostream& o )
 {
@@ -136,21 +170,27 @@ void indentlevel( int level, std::ostream& o )
     }
 }
 
-class FunctionClosure;
+namespace Ast { class Program; }    
+struct CallStack;    
 class RunContext
 {
-    friend class FunctionClosure;
 public:
-    CLOSURE_CREF pActiveFun_;
+    const CallStack& frame_;
 public:    
-    RunContext( CLOSURE_CREF fun )
-    : pActiveFun_(fun)
+    RunContext( const CallStack& frame )
+    : frame_( frame )
     {
     }
-    CLOSURE_CREF running() const { return pActiveFun_; }
+//    CLOSURE_CREF running() const { return pActiveFun_; }
+    SHAREDUPVALUE_CREF upvalues() const;
 
     const Value& getUpValue( NthParent up ) const;
     const Value& getUpValue( const std::string& uvName ) const;
+
+    // for recursive invocation
+    const CallStack* getCallstackForParentOf( const Ast::Program* prog ) const;
+    const CallStack* callstack() const;
+//     SHAREDUPVALUE_CREF getUpValuesOfParent( const Ast::Program* prog );
 };
 
 
@@ -391,14 +431,17 @@ namespace Ast
         enum EAstInstr {
             kUnk,
             kBreakProg,
+            kCloseValue,
             kApply,
             kApplyUpval,
-            kApplyFun,
+            kApplyProgram,
             kApplyFunRec,
+            kIfElse,
             kTCOApply,
             kTCOApplyUpval,
-            kTCOApplyFun,
-            kTCOApplyFunRec
+            kTCOApplyProgram,
+            kTCOApplyFunRec,
+            kTCOIfElse
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
@@ -411,15 +454,86 @@ namespace Ast
         {
             switch (instr_)
             {
-                case kApply:      instr_ = kTCOApply;      break;
-                case kApplyFun:   instr_ = kTCOApplyFun;   break;
-                case kApplyFunRec:   instr_ = kTCOApplyFunRec;   break;
-                case kApplyUpval: instr_ = kTCOApplyUpval; break;
+                case kApplyFunRec:  instr_ = kTCOApplyFunRec;  break;
+                case kIfElse:       instr_ = kTCOIfElse;       break;
+                case kApplyProgram: instr_ = kTCOApplyProgram; break;
+//                case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
+//                 case kApply:        instr_ = kTCOApply;        break;
             }
         }
     private:
     };
+
+    class CloseValue : public Base
+    {
+        const CloseValue* pUpvalParent_;
+        std::string paramName_;
+    public:
+        CloseValue( const CloseValue* parent, const std::string& name )
+        : Base( kCloseValue ),
+          pUpvalParent_( parent ),
+          paramName_( name )
+        {}
+        const std::string& valueName() const { return paramName_; }
+        virtual void run( Stack& stack, const RunContext& rc ) const {}
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "CloseValue(" << paramName_ << ")\n";
+        }
+#if 0        
+        const CloseValue* cvForName( const std::string& param ) const
+        {
+            return
+            (  (param == paramName_)
+            ? this
+            :   (   pUpvalParent_
+                ?   pUpvalParent_->cvForName(param)
+                :   nullptr
+                )
+            );
+        }
+#endif
+
+        const NthParent FindBinding( const std::string& varName ) const
+        {
+            if (this->paramName_ == varName)
+            {
+                return NthParent(0);
+            }
+            else
+            {
+                if (!pUpvalParent_)
+                    return kNoParent;
+
+                auto fbp = pUpvalParent_->FindBinding(varName);
+
+                return (fbp == kNoParent ) ? fbp : ++fbp;
+            }
+        }
+        
+    };
 }
+
+
+    const Value& Upvalue::getUpValue( const std::string& uvName )
+    {
+        if (uvName == closer_->valueName())
+        {
+            return v_;
+        }
+        else
+        {
+            if (parent_)
+                return parent_->getUpValue( uvName );
+            else
+            {
+                std::cerr << "Error Looking for dynamic upval=\"" << uvName << "\"\n";
+                throw std::runtime_error("Could not find dynamic upval");
+            }
+        }
+    }
+    
 
 const Ast::Base* gFailedAst = nullptr;
 struct AstExecFail {
@@ -539,7 +653,7 @@ namespace Ast
     {
     protected:
         std::string name_;
-        NthParent uvnumber_; // index in the containing PushFun's array of upvalues
+        NthParent uvnumber_; // index into the active Upvalues
     public:
         PushUpval( const std::string& name, NthParent uvnumber )
         : name_( name ),
@@ -556,6 +670,7 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
+#if HAVE_PARTIAL_OPTIMIZATION
     class ApplyUpval : public PushUpval
     {
     public:
@@ -578,6 +693,7 @@ namespace Ast
             return rc.getUpValue( uvnumber_ );
         }
     };
+#endif 
 
     class PushUpvalByName : public Base
     {
@@ -619,52 +735,85 @@ namespace Ast
         }
         
         virtual void run( Stack& stack, const RunContext& ) const;
-        static bool applyOrIsClosure( const Value& v, Stack& stack, const RunContext& );
+        static void ApplyValue( const Value& v, Stack& stack, const RunContext& rc );
+//        static bool applyOrIsClosure( const Value& v, Stack& stack, const RunContext& );
     };
 
 
-    class PushFun;
+//    class PushProg;
 
-    // never loaded directly into program tree - always a member of PushFun
-    class Program //  : public Base
+    class Program : public Base
     {
     public:
         typedef std::vector<Ast::Base*> astList_t;
-    private:
+    protected:
+        const Program* pParent_;
         astList_t ast_;
 
     public:
-        Program( const astList_t& ast )
-        : ast_( ast )
+        Program( const Program* parent, const astList_t& ast )
+        : pParent_(parent), ast_( ast )
         {}
 
-        Program()  // empty program ~~~ who uses this? hmm
+        Program( const Program* parent )  // empty program ~~~ who uses this? hmm
+        : pParent_( parent )
         {}
 
-        Program& add( Ast::Base* action ) {
-            ast_.push_back( action );
-            return *this;
+        void setAst( const astList_t& newast )
+        {
+            ast_ = newast;
         }
-        Program& add( Ast::Base& action ) {
-            ast_.push_back( &action );
-            return *this;
-        }
+
+//         Program& add( Ast::Base* action ) {
+//             ast_.push_back( action );
+//             return *this;
+//         }
+//         Program& add( Ast::Base& action ) {
+//             ast_.push_back( &action );
+//             return *this;
+//         }
         
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "Program\n";
+            o << std::hex << PtrToHash(this) << std::dec << " Program\n";
             std::for_each
             (   ast_.begin(), ast_.end(),
                 [&]( const Ast::Base* ast ) { ast->dump( level+1, o ); }
             );
         }
 
-        const astList_t* getAst() { return &ast_; }
+        const astList_t* getAst() const { return &ast_; }
 
-        // void run( Stack& stack, std::shared_ptr<Function> pFunction ); 
+        // 'run' pushes the program onto the stack as a BoundProgram.
+        // 
+        void run( Stack& stack, const RunContext& ) const;
     }; // end, class Ast::Program
 
+    // optimization, immediately run program rather than executing
+    // push+apply
+#if HAVE_PARTIAL_OPTIMIZATION
+    class ApplyProgram : public Program
+    {
+    public:
+        ApplyProgram( const Program* pf )
+        : Program( *pf )
+        {
+            instr_ = kApplyProgram;
+        }
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << std::hex << PtrToHash(this) << std::dec << " ApplyProgram\n";
+            std::for_each
+            (   ast_.begin(), ast_.end(),
+                [&]( const Ast::Base* ast ) { ast->dump( level+1, o ); }
+            );
+        }
+        virtual void run( Stack& stack, const RunContext& ) const;
+    };
+#endif 
 
     class IfElse : public Base
     {
@@ -672,7 +821,8 @@ namespace Ast
         Ast::Program* else_;
     public:
         IfElse( Ast::Program* if__, Ast::Program* else__ )
-        : if_(if__),
+        : Base( kIfElse ),
+          if_(if__),
           else_( else__ )
         {}
 
@@ -697,95 +847,16 @@ namespace Ast
                 else_->dump( level, o );
             }
         }
-    };
-    
-    class PushFun : public Base
-    {
-    protected:
-        const PushFun* pParentFun_;
-        Ast::Program*  astProgram_;
-        std::string* pParam_;
-
-    public:
-        Ast::Program* getProgram() const { return astProgram_; }
-
-        PushFun( const Ast::PushFun* pParentFun )
-        : pParentFun_(pParentFun),
-          astProgram_( nullptr ),
-          pParam_(nullptr)
-        {
-        }
-
-        void setAst( const Ast::Program& astProgram ) { astProgram_ = new Ast::Program(astProgram); }
-        PushFun& setParamName( const std::string& param ) { pParam_ = new std::string(param); return *this; }
-        bool hasParam() const { return pParam_ ? true : false; }
-        std::string getParamName() const { return *pParam_; }
-        bool DoesBind( const std::string& varName ) const { return pParam_ && *pParam_ == varName; }
-
-        const NthParent FindBinding( const std::string& varName ) const
-        {
-            if (this->DoesBind(varName))
-            {
-                return NthParent(0);
-            }
-            else
-            {
-                if (!pParentFun_)
-                    return kNoParent;
-
-                auto fbp = pParentFun_->FindBinding(varName);
-
-                return (fbp == kNoParent ) ? fbp : ++fbp;
-            }
-        }
-        
-        virtual void dumpshort( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << std::hex << PtrToHash(this) << std::dec <<
-                " PushFun(" << (pParam_ ? *pParam_ : "--") << ")";
-//             if (upvalues_.size() > 0)
-//                 o << " " << upvalues_.size() << " upvalues";
-        }
+    }; // end class IfElse
 
 
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            this->dumpshort( level, o );
-            o << ":";  
-            astProgram_->dump( level, o );
-        }
-
-        virtual void run( Stack& stack, const RunContext& ) const;
-    }; // end, class Ast::PushFun
-
-    class ApplyFun : public PushFun
-    {
-    public:
-        ApplyFun( const PushFun* pf )
-        : PushFun( *pf )
-        {
-            instr_ = kApplyFun;
-        }
-
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << std::hex << PtrToHash(this) << std::dec <<
-                " ApplyFun(" << (pParam_ ? *pParam_ : "--") << ")";
-            o << ":";  
-            astProgram_->dump( level, o );
-        }
-        virtual void run( Stack& stack, const RunContext& ) const;
-    };
-
-
+#if HAVE_RECURSIVE_FUNCTIONS
     class PushFunctionRec : public Base
     {
     protected:
     public:
-        Ast::PushFun* pRecFun_;
-        PushFunctionRec( Ast::PushFun* other )
+        Ast::Program* pRecFun_;
+        PushFunctionRec( Ast::Program* other )
         : pRecFun_( other )
         {}
 
@@ -797,22 +868,27 @@ namespace Ast
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
+#endif
 
+#if HAVE_PARTIAL_OPTIMIZATION    
     class ApplyFunctionRec : public PushFunctionRec
     {
     public:
         ApplyFunctionRec( const Ast::PushFunctionRec* pfr )
         : PushFunctionRec( *pfr )
-        {}
+        {
+            instr_ = kApplyFunRec;
+        }
 
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
+            o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
+#endif 
     
     
 } // end, namespace Ast
@@ -830,7 +906,7 @@ struct FcStack
 template <class Tp>
 FcStack<Tp>* FcStack<Tp>::head(nullptr);
 
-class FunctionClosure;
+//class FunctionClosure;
 
 //    static int gAllocated;
 
@@ -891,96 +967,21 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
     return &a != &b;
 }
 
-#endif 
+#endif
 
     
-// Function should be Constructed when the PushFun is pushed,
-// thereby binding to the pushing context and preserving upvalues.
-// ParamValue will be set when it is invoked, which could happen
-// multiple times in theory.
-
-//~~~ @todo: maybe separate out closure which binds a variable from
-// one which doesn't?  If nothing else this could make upvalue lookup chain
-// shorter
-class FunctionClosure : public Function
-{
-    const Ast::PushFun* pushfun_;                      // permanent
-    BANGCLOSURE pParent_;  // set when pushed??
-    Value paramValue_;                          // set when applied??
-    friend class Ast::PushFunctionRec;
-public:
-
-    static BANGCLOSURE lexicalMatch(BANGCLOSURE start, const Ast::PushFun* target)
-    {
-        while (start && start->pushfun_ != target)
-            start = start->pParent_;
-        
-        return start;
-    }
-    
-    FunctionClosure( const Ast::PushFun& pushfun, CLOSURE_CREF pParent )
-    : Function(true),
-      pushfun_( &pushfun ),
-      pParent_( pParent ) 
-    {
-    }
-
-    const Value& paramValue() const // const std::string& uvName ) const
-    {
-        return paramValue_;
-    }
-
-    const Value& getUpValue( NthParent uvnumber )
-    {
-        if (uvnumber == NthParent(0))
-            return paramValue_;
-        else
-            return pParent_->getUpValue( --uvnumber );
-    }
-
-    // lookup by string / name is expensive; used for experimental object
-    // system.  obviously if it's "a hit" you can optimize out much of this cost
-    const Value& getUpValue( const std::string& uvName )
-    {
-        const NthParent uvnum = pushfun_->FindBinding(uvName);
-        if (uvnum == kNoParent)
-        {
-            std::cerr << "Error Looking for dynamic upval=\"" << uvName << "\"\n";
-            throw std::runtime_error("Could not find dynamic upval");
-        }
-        return getUpValue( uvnum );
-    }
-
-    // the pedant in me says "bind" should return a new type, a "BoundFunction" or something;
-    // that honestly may clear some of the confusion up... what color is the bike under your desk,
-    // object lifetimes and all that, no mutation...
-    // but some of that may fall out with optimizations to separate out function that don't bind a param
-    void bindParams( Stack& s ) 
-    {
-        if (pushfun_->hasParam()) // bind parameter
-            paramValue_ = s.pop();
-    }
-
-    Ast::Program* getProgram() const
-    {
-        return pushfun_->getProgram();
-    }
-
-    CLOSURE_CREF getParent() const { return pParent_; }
-
-    const Ast::PushFun* pushfun() { return pushfun_; }
-
-    void apply( Stack& s, CLOSURE_CREF myself );
-    
-}; // end, class FunctionClosure
-
-
 #if !USE_GC    
-SimpleAllocator< std::shared_ptr<FunctionClosure> > gFuncloseAlloc;
+SimpleAllocator< std::shared_ptr<Upvalue> > gUpvalAlloc;
+#define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
+// # undef  NEW_CLOSURE
+// # define NEW_CLOSURE(a,b)           std::allocate_shared<FunctionClosure>( gFuncloseAlloc, a, b )
+#endif
 
-# undef  NEW_CLOSURE
-# define NEW_CLOSURE(a,b)           std::allocate_shared<FunctionClosure>( gFuncloseAlloc, a, b )
-#endif 
+
+//     void CloseValue::run( Stack& stack, const RunContext& rc ) const
+//     {
+//         const auto& upval = NEW_UPVAL( this, rc.upvalues(), stack.pop() );
+//     }
     
 
 class FunctionRestoreStack : public Function
@@ -996,7 +997,7 @@ public:
     : stack_(s)
     {
     }
-    virtual void apply( Stack& s, CLOSURE_CREF running )
+    virtual void apply( Stack& s ) // , CLOSURE_CREF running )
     {
         std::copy( stack_.begin(), stack_.end(), std::back_inserter( s.stack_ ) );
     }
@@ -1017,7 +1018,7 @@ public:
     // because if I'm invoked through a shared_ptr, I never have access to the
     // shared reference counted, but I sort of need that, e.g., to "Clone()" or
     // to do something that takes another reference to me. 
-    virtual void apply( Stack& s, CLOSURE_CREF running )
+    virtual void apply( Stack& s ) // , CLOSURE_CREF running )
     {
         const Value& msg = s.pop();
         if (msg.isnum())
@@ -1053,23 +1054,12 @@ namespace Primitives {
 }
 
 
-void RunProgram
-(   Stack& stack,
-    BANGCLOSURE pFunction,
-    Ast::Program* pProgram
-)
-{
-restartTco:
-    RunContext rc( pFunction );
-
-    const Ast::Base* const* ppInstr = &(pProgram->getAst()->front());
 
 #if 0    
     auto ApplyValue = [&]( const Value& calledFun ) -> bool
     {
         if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
         {
-            // "rebind" RunProgram() parameters
             pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
             pFunction->bindParams( stack );
             pProgram = pFunction->getProgram();
@@ -1078,66 +1068,177 @@ restartTco:
         else
             return false;
     };
-#endif 
+#endif
+
+struct CallStack
+{
+    const CallStack* prev;
+    const Ast::Program* prog;
+    const Ast::Base* const *ppInstr;
+//    SHAREDUPVALUE initialupvalues;
+    SHAREDUPVALUE upvalues;
+    CallStack( const CallStack* inprev, const Ast::Program* inprog, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
+    : prev( inprev ), prog( inprog ), ppInstr( inppInstr ), /*initialupvalues(uv),*/ upvalues( uv )
+    {}
+    CallStack()
+    : prev( nullptr ), prog( nullptr ), ppInstr( nullptr )
+    {}
+    CallStack( SHAREDUPVALUE_CREF shupval )
+    : prev( nullptr ), prog( nullptr ), ppInstr( nullptr ), upvalues( shupval )
+    {}
+    void rebind( const Ast::Program* inprog )
+    {
+        prog = inprog;
+        ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
+    }
+
+    void rebind( const Ast::Program* inprog, const CallStack* prevstack )
+    {
+        prog = inprog;
+        ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
+        prev = prevstack;
+        upvalues = prevstack->upvalues;
+    }
+    void rebind( const Ast::Base* const * inppInstr )
+    {
+        ppInstr = inppInstr;
+    }
+};
+
+    class BoundProgram : public Function
+    {
+    public:
+        const Ast::Program* program_;
+        SHAREDUPVALUE upvalues_;
+    public:
+        BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues )
+        : program_( program ), upvalues_( upvalues )
+        {}
+        void dump( std::ostream & out )
+        {
+            program_->dump( 0, std::cerr );
+        }
+        virtual void apply( Stack& s );
+    };
     
+    
+// SimpleAllocator< CallStack > gCallStackAlloc;
+    
+void RunProgram
+(   Stack& stack,
+    const Ast::Program* inprog,
+    const CallStack* prev
+)
+{
+// ~~~todo: save initial upvalue, destroy when closing program?
+// const Ast::Base* const* ppInstr = &(pProgram->getAst()->front());
+    CallStack frame( prev, inprog, TMPFACT_PROG_TO_RUNPROG(inprog), prev->upvalues );
+    RunContext rc( frame );
+restartTco:
     try
     {
         while (true)
         {
-            const Ast::Base* pInstr = *ppInstr++;
+            const Ast::Base* pInstr = *(frame.ppInstr++);
             switch (pInstr->instr_)
             {
                 case Ast::Base::kBreakProg:
+                    // destroy inaccesible upvalues created by this program?
+                    // is it necessary, or automatic since "upvalues" will be
+                    // destroyed here?
                     return;
+
+                case Ast::Base::kCloseValue:
+                    frame.upvalues =
+                        NEW_UPVAL
+                        (   reinterpret_cast<const Ast::CloseValue*>(pInstr),
+                            frame.upvalues,
+                            stack.pop()
+                        );
+                    break; // goto restartTco;
 
                 default:
                     pInstr->run( stack, rc );
                     break;
 
-                case Ast::Base::kTCOApplyFun:
-                {
-                    // no dynamic cast, should be safe since we know the type from instr_
-                    const Ast::ApplyFun* afn = reinterpret_cast<const Ast::ApplyFun*>(pInstr); 
-                    pFunction = NEW_CLOSURE(*afn, rc.running());
-                    pFunction->bindParams(stack);
-                    pProgram = afn->getProgram();
-                    goto restartTco;
-                }
-                break;
-
                 case Ast::Base::kTCOApplyFunRec:
                 {
                     // no dynamic cast, should be safe since we know the type from instr_
-                    const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr); 
-                    BANGCLOSURE myself = FunctionClosure::lexicalMatch( pFunction, afn->pRecFun_ );
-                    CLOSURE_CREF myselfsParent = myself->getParent();
-                    pFunction = NEW_CLOSURE( *(afn->pRecFun_), myselfsParent );
-                    pFunction->bindParams(stack);
-                    pProgram = afn->pRecFun_->getProgram();
+//                    std::cerr << "got kTCOApplyFunRec" << std::endl;
+                    const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
+                    auto parentcs = rc.getCallstackForParentOf( afn->pRecFun_ ); // ->getParent();
+                    frame.rebind( afn->pRecFun_, parentcs );
                     goto restartTco;
                 }
                 break;
                 
-                case Ast::Base::kTCOApplyUpval:
+                case Ast::Base::kTCOIfElse:
                 {
-                    // no dynamic cast, should be safe since we know the type from instr_
-#if 0
-                    if (ApplyValue( reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc ) ))
-                        goto restartTco;
-#else
-                    const Value& calledFun = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc );
-                    if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+                    const Ast::IfElse* ifelse = reinterpret_cast<const Ast::IfElse*>(pInstr);
+                    const Ast::Program* p = ifelse->branchTaken(stack);
+                    if (p)
                     {
-                        // "rebind" RunProgram() parameters
-                        pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
-                        pFunction->bindParams( stack );
-                        pProgram = pFunction->getProgram();
+                        frame.rebind( TMPFACT_PROG_TO_RUNPROG(p) );
                         goto restartTco;
-                    } // end , closure
-#endif 
+                    }
                 }
                 break;
 
+                case Ast::Base::kTCOApplyProgram:
+                {
+                    //std::cerr << "got kTCOApplyProgram\n";
+                    const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr); 
+                    frame.rebind( afn );
+                    goto restartTco;
+                }
+                break;
+
+#if 0
+                case Ast::Base::kTCOApplyUpval:
+                {
+                    const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc );
+                    if (v.isfunprim())
+                    {
+                        const tfn_primitive pprim = v.tofunprim();
+                        pprim( stack, rc );
+                    }
+                    else if( v.isfun() )
+                    {
+                        const auto& pfun = v.tofun();
+                        BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(pfun.get());
+                        if (pbound)
+                        {
+//                            frame.prev     = nullptr;
+//                             frame.prog     = pbound->program_;
+//                             frame.ppInstr  = TMPFACT_PROG_TO_RUNPROG(pbound->program_);
+//                             frame.upvalues = pbound->upvalues_;
+           CallStack cs( pbound->upvalues_ );  //~~~ FIXMECS
+           RunProgram( stack, pbound->program_, &cs );
+//                            frame.upvalues = pbound->upvalues_;
+//                            frame.rebind( pbound->program_ );
+                            goto restartTco;
+                        }
+                        else
+                        /*
+                        */
+                        {
+                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not
+                                                 // executing context!
+                        }
+                    }
+                    else
+                    {
+                        std::ostringstream oss;
+                        oss << "Called apply without function.2; found type=" << v.type_ << " V=";
+                        v.dump(oss);
+                        throw std::runtime_error(oss.str());
+                    }
+                }
+                break;
+#endif 
+
+
+#if OPTIMIZE                    
                 case Ast::Base::kTCOApply:
                 {
 #if 0
@@ -1156,76 +1257,124 @@ restartTco:
 #endif 
                 }
                 break;
+#endif // OPTIMIZE
             } // end,instr switch
-        }
+        } // end, while loop incrementing PC
     }
     catch (const std::runtime_error& e)
     {
-        throw AstExecFail( *ppInstr, e );
+        throw AstExecFail( *(frame.ppInstr), e );
     }
 }
+
+        void BoundProgram::apply( Stack& s )
+        {
+            CallStack cs( upvalues_ );  //~~~ FIXMECS
+            RunProgram( s, program_, &cs );
+        }
+
     
-void FunctionClosure::apply( Stack& s, CLOSURE_CREF myself )
-{
-    this->bindParams( s );
-    RunProgram( s, myself, this->getProgram() );
-}
+    void Ast::Program::run( Stack& stack, const RunContext& rc ) const
+    {
+        stack.push( STATIC_CAST_TO_BANGFUN(NEW_BANGFUN(BoundProgram)( this, rc.upvalues() )) );
+    }
 
     void Ast::IfElse::run( Stack& stack, const RunContext& rc ) const
     {
         Ast::Program* p = this->branchTaken(stack);
         if (p)
-            RunProgram( stack, rc.running(), p );
+        {
+            RunProgram( stack, p, rc.callstack() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
+        }
     }
     
 
+SHAREDUPVALUE_CREF RunContext::upvalues() const
+{
+    return frame_.upvalues;
+}
+    
 const Value& RunContext::getUpValue( NthParent uvnumber ) const
 {
-    return pActiveFun_->getUpValue( uvnumber );
+    return frame_.upvalues->getUpValue( uvnumber );
 }
 
 const Value& RunContext::getUpValue( const std::string& uvName ) const
 {
-    return pActiveFun_->getUpValue( uvName );
+    return frame_.upvalues->getUpValue( uvName );
 }
 
 
-// PushFun::run is what runs when a lambda is pushed on the
-// stack.  At this point we "grab" the parent from the
-// run context
-void Ast::PushFun::run( Stack& stack, const RunContext& rc ) const
+#if HAVE_PARTIAL_OPTIMIZATION
+void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 {
-    const auto& pfr = NEW_CLOSURE(*this, rc.running());
-    stack.push( STATIC_CAST_TO_BANGFUN(pfr) );
+    RunProgram( stack, this, rc.callstack() );
 }
-
-void Ast::ApplyFun::run( Stack& stack, const RunContext& rc ) const
-{
-    const auto& pfr = NEW_CLOSURE(*this, rc.running());
-    pfr->apply( stack, pfr );
-}
+#endif 
     
+#if HAVE_RECURSIVE_FUNCTIONS
 
+    const CallStack* RunContext::getCallstackForParentOf( const Ast::Program* prog ) const
+    {
+        for (const CallStack* cs = &frame_; cs; cs = cs->prev )
+        {
+            if (cs->prog == prog)
+                return cs->prev; // may be able to replace with parent->upvalues, but not entirely clear.
+        }
+        throw std::runtime_error("no context for recursive function invocation!");
+    }
+
+    const CallStack* RunContext::callstack() const
+    {
+        return &frame_;
+    }
+
+    //~~~ In reality I think this should not be any different from BoundProgram.
+    class RecursiveInvocation : public Function
+    {
+        const Ast::Program* program_;
+        const CallStack* parentCallStack_;
+    public:
+        RecursiveInvocation( const Ast::Program* program, const CallStack* parentCallStack )
+        : program_( program ), parentCallStack_( parentCallStack )
+        {}
+        void apply( Stack& s )
+        {
+            //~~~FIXME: what if I return an inner call?  I'm not ref'ing the callstack
+            RunProgram( s, program_, parentCallStack_ );
+            // const CallStack* getCallstackForParentOf( const Ast::Program* prog );
+        }
+    };
+
+//     SHAREDUPVALUE_CREF RunContext::getUpValuesOfParent( const Ast::Program* prog )
+//     {
+//         const auto cs = this->getCallstackForParentOf( prog );
+//         return cs->upvalues;
+//         throw std::runtime_error("no context for recursive function invocation!");
+//     }
+        
 void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-    BANGCLOSURE myself = FunctionClosure::lexicalMatch( rc.running(), pRecFun_ );
-    CLOSURE_CREF myselfsParent = myself->getParent();
-    const auto& otherfun = NEW_CLOSURE( *pRecFun_, myselfsParent );
-    stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
-}
-
+    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
     
+    const auto& newfun = NEW_BANGFUN(RecursiveInvocation)( pRecFun_, parentcs );
+
+    stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
+}
+#endif 
+
+
+#if HAVE_PARTIAL_OPTIMIZATION
 void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-    BANGCLOSURE myself = FunctionClosure::lexicalMatch( rc.running(), pRecFun_ );
-    CLOSURE_CREF myselfsParent = myself->getParent();
-    const auto& pfr = NEW_CLOSURE( *pRecFun_, myselfsParent );
-    pfr->apply( stack, pfr );
-    // stack.push( STATIC_CAST_TO_BANGFUN(otherfun) );
+    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
+    RunProgram( stack, pRecFun_, parentcs );
 }
+#endif
 
 
-bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContext& rc )
+
+void Ast::Apply::ApplyValue( const Value& v, Stack& stack, const RunContext& rc )
 {
     if (v.isfunprim())
     {
@@ -1235,10 +1384,7 @@ bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContex
     else if( v.isfun() )
     {
         const auto& pfun = v.tofun();
-        if (pfun->isClosure())
-            return true;
-        else
-            pfun->apply( stack, rc.running() );
+        pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
     }
     else
     {
@@ -1247,37 +1393,21 @@ bool Ast::Apply::applyOrIsClosure( const Value& v, Stack& stack, const RunContex
         v.dump(oss);
         throw std::runtime_error(oss.str());
     }
-    
-    return false;
 }
 
+#if HAVE_PARTIAL_OPTIMIZATION    
 void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc) const
 {
     const Value& v = this->getUpValue( rc );
-    if (Ast::Apply::applyOrIsClosure( v, stack, rc ))
-        v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
+    Ast::Apply::ApplyValue( v, stack, rc );
 };
+#endif 
 
-
+    
 void Ast::Apply::run( Stack& stack, const RunContext& rc ) const
 {
-    const Value& v = stack.pop();
-
-    if (Ast::Apply::applyOrIsClosure( v, stack, rc ))
-        v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
+    Ast::Apply::ApplyValue( stack.pop(), stack, rc );
 }
-
-// void Ast::ConditionalApply::run( Stack& stack, const RunContext& rc) const
-// {
-//     const bool shouldExec = Ast::ConditionalApply::foundTrue(stack);
-
-//     // always pop the function, even if not taken, for consistency's sake
-//     const Value& v = stack.pop();
-    
-//     if (shouldExec && Ast::Apply::applyOrIsClosure( v, stack, rc ))
-//         v.tofun()->apply( stack, DYNAMIC_CAST_TO_CLOSURE( v.tofun() ) );
-// }
-
 
 void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
 {
@@ -1661,7 +1791,8 @@ class Parser
     {
         Ast::Program::astList_t ast_;
     public:
-        Program( StreamMark&, const Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing );
+        Program( StreamMark&, const Ast::Program* parent, const Ast::CloseValue* upvalueChain,
+            ParsingRecursiveFunStack* pRecParsing );
 
         const Ast::Program::astList_t& ast() { return ast_; }
     };
@@ -1793,39 +1924,49 @@ class Parser
     struct ParsingRecursiveFunStack
     {
         ParsingRecursiveFunStack* prev;
-        Ast::PushFun* fun;
-        Ast::PushFun* bindingfun;
-
-        Ast::PushFun* FindPushFunForIdent( const std::string& ident )
+        Ast::Program *parentProgram;
+        std::string progname_;
+//        Ast::CloseValue* upvalueChain;
+//         Ast::CloseValue* FindCloseValueForIdent( const std::string& ident )
+//         {
+//             return upvalueChain->cvForName( ident );
+//         }
+        Ast::Program* FindProgramForIdent( const std::string& ident )
         {
-            if (bindingfun->getParamName() == ident)
-            {
-                return fun;
-            }
+            if (progname_ == ident)
+                return parentProgram;
             else if (prev)
-            {
-                return prev->FindPushFunForIdent( ident );
-            }
+                return prev->FindProgramForIdent( ident );
             else
                 return nullptr;
         }
         
-        ParsingRecursiveFunStack( ParsingRecursiveFunStack* p, Ast::PushFun* f, Ast::PushFun* b )
-                : prev(p), fun(f), bindingfun(b)
+        ParsingRecursiveFunStack
+        (   ParsingRecursiveFunStack* p,
+            Ast::Program* parent,
+            const std::string& progname
+//            Ast::CloseValue* upvals
+        )
+        :  prev( p ),
+           parentProgram(parent),
+           progname_( progname )
         {}
     };
-    
     
     class Fundef
     {
         bool postApply_;
-        Ast::PushFun* pNewFun_;
+        Ast::Program* pNewProgram_;
     public:
-        ~Fundef() { delete pNewFun_; }
+        ~Fundef() { delete pNewProgram_; }
         
-        Fundef( StreamMark& stream, const Ast::PushFun* pParentFun, ParsingRecursiveFunStack* pRecParsing )
+        Fundef( StreamMark& stream,
+            const Ast::CloseValue* upvalueChain,
+            // const Ast::PushFun* pParentFun,
+            ParsingRecursiveFunStack* pRecParsing
+        )
         :  postApply_(false),
-           pNewFun_(nullptr)
+           pNewProgram_(nullptr)
         {
             bool isAs = false;
             StreamMark mark(stream);
@@ -1834,12 +1975,12 @@ class Parser
 
             if (eatReservedWord( "fun", mark ))
                 ;
-            else if (eatReservedWord( "as", mark ))
-            {
-                if (!eatwhitespace(mark)) 
-                    throw ErrorNoMatch(); // whitespace required after 'as'
-                isAs = true;
-            }
+//             else if (eatReservedWord( "as", mark ))
+//             {
+//                 if (!eatwhitespace(mark)) 
+//                     throw ErrorNoMatch(); // whitespace required after 'as'
+//                 isAs = true;
+//             }
             else
                 throw ErrorNoMatch();
 
@@ -1856,50 +1997,56 @@ class Parser
 
             eatwhitespace(mark);
 
-            pNewFun_ =  new Ast::PushFun( pParentFun );
-            
+            // pNewFun_ =  new Ast::PushFun( pParentFun );
+
+            Ast::Program::astList_t functionAst;
             try
             {
                 Identifier param(mark);
-                pNewFun_->setParamName( param.name() );
                 eatwhitespace(mark);
+                Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, param.name() );
+                upvalueChain = cv;
+                functionAst.push_back( cv );
             }
             catch ( const ErrorNoMatch& ) // identifier is optional
             {
             }
 
-            if (!isAs)
+            char c = mark.getc();
+            if (c != '=') // this seems unneccesary sometimes. therefore "as"
             {
-                char c = mark.getc();
-                if (c != '=') // this seems unneccesary sometimes. therefore "as"
-                {
-                    std::cerr << "got '" << c << "', expecting '='\n";
-                    throw ParseFail( mark.sayWhere(), "function def must be followed by '='"); 
-                }
+                std::cerr << "got '" << c << "', expecting '='\n";
+                throw ParseFail( mark.sayWhere(), "function def must be followed by '='"); 
             }
 
-            Program program( mark, pNewFun_, pRecParsing );
-
-            pNewFun_->setAst( program.ast() );
+            //~~~ programParent??
+            Program program( mark, nullptr, upvalueChain, pRecParsing );
+            const auto& subast = program.ast();
+            std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
+            pNewProgram_ = new Ast::Program( nullptr, functionAst );
+            // pNewFun_->setAst( program.ast() );
 
             mark.accept();
         }
         bool hasPostApply() const { return postApply_; }
-        Ast::PushFun* stealPushFun() { auto rc = pNewFun_; pNewFun_ = nullptr; return rc; }
+        Ast::Program* stealProgram() { auto rc = pNewProgram_; pNewProgram_ = nullptr; return rc; }
     }; // end, class Fundef
 
-
+#if HAVE_PARTIAL_FUNCTIONS
     class Defdef
     {
-        bool postApply_;
-        Ast::PushFun* pDefFun_;
-        Ast::PushFun* pWithDefFun_;
+//        bool postApply_;
+         Ast::Program* pDefProg_;
+//         Ast::PushFun* pWithDefFun_;
+        std::unique_ptr<std::string> defname_;
     public:
-        ~Defdef() { delete pDefFun_; delete pWithDefFun_; }
-        Defdef( StreamMark& stream, const Ast::PushFun* pParentFun, ParsingRecursiveFunStack* pRecParsing )
-        :  postApply_(false),
-           pDefFun_(nullptr),
-           pWithDefFun_(nullptr)
+        ~Defdef() { delete pDefProg_; } // delete pWithDefFun_; 
+        Defdef( StreamMark& stream, const Ast::CloseValue* upvalueChain,
+        // PushFun* pParentFun,
+            ParsingRecursiveFunStack* pRecParsing )
+        //        :  postApply_(false),
+        : pDefProg_(nullptr)
+//            pWithDefFun_(nullptr)
         {
             StreamMark mark(stream);
 
@@ -1917,25 +2064,28 @@ class Parser
                 throw ParseFail( mark.sayWhere(), "def name must start with ':'");
             }
 
-            pDefFun_ =  new Ast::PushFun( pParentFun );
-            pWithDefFun_ =  new Ast::PushFun( pParentFun );
-            
+//             pDefFun_ =  new Ast::PushFun( pParentFun );
+//             pWithDefFun_ =  new Ast::PushFun( pParentFun );
+
             try
             {
                 Identifier param(mark);
-                pWithDefFun_->setParamName( param.name() );
                 eatwhitespace(mark);
+                defname_ = std::unique_ptr<std::string>(new std::string(param.name()));
             }
             catch ( const ErrorNoMatch& )
             {
                 throw ParseFail( mark.sayWhere(), "identifier must follow \"def :\"");
             }
 
+            Ast::Program::astList_t functionAst;
             try
             {
                 Identifier param(mark);
-                pDefFun_->setParamName( param.name() );
                 eatwhitespace(mark);
+                Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, param.name() );
+                upvalueChain = cv;
+                functionAst.push_back( cv );
             }
             catch ( const ErrorNoMatch& )
             {
@@ -1948,38 +2098,44 @@ class Parser
             }
 
             // std::string defFunName = pWithDefFun_->getParamName();
+            pDefProg_ = new Ast::Program(nullptr);
+            ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, *defname_ ); // , pWithDefFun_);
+            Program progdef( mark, nullptr, upvalueChain, &recursiveStack ); // pDefFun_, &recursiveStack );
+            const auto& subast = progdef.ast();
+            std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
+            pDefProg_->setAst( functionAst );
+            //pDefProg_ = new Ast::Program( nullptr, functionAst );
+            // pDefFun_->setAst( progdef.ast() );
 
-            ParsingRecursiveFunStack recursiveStack(pRecParsing, pDefFun_, pWithDefFun_);
-            Program progdef( mark, pDefFun_, &recursiveStack );
-            pDefFun_->setAst( progdef.ast() );
-
-            Program withdefprog( mark, pWithDefFun_, nullptr );
-            pWithDefFun_->setAst( withdefprog.ast() );
+//             Program withdefprog( mark, pWithDefFun_, nullptr );
+//             pWithDefFun_->setAst( withdefprog.ast() );
             
             mark.accept();
         }
 
-        Ast::PushFun* stealDefFun() { auto rc = pDefFun_; pDefFun_ = nullptr; return rc; }
-        Ast::PushFun* stealWithDefFun() { auto rc = pWithDefFun_; pWithDefFun_ = nullptr; return rc; }
-    }; // end, class Fundef
-
+        Ast::Program* stealDefProg() { auto rc = pDefProg_; pDefProg_ = nullptr; return rc; }
+        const std::string& getDefName() { return *defname_; }
+//        Ast::PushFun* stealWithDefFun() { auto rc = pWithDefFun_; pWithDefFun_ = nullptr; return rc; }
+    }; // end, class Defdef
+#endif // HAVE_FUNCTIONS
     
     Program* program_;
 public:
-    Parser( StreamMark& mark, const Ast::PushFun* pCurrentFun )
+    Parser( StreamMark& mark, const Ast::Program* parent )
     {
-        program_ = new Program( mark, pCurrentFun, nullptr ); // 0,0,0 = no current function, no self-name
+        program_ = new Program( mark, parent, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
     }
 
-    Ast::Program astProgram()
+    const Ast::Program::astList_t& programAst()
     {
-        return Ast::Program( program_->ast() );
+        return program_->ast();
     }
 };
 
 void OptimizeAst( std::vector<Ast::Base*>& ast )
 //void OptimizeAst( Ast::Program::astList_t& ast )
 {
+#if HAVE_PARTIAL_OPTIMIZATION
     class NoOp : public Ast::Base
     {
     public:
@@ -2003,13 +2159,14 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     for (int i = 0; i < ast.size() - 1; ++i)
     {
         Ast::Base* step = ast[i];
-        if (1 && !dynamic_cast<const Ast::ApplyFun*>(step))
+
+        if (1 && !dynamic_cast<const Ast::ApplyProgram*>(step))
         {
-            const Ast::PushFun* pup = dynamic_cast<const Ast::PushFun*>(step);
+            const Ast::Program* pup = dynamic_cast<const Ast::Program*>(step);
             if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
             {
 //                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
-                Ast::ApplyFun* newfun = new Ast::ApplyFun( pup );
+                Ast::ApplyProgram* newfun = new Ast::ApplyProgram( pup );
 //                newfun->reparentKids(pup); // ugly
                 ast[i] = newfun;
                 ast[i+1] = &noop;
@@ -2039,19 +2196,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
         }
         
-        if (!dynamic_cast<const Ast::ApplyPrimitive*>(step))
-        {
-            const Ast::PushPrimitive* pp = dynamic_cast<const Ast::PushPrimitive*>(step);
-            if (pp && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-            {
-                ast[i] = new Ast::ApplyPrimitive( pp );
-                ast[i+1] = &noop;
-                delete step;
-                ++i;
-                continue;
-            }
-        }
-
         if (!dynamic_cast<const Ast::ApplyUpval*>(step))
         {
             const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(step);
@@ -2062,6 +2206,19 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                  delete pup;
                  ++i;
                  continue;
+            }
+        }
+        
+        if (!dynamic_cast<const Ast::ApplyPrimitive*>(step))
+        {
+            const Ast::PushPrimitive* pp = dynamic_cast<const Ast::PushPrimitive*>(step);
+            if (pp && dynamic_cast<const Ast::Apply*>(ast[i+1]))
+            {
+                ast[i] = new Ast::ApplyPrimitive( pp );
+                ast[i+1] = &noop;
+                delete step;
+                ++i;
+                continue;
             }
         }
     }
@@ -2100,9 +2257,11 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         Ast::Base* possibleTail = ast[astLen-2];
         if (possibleTail->isTailable() && ast[astLen-1]->instr_ == Ast::Base::kBreakProg)
         {
+//            std::cerr << "got possibleTail convertToTailCall" << std::endl;
             possibleTail->convertToTailCall();
         }
     }
+#endif // HAVE_PARTIAL_OPTIMIZATION
 }
 
 namespace Primitives {
@@ -2150,7 +2309,12 @@ namespace Primitives {
     
 
 
-Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, ParsingRecursiveFunStack* pRecParsing )
+Parser::Program::Program
+(   StreamMark& stream,
+    const Ast::Program* parent,
+    const Ast::CloseValue* upvalueChain,
+    ParsingRecursiveFunStack* pRecParsing
+)
 {
 //    std::cerr << "enter Program fun=" << pCurrentFun << "\n";
     try
@@ -2177,15 +2341,32 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                 continue;
             } catch ( const ErrorNoMatch& ) {}
 
+
+            {
+                StreamMark mark(stream);            
+
+                if (eatReservedWord("as", mark))
+                {
+                    if (eatwhitespace(mark))
+                    {
+                        Identifier valueName( mark );
+                        mark.accept();
+                        Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, valueName.name() );
+                        upvalueChain = cv;
+                        ast_.push_back( cv );
+                        continue;
+                    }
+                }
+            }
             
             //////////////////////////////////////////////////////////////////
-            // Define functions; 'fun', 'fun!', 'as', and 'def' keywords
+            // Define functions; 'fun', 'fun!', and 'def' keywords
             //////////////////////////////////////////////////////////////////
             try
             {
-                Fundef fun( stream, pCurrentFun, pRecParsing );
+                Fundef fun( stream, upvalueChain, pRecParsing );
 
-                ast_.push_back( fun.stealPushFun() );
+                ast_.push_back( fun.stealProgram() );
 
                 if (fun.hasPostApply())
                     ast_.push_back( new Ast::Apply() );
@@ -2193,18 +2374,18 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                 continue;
             } catch ( const ErrorNoMatch& ) {}
 
-
+#if HAVE_PARTIAL_FUNCTIONS
             try
             {
-                Defdef fun( stream, pCurrentFun, pRecParsing );
+                Defdef fun( stream, upvalueChain, pRecParsing );
                 
-                ast_.push_back( fun.stealDefFun() );
-                ast_.push_back( fun.stealWithDefFun() );
-                ast_.push_back( new Ast::Apply() );  // apply definition to withdef program
-
+                ast_.push_back( fun.stealDefProg() );
+                Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, fun.getDefName() );
+                upvalueChain = cv;
+                ast_.push_back( cv );
                 continue;
             } catch ( const ErrorNoMatch& ) {}
-
+#endif
 
 
             /////// Single character operators ///////
@@ -2256,8 +2437,8 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                 mark.accept();
                 try
                 {
-                    Program ifBranch( stream, pCurrentFun, pRecParsing );
-                    Ast::Program* ifProg = new Ast::Program( ifBranch.ast() );
+                    Program ifBranch( stream, nullptr, upvalueChain, pRecParsing );
+                    Ast::Program* ifProg = new Ast::Program( nullptr, ifBranch.ast() );
                     Ast::Program* elseProg = nullptr;
                     eatwhitespace(stream);
                     c = mark.getc();
@@ -2269,8 +2450,8 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
                     {
                         mark.accept();
 //                        std::cerr << "  found else clause\n";
-                        Program elseBranch( stream, pCurrentFun, pRecParsing );
-                        elseProg = new Ast::Program( elseBranch.ast() );
+                        Program elseBranch( stream, nullptr, upvalueChain, pRecParsing );
+                        elseProg = new Ast::Program( nullptr, elseBranch.ast() );
                     }
                         
                     ast_.push_back( new Ast::IfElse( ifProg, elseProg ) );
@@ -2369,37 +2550,32 @@ Parser::Program::Program( StreamMark& stream, const Ast::PushFun* pCurrentFun, P
 //                if (rwPrimitive( "require",    &Primitives::require    ) ) continue;
             
                 bool bFoundRecFunId = false;
+
+#if HAVE_RECURSIVE_FUNCTIONS                
                 if (pRecParsing)
                 {
-                    Ast::PushFun* pRecFunForIdent = pRecParsing->FindPushFunForIdent(ident.name());
+                    Ast::Program* pRecFunForIdent = pRecParsing->FindProgramForIdent(ident.name());
                     if (pRecFunForIdent)
                     {
                         ast_.push_back( new Ast::PushFunctionRec( pRecFunForIdent) );
                         bFoundRecFunId = true;
                     }
                 }
+#endif 
 
                 if (!bFoundRecFunId)
                 {
-                    const NthParent upvalNumber = pCurrentFun->FindBinding( ident.name() );
+                    const NthParent upvalNumber = upvalueChain->FindBinding( ident.name() );
                 
                     if (upvalNumber == kNoParent)
                     {
-                        std::cerr << "Could not find binding for var=" << ident.name() << " fun=" << (void*)pCurrentFun << std::endl;
+                        std::cerr << "Could not find binding for var=" << ident.name() << " uvchain=" << (void*)upvalueChain << std::endl;
                         throw ParseFail( mark.sayWhere(), "Unbound variable" );
                     }
 
-//////                    char c = mark.getc();
-                    // if "push value" followed by "drop", simply dont push.
-                    // Maybe this syntax allows to specify available upvalues for lookup on record/object system.
-                    // Even without object system it's still an optimization
-                    // of a pointless operation.
-//////                    if (c != '~') 
-                    {
-//////                        mark.regurg(c);
-                        ast_.push_back( new Ast::PushUpval(ident.name(), upvalNumber) );
-                    }
+                    ast_.push_back( new Ast::PushUpval(ident.name(), upvalNumber) );
                 }
+                
                 mark.accept();
             }
             catch( const ErrorNoMatch& )
@@ -2436,15 +2612,15 @@ public:
     {
     }
 
-    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::PushFun* self )
+    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::Program* parent )
     {
         StreamMark mark(stream);
 
         try
         {
-            Parser parser( mark, self );
+            Parser parser( mark, parent );
 
-            Ast::Program* p = new Ast::Program( parser.astProgram() );
+            Ast::Program* p = new Ast::Program( parent, parser.programAst() );
             
             if (bDump)
                 p->dump( 0, std::cerr );
@@ -2463,21 +2639,19 @@ public:
 
         return nullptr;
     }
-    
-    Ast::PushFun* parseNoParent( RegurgeIo& stream, bool bDump )
+
+    Ast::Program* parseNoParent( RegurgeIo& stream, bool bDump )
     {
-        Ast::PushFun* fun = new Ast::PushFun(nullptr);
+        return parseToProgram( stream, bDump, nullptr );
 
-        Ast::Program* pProgram = parseToProgram( stream, bDump, fun );
+        // fun->setAst( *pProgram );
 
-        fun->setAst( *pProgram );
-
-        return fun;
+        // return pProgram;
     }
 
-    BANGCLOSURE parseToClosureNoParent(Stack& stack, bool bDump )
+    std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( Stack& stack, bool bDump )
     {
-        Ast::PushFun* fun;
+        Ast::Program* fun;
 
         if (stdin_)
         {
@@ -2498,26 +2672,25 @@ public:
             }
         }
 
-        BANGCLOSURE noParentClosure(nullptr);
-        auto closure = NEW_CLOSURE(*fun, noParentClosure);
+        // BANGCLOSURE noParentClosure(nullptr);
+        SHAREDUPVALUE noUpvals;
+        const auto& boundprog = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
 
-        return closure;
+        return boundprog;
     }
     
     void parseAndRun(Stack& stack, bool bDump)
     {
-        BANGCLOSURE closure;
-
-        closure = parseToClosureNoParent( stack, bDump );
+        const auto& closure = parseToBoundProgramNoUpvals( stack, bDump );
             
         try
         {
-            closure->apply( stack, closure );
+            closure->apply( stack ); // , closure );
         }
         catch( AstExecFail ast )
         {
             gFailedAst = ast.pStep;
-            closure->getProgram()->dump( 0, std::cerr );
+            closure->dump( std::cerr );
             std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
         }
         catch( const std::exception& e )
@@ -2539,12 +2712,17 @@ void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
     stack.dump( std::cout );
     repl_prompt();
     
-    CLOSURE_CREF self = rc.running();
+//    CLOSURE_CREF self = rc.running();
     RequireKeyword req(nullptr);
     RegurgeStdinRepl strmStdin;
     try {
-        Ast::Program *pProgram = req.parseToProgram( strmStdin, gDumpMode, self->pushfun() );
-        RunProgram( stack, self, pProgram );
+        Ast::Program *pProgram = req.parseToProgram( strmStdin, gDumpMode, nullptr );  // self->pushfun() ); //~~~
+                                                                                       // nullptr should be parent
+                                                                                       // prog (if that's at all
+                                                                                       // needed), so parent program sort of
+                                                                                       // needs to be available in RunContext
+        
+        RunProgram( stack, pProgram, rc.callstack() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
     } catch (const std::exception& e ) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
@@ -2559,8 +2737,9 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
         throw std::runtime_error("no filename found for require??");
 
     RequireKeyword me( v.tostr().c_str() );
-    BANGCLOSURE noFunction(nullptr);
-    const auto& closure = me.parseToClosureNoParent( stack, false );
+
+    const auto& closure = me.parseToBoundProgramNoUpvals( stack, false );
+    
     stack.push( STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }

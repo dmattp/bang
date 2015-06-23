@@ -1,4 +1,4 @@
-def :gimme-fn addBase = { fun addMe = addBase addMe + }
+fun addBase = { fun addMe = addBase addMe + } as gimme-fn
 
   500 gimme-fn! as inner-fn
 

@@ -23,31 +23,24 @@ namespace Bang
    
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
 
+    namespace Ast { class CloseValue; }
 
     class FunctionClosure;
     
 #if USE_GC
 typedef Function* bangfunptr_t;
-typedef FunctionClosure* bangclosure_t;
   #define BANGFUN_CREF Bang::bangfunptr_t
-  #define CLOSURE_CREF Bang::bangclosure_t
   #define STATIC_CAST_TO_BANGFUN(f)  static_cast<Bang::Function*>( f )
-  #define DYNAMIC_CAST_TO_CLOSURE(f) dynamic_cast<FunctionClosure*>( f )
-  #define NEW_CLOSURE(a,b)           new FunctionClosure( a, b )
   #define NEW_BANGFUN(A)             new A
 #else
 typedef std::shared_ptr<Function> bangfunptr_t;
 typedef std::shared_ptr<FunctionClosure> bangclosure_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
-  #define CLOSURE_CREF const Bang::bangclosure_t&
   #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Bang::Function>(f)
-  #define DYNAMIC_CAST_TO_CLOSURE(f) std::dynamic_pointer_cast<FunctionClosure,Function>( f )
-  #define NEW_CLOSURE(a,b)           std::make_shared<FunctionClosure>( a, b )
   #define NEW_BANGFUN(A)             std::make_shared<A>
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
-#define BANGCLOSURE bangclosure_t
 
 
     class Value
@@ -243,6 +236,11 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         void dump( std::ostream& o ) const;
     }; // end, class Value
 
+
+    class Upvalue;
+    typedef std::shared_ptr<Upvalue> SHAREDUPVALUE;
+    typedef const std::shared_ptr<Upvalue>& SHAREDUPVALUE_CREF;
+
     class Stack
     {
         Stack( const Stack& ); // uncopyable
@@ -356,7 +354,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         Function( bool isc ) : isClosure_(isc) {};
         virtual ~Function() {}
         bool isClosure() { return isClosure_; }
-        virtual void apply( Stack& s, CLOSURE_CREF runningOrMyself ) = 0;
+        virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };
     
 } // end, namespace Bang

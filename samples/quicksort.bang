@@ -1,4 +1,4 @@
-# 2 < ? 19000; as N
+# 1 < ? 19000; as N
 
 'lib/hof.bang' require! .filter as filter
 
@@ -19,12 +19,11 @@ def :quicksort = {
 def :testQuicksort numItems = { 
   random numItems times!
   quicksort!
-  numItems 99 >
-  ? save-stack! drop!
+  numItems 99 > ? save-stack! drop!
 }
 
 fun=
 N testQuicksort!
-;1 times!
+;400 times!
 
 -- with GC 1.2s

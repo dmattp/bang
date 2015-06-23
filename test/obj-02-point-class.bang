@@ -1,7 +1,7 @@
 
 -- messed up; this does not work:  def :make-point y_ = { as x_
-def :make-point = {
-    as y_ as x_
+def :make-point y_ = {
+    as x_
 
    def :x = x_;
    def :y = y_;

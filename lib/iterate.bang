@@ -8,7 +8,7 @@ def :times totalTimes = { fun! loopFun =
 }
 
 
-def :range = { as last as first as do-me
+def :range last = { as first as do-me
    def :inner current = {
       current do-me!
       current last <
