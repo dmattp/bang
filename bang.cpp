@@ -179,14 +179,14 @@ void indentlevel( int level, std::ostream& o )
 }
 
 namespace Ast { class Program; }    
-struct CallStack;    
+//struct CallStack;    
 class RunContext
 {
 public:
-    const CallStack& frame_;
+    SHAREDUPVALUE_CREF upvalues_;
 public:    
-    RunContext( const CallStack& frame )
-    : frame_( frame )
+    RunContext( SHAREDUPVALUE_CREF uv )
+    : upvalues_( uv )
     {
     }
 //    CLOSURE_CREF running() const { return pActiveFun_; }
@@ -198,7 +198,7 @@ public:
 
     // for recursive invocation
 //    const CallStack* getCallstackForParentOf( const Ast::Program* prog ) const;
-    const CallStack* callstack() const;
+//    const CallStack* callstack() const;
 //     SHAREDUPVALUE_CREF getUpValuesOfParent( const Ast::Program* prog );
 };
 
@@ -1130,33 +1130,48 @@ namespace Primitives {
 
 struct CallStack
 {
-    const CallStack* prev;
+//    const CallStack* prev;
     const Ast::Program* prog;
     const Ast::Base* const *ppInstr;
 //    SHAREDUPVALUE initialupvalues;
     SHAREDUPVALUE upvalues;
-    CallStack( const CallStack* inprev, const Ast::Program* inprog, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
-    : prev( inprev ), prog( inprog ), ppInstr( inppInstr ), /*initialupvalues(uv),*/ upvalues( uv )
+    CallStack( // const CallStack* inprev,
+        const Ast::Program* inprog, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
+    :
+    //prev( inprev ),
+    prog( inprog ), ppInstr( inppInstr ) // , /*initialupvalues(uv),*/
+    ,upvalues( uv )
     {}
-    CallStack()
-    : prev( nullptr ), prog( nullptr ), ppInstr( nullptr )
-    {}
-    CallStack( SHAREDUPVALUE_CREF shupval )
-    : prev( nullptr ), prog( nullptr ), ppInstr( nullptr ), upvalues( shupval )
-    {}
+    
+//     CallStack()
+//     :
+//     //prev( nullptr ),
+//     prog( nullptr ), ppInstr( nullptr )
+//     {}
+//     CallStack( SHAREDUPVALUE_CREF shupval )
+//     :
+//     //prev( nullptr ),
+//     prog( nullptr ), ppInstr( nullptr ), upvalues( shupval )
+//     {}
     void rebind( const Ast::Program* inprog )
     {
         prog = inprog;
         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
     }
 
-    void rebind( const Ast::Program* inprog, const CallStack* prevstack )
+    void rebind( const Ast::Program* inprog, SHAREDUPVALUE_CREF uv )
     {
-        prog = inprog;
-        ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
-        prev = prevstack;
-        upvalues = prevstack->upvalues;
+        this->rebind(inprog);
+        upvalues = uv;
     }
+    
+//     void rebind( const Ast::Program* inprog ) // , const CallStack* prevstack )
+//     {
+//         prog = inprog;
+//         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
+// //        prev = prevstack;
+//         upvalues = prevstack->upvalues;
+//     }
     void rebind( const Ast::Base* const * inppInstr )
     {
         ppInstr = inppInstr;
@@ -1185,14 +1200,14 @@ struct CallStack
 void RunProgram
 (   Stack& stack,
     const Ast::Program* inprog,
-    const CallStack* prev
+    SHAREDUPVALUE_CREF upvalues
 )
 {
 // ~~~todo: save initial upvalue, destroy when closing program?
 // const Ast::Base* const* ppInstr = &(pProgram->getAst()->front());
-    CallStack frame( prev, inprog, TMPFACT_PROG_TO_RUNPROG(inprog), prev->upvalues );
-    RunContext rc( frame );
+    CallStack frame( inprog, TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
 restartTco:
+    RunContext rc( frame.upvalues );
     try
     {
         while (true)
@@ -1224,8 +1239,10 @@ restartTco:
                     // no dynamic cast, should be safe since we know the type from instr_
 //                    std::cerr << "got kTCOApplyFunRec" << std::endl;
                     const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
-                    frame.rebind( afn->pRecFun_ );
-                    frame.upvalues = (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( afn->nthparent_ );
+                    frame.rebind
+                    (  afn->pRecFun_,
+                        (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( afn->nthparent_ )
+                    );
                     goto restartTco;
                 }
                 break;
@@ -1267,21 +1284,8 @@ restartTco:
                         BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(pfun.get());
                         if (pbound)
                         {
-#if 0
-                            CallStack cs( pbound->upvalues_ );  //~~~ FIXMECS
-                            RunProgram( stack, pbound->program_, &cs );
-#else
-                            frame.rebind( pbound->program_ );
-                            frame.upvalues = pbound->upvalues_;
-                            
-//                            frame.prev     = nullptr;
-//                             frame.prog     = pbound->program_;
-//                             frame.ppInstr  = TMPFACT_PROG_TO_RUNPROG(pbound->program_);
-//                             frame.upvalues = pbound->upvalues_;
-//                            frame.upvalues = pbound->upvalues_;
-//                            frame.rebind( pbound->program_ );
+                            frame.rebind( pbound->program_, pbound->upvalues_ );
                             goto restartTco;
-#endif 
                         }
                         else
                         {
@@ -1332,8 +1336,8 @@ restartTco:
 
         void BoundProgram::apply( Stack& s )
         {
-            CallStack cs( upvalues_ );  //~~~ FIXMECS
-            RunProgram( s, program_, &cs );
+//            CallStack cs( upvalues_ );  //~~~ FIXMECS
+            RunProgram( s, program_, upvalues_ );
         }
 
     
@@ -1347,35 +1351,35 @@ restartTco:
         Ast::Program* p = this->branchTaken(stack);
         if (p)
         {
-            RunProgram( stack, p, rc.callstack() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
+            RunProgram( stack, p, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
         }
     }
     
 
 SHAREDUPVALUE_CREF RunContext::upvalues() const
 {
-    return frame_.upvalues;
+    return upvalues_;
 }
 
 SHAREDUPVALUE_CREF RunContext::nthBindingParent( const NthParent n ) const
 {
-    return n == NthParent(0) ? frame_.upvalues : frame_.upvalues->nthParent( n );
+    return n == NthParent(0) ? upvalues_ : upvalues_->nthParent( n );
 }
     
 const Value& RunContext::getUpValue( NthParent uvnumber ) const
 {
-    return frame_.upvalues->getUpValue( uvnumber );
+    return upvalues_->getUpValue( uvnumber );
 }
 
 const Value& RunContext::getUpValue( const std::string& uvName ) const
 {
-    return frame_.upvalues->getUpValue( uvName );
+    return upvalues_->getUpValue( uvName );
 }
 
 
 void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 {
-    RunProgram( stack, this, rc.callstack() );
+    RunProgram( stack, this, rc.upvalues() );
 }
     
 
@@ -1389,10 +1393,10 @@ void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 //         throw std::runtime_error("no context for recursive function invocation!");
 //     }
 
-    const CallStack* RunContext::callstack() const
-    {
-        return &frame_;
-    }
+//     const CallStack* RunContext::callstack() const
+//     {
+//         return &frame_;
+//     }
 
     //~~~ In reality I think this should not be any different from BoundProgram.
 //     class RecursiveInvocation : public Function
@@ -1435,8 +1439,8 @@ void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 #else
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
-    CallStack cs(uv);
-    RunProgram( stack, pRecFun_, &cs );
+//    CallStack cs(uv);
+    RunProgram( stack, pRecFun_, uv );
 #endif 
 }
 
@@ -2808,7 +2812,7 @@ void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
                                                                                        // needed), so parent program sort of
                                                                                        // needs to be available in RunContext
         
-        RunProgram( stack, pProgram, rc.callstack() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
+        RunProgram( stack, pProgram, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
     } catch (const std::exception& e ) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
