@@ -37,9 +37,8 @@ def :fannkuch n = {
 
    def :permute-loop i = {
        i s! as sx
-       sx 1 = not!
-       ? { sx 1 - i s.set true }
-       : {
+       sx 1 = 
+       ? {
            i n <
            ? {
               i i s.set
@@ -51,6 +50,7 @@ def :fannkuch n = {
            }
            : { sum maxflips false }
        }
+       : { sx 1 - i s.set true }
    }
 
    def :flipper-loop sign = {
@@ -61,7 +61,7 @@ def :fannkuch n = {
             flips maxflips > ? { flips |> maxflips }    -- MUTATION
         }
         : { q1 q1 q.set
-            q1 4 < not! ? { 2 q1 1 - iloopy! }
+            q1 4 < ? : { 2 q1 1 - iloopy! }
             qq flips 1 + inner-flipper!
         } -- q1 1 = :
      }
@@ -70,7 +70,7 @@ def :fannkuch n = {
 
    def :inner-mainloop sign = {
      1 p! as q1
-     q1 1 = not! ? {
+     q1 1 = ? : {
         setqfromp 2 n range!  -- MUTATION
         q1 1 sign flipper-loop!
      } -- end, q1 1 = not! ?

@@ -189,17 +189,10 @@ public:
     : upvalues_( uv )
     {
     }
-//    CLOSURE_CREF running() const { return pActiveFun_; }
     SHAREDUPVALUE_CREF upvalues() const;
     SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
-
     const Value& getUpValue( NthParent up ) const;
     const Value& getUpValue( const std::string& uvName ) const;
-
-    // for recursive invocation
-//    const CallStack* getCallstackForParentOf( const Ast::Program* prog ) const;
-//    const CallStack* callstack() const;
-//     SHAREDUPVALUE_CREF getUpValuesOfParent( const Ast::Program* prog );
 };
 
 
@@ -468,8 +461,8 @@ namespace Ast
                 case kApplyProgram: instr_ = kTCOApplyProgram; break;
 #if OPT_TCO_APPLY_UPVAL                    
                 case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
+                 case kApply:        instr_ = kTCOApply;        break;
 #endif 
-//                 case kApply:        instr_ = kTCOApply;        break;
             }
         }
     private:
@@ -1022,12 +1015,6 @@ SimpleAllocator< std::shared_ptr<Upvalue> > gUpvalAlloc;
 #endif
 
 
-//     void CloseValue::run( Stack& stack, const RunContext& rc ) const
-//     {
-//         const auto& upval = NEW_UPVAL( this, rc.upvalues(), stack.pop() );
-//     }
-    
-
 class FunctionRestoreStack : public Function
 {
     std::vector<Value> stack_;
@@ -1130,10 +1117,8 @@ namespace Primitives {
 
 struct CallStack
 {
-//    const CallStack* prev;
     const Ast::Program* prog;
     const Ast::Base* const *ppInstr;
-//    SHAREDUPVALUE initialupvalues;
     SHAREDUPVALUE upvalues;
     CallStack( // const CallStack* inprev,
         const Ast::Program* inprog, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
@@ -1143,16 +1128,6 @@ struct CallStack
     ,upvalues( uv )
     {}
     
-//     CallStack()
-//     :
-//     //prev( nullptr ),
-//     prog( nullptr ), ppInstr( nullptr )
-//     {}
-//     CallStack( SHAREDUPVALUE_CREF shupval )
-//     :
-//     //prev( nullptr ),
-//     prog( nullptr ), ppInstr( nullptr ), upvalues( shupval )
-//     {}
     void rebind( const Ast::Program* inprog )
     {
         prog = inprog;
@@ -1165,13 +1140,6 @@ struct CallStack
         upvalues = uv;
     }
     
-//     void rebind( const Ast::Program* inprog ) // , const CallStack* prevstack )
-//     {
-//         prog = inprog;
-//         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
-// //        prev = prevstack;
-//         upvalues = prevstack->upvalues;
-//     }
     void rebind( const Ast::Base* const * inppInstr )
     {
         ppInstr = inppInstr;
@@ -1196,6 +1164,13 @@ struct CallStack
     
     
 // SimpleAllocator< CallStack > gCallStackAlloc;
+    void throwNoFunVal( const Value& v )
+    {
+        std::ostringstream oss;
+        oss << "Called apply without function.2; found type=" << v.type_ << " V=";
+        v.dump(oss);
+        throw std::runtime_error(oss.str());
+    }
     
 void RunProgram
 (   Stack& stack,
@@ -1273,57 +1248,46 @@ restartTco:
                 {
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc );
                     if (v.isfunprim())
-                    {
-                        const tfn_primitive pprim = v.tofunprim();
-                        pprim( stack, rc );
-                    }
-                    else if( v.isfun() )
+                        v.tofunprim()( stack, rc );
+                    else if( !v.isfun() )
+                        throwNoFunVal(v);
+                    else
                     {
                         const auto& pfun = v.tofun();
-                        
-                        BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(pfun.get());
-                        if (pbound)
+                        BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(v.tofun().get());
+                        if (!pbound)
+                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
+                        else
                         {
                             frame.rebind( pbound->program_, pbound->upvalues_ );
                             goto restartTco;
                         }
-                        else
-                        {
-                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not
-                                                 // executing context!
-                        }
-                    }
-                    else
-                    {
-                        std::ostringstream oss;
-                        oss << "Called apply without function.2; found type=" << v.type_ << " V=";
-                        v.dump(oss);
-                        throw std::runtime_error(oss.str());
                     }
                 }
                 break;
-#endif 
-
-#if OPTIMIZE                    
+                
                 case Ast::Base::kTCOApply:
                 {
-#if 0
-                    if (ApplyValue( stack.pop() ))
-                        goto restartTco;
-#else
-                    const Value& calledFun = stack.pop();
-                    if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
+                    const Value& v = stack.pop();
+                    if (v.isfunprim())
+                        v.tofunprim()( stack, rc );
+                    else if( !v.isfun() )
+                        throwNoFunVal(v);
+                    else
                     {
-                        // "rebind" RunProgram() parameters
-                        pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
-                        pFunction->bindParams( stack );
-                        pProgram = pFunction->getProgram();
-                        goto restartTco;
-                    } // end , closure
-#endif 
+                        const auto& pfun = v.tofun();
+                        BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(v.tofun().get());
+                        if (!pbound)
+                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not // executing context!
+                        else
+                        {
+                            frame.rebind( pbound->program_, pbound->upvalues_ );
+                            goto restartTco;
+                        }
+                    }
                 }
                 break;
-#endif // OPTIMIZE
+#endif // OPT_TCO_APPLY_UPVAL
 
             } // end,instr switch
         } // end, while loop incrementing PC
@@ -1336,7 +1300,6 @@ restartTco:
 
         void BoundProgram::apply( Stack& s )
         {
-//            CallStack cs( upvalues_ );  //~~~ FIXMECS
             RunProgram( s, program_, upvalues_ );
         }
 
@@ -1382,49 +1345,9 @@ void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
     RunProgram( stack, this, rc.upvalues() );
 }
     
-
-//     const CallStack* RunContext::getCallstackForParentOf( const Ast::Program* prog ) const
-//     {
-//         for (const CallStack* cs = &frame_; cs; cs = cs->prev )
-//         {
-//             if (cs->prog == prog)
-//                 return cs->prev; // may be able to replace with parent->upvalues, but not entirely clear.
-//         }
-//         throw std::runtime_error("no context for recursive function invocation!");
-//     }
-
-//     const CallStack* RunContext::callstack() const
-//     {
-//         return &frame_;
-//     }
-
-    //~~~ In reality I think this should not be any different from BoundProgram.
-//     class RecursiveInvocation : public Function
-//     {
-//         const Ast::Program* program_;
-//         const CallStack* parentCallStack_;
-//     public:
-//         RecursiveInvocation( const Ast::Program* program, const CallStack* parentCallStack )
-//         : program_( program ), parentCallStack_( parentCallStack )
-//         {}
-//         void apply( Stack& s )
-//         {
-//             //~~~FIXME: what if I return an inner call?  I'm not ref'ing the callstack
-//             RunProgram( s, program_, parentCallStack_ );
-//             // const CallStack* getCallstackForParentOf( const Ast::Program* prog );
-//         }
-//     };
-
-//     SHAREDUPVALUE_CREF RunContext::getUpValuesOfParent( const Ast::Program* prog )
-//     {
-//         const auto cs = this->getCallstackForParentOf( prog );
-//         return cs->upvalues;
-//         throw std::runtime_error("no context for recursive function invocation!");
-//     }
         
 void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-//    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
     const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, uv );
@@ -1432,16 +1355,9 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 }
 void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-    //const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
-#if 0
-//     auto parentcs = rc.getCallstackForParentOf( pRecFun_ );
-//     RunProgram( stack, pRecFun_, parentcs );
-#else
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
-//    CallStack cs(uv);
     RunProgram( stack, pRecFun_, uv );
-#endif 
 }
 
 
@@ -2058,12 +1974,6 @@ class Parser
 
             if (eatReservedWord( "fun", mark ))
                 ;
-//             else if (eatReservedWord( "as", mark ))
-//             {
-//                 if (!eatwhitespace(mark)) 
-//                     throw ErrorNoMatch(); // whitespace required after 'as'
-//                 isAs = true;
-//             }
             else
                 throw ErrorNoMatch();
 
@@ -2187,18 +2097,11 @@ class Parser
             const auto& subast = progdef.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
             pDefProg_->setAst( functionAst );
-            //pDefProg_ = new Ast::Program( nullptr, functionAst );
-            // pDefFun_->setAst( progdef.ast() );
-
-//             Program withdefprog( mark, pWithDefFun_, nullptr );
-//             pWithDefFun_->setAst( withdefprog.ast() );
-            
             mark.accept();
         }
 
         Ast::Program* stealDefProg() { auto rc = pDefProg_; pDefProg_ = nullptr; return rc; }
         const std::string& getDefName() { return *defname_; }
-//        Ast::PushFun* stealWithDefFun() { auto rc = pWithDefFun_; pWithDefFun_ = nullptr; return rc; }
     }; // end, class Defdef
     
     Program* program_;
