@@ -24,9 +24,6 @@ def :fannkuch n = {
 
                    def :iloopy j = { as i
                       i j q.swap
---                      j q! as q_j
---                      i q! j q.set
---                      q_j i q.set
                       i 1 + as newi j 1 - as newj
                       newi newj < ? newi newj iloopy!
                    }
@@ -35,102 +32,54 @@ def :fannkuch n = {
 
    fun j = { j 1 + p! j p.set } as setjfromplus1
 
-          def :permute-loop i = {
---            local sx = s[i]
-              i s! as sx
---              # i sx 'stack=%@      i = %@ sx=%@\n' print!
---            if sx ~= 1 then s[i] = sx-1; break end
-              sx 1 = not!
-              ? { sx 1 - i s.set true }
-              : {
---            if i == n then return sum, maxflips end	-- Out of permutations.
-                  i n < not!
-                  ? { -- 'got exit' print!
-                      sum maxflips false }
-                  : {
-                     i i s.set
-                     1 p! as t
-                     setjfromplus1 1 i range!
-                     t i 1 + p.set
-
---                     fun = p!; 1 4 range! "b01.p [%@ %@ %@ %@]\n" print!
-
-                     i 1 + permute-loop!
-                  }
---            s[i] = i
---            -- Rotate 1<-...<-i+1.
---            local t = p[1]; for j=1,i do p[j] = p[j+1] end; p[i+1] = t
-              }
-          }
-
-           def :flipper-loop flips = { as q1
---            local qq = q[q1]
---            if qq == 1 then				-- ... until 1st element is 1.
---               sum = sum + sign*flips
---               if flips > maxflips then maxflips = flips end -- New maximum?
---               break
---            end
-              q1 q! as qq
---              # q1 qq sum sign flips "stack=%@ q1=%@ qq=%@ sum=%@ sign=%@ flips=%@\n" print!
-              qq 1 = ? {
-                 sum sign flips * + |> sum                   -- MUTATION
-                 flips maxflips > ? { flips |> maxflips }    -- MUTATION
-              } : {
-
---            q[q1] = q1
---            if q1 >= 4 then
---               local i, j = 2, q1 - 1
---               repeat q[i], q[j] = q[j], q[i]; i = i + 1; j = j - 1; until i >= j
---            end
-                q1 q1 q.set
---                # fun = q!; 1 4 range! "stack=%@ a03 [%@ %@ %@ %@]\n" print!
-                q1 4 < not! ? {
-                   2 q1 1 - iloopy!
-                }
---              q1 = qq; flips = flips + 1
---                # flips q1 qq "stack=%@ flips=%@ q1=%@ qq=%@\n" print!
-                qq |> q1                       -- MUTATION
---                fun = q!; 1 4 range! "a01 [%@ %@ %@ %@]\n" print!
-                q1 flips 1 + flipper-loop!
-             } -- q1 1 = :
+   def :permute-loop i = {
+       i s! as sx
+       sx 1 = not!
+       ? { sx 1 - i s.set true }
+       : {
+           i n < not!
+           ? { -- 'got exit' print!
+               sum maxflips false }
+           : {
+              i i s.set
+              1 p! as t
+              setjfromplus1 1 i range!
+              t i 1 + p.set
+              i 1 + permute-loop!
            }
+       }
+   }
 
-  def :inner-mainloop = {
---      -- Copy and flip.
---      local q1 = p[1]				-- Cache 1st element.
-        1 p! as q1
---        # q1 "stack=%@ q1=%@\n" print!
-        
-        q1 1 = not! ? {
-
---         for i=2,n do q[i] = p[i] end		-- Work on a copy.
---         local flips = 1
---           fun = q!; 1 4 range! "a02 [%@ %@ %@ %@]\n" print!
---           fun = p!; 1 4 range! "a02.p [%@ %@ %@ %@]\n" print!
-           setqfromp 2 n range!  -- MUTATION
---           # fun = q!; 1 4 range! "stack=%@ a02b [%@ %@ %@ %@]\n" print!
-           q1 1 flipper-loop!
---           # "stack=%@ exited flipper loop!\n" print!
---         until false
-        } -- end, q1 1 = not! ?
---      
---      -- Permute.
-        sign 1 = ? {
-             1 2 p.swap
-             -1 |> sign
-             true
-        } : {
-             2 3 p.swap
-             1 |> sign
-             3 permute-loop! -- permute loop returns 'true' to continue or 'sum maxflips false' on finish
+   def :flipper-loop flips = { as q1 as sign
+      q1 q! as qq
+      qq 1 = ? {
+         sum sign flips * + |> sum                   -- MUTATION
+         flips maxflips > ? { flips |> maxflips }    -- MUTATION
+      } : {
+        q1 q1 q.set
+        q1 4 < not! ? {
+           2 q1 1 - iloopy!
         }
+        sign qq flips 1 + flipper-loop!
+     } -- q1 1 = :
+   } -- end, flipper-loop
 
---        as kg
---        # kg 'stack=%@ keep going=%@\n' print!
-        -- kg
-        ? inner-mainloop!
+   def :inner-mainloop sign = {
+     1 p! as q1
+     q1 1 = not! ? {
+        setqfromp 2 n range!  -- MUTATION
+        sign q1 1 flipper-loop!
+     } -- end, q1 1 = not! ?
+     sign 1 = ? {
+          1 2 p.swap
+          -1 inner-mainloop!
+     } : {
+          2 3 p.swap
+          3 permute-loop! -- permute loop returns 'true' to continue or 'sum maxflips false' on finish
+          ? 1 inner-mainloop!
+     }
    } -- :inner-mainloop
-   inner-mainloop!
+   1 inner-mainloop!
 --   'exited mainloop\n' print!
 } -- end, :fannkuck
 
