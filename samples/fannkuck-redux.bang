@@ -8,13 +8,7 @@
 # N "fannkuck start stack=%@ N=%@\n" print!
 
 def :fannkuch n = {
-
 --  # n "stack=%@ fannkuck n=%@\n" print!
-
---  local p, q, s, sign, maxflips, sum = {}, {}, {}, 1, 0, 0
---  for i=1,n do p[i] = i; q[i] = i; s[i] = i end
-
-  1 as sign
   0 as maxflips
   0 as sum
 
@@ -22,11 +16,11 @@ def :fannkuch n = {
    (p.push! stack-to-array!) as q
    (p.push! stack-to-array!) as s
 
-                   def :iloopy j = { as i
-                      i j q.swap
-                      i 1 + as newi j 1 - as newj
-                      newi newj < ? newi newj iloopy!
-                   }
+   def :iloopy j = { as i
+      i j q.swap
+      j i - 2 >
+      ? i 1 + j 1 - iloopy!
+   }
 
    fun i = i p! i q.set; as setqfromp
 
@@ -50,25 +44,27 @@ def :fannkuch n = {
        }
    }
 
-   def :flipper-loop flips = { as q1 as sign
-      q1 q! as qq
-      qq 1 = ? {
-         sum sign flips * + |> sum                   -- MUTATION
-         flips maxflips > ? { flips |> maxflips }    -- MUTATION
-      } : {
-        q1 q1 q.set
-        q1 4 < not! ? {
-           2 q1 1 - iloopy!
+   def :flipper-loop sign = {
+      def :inner-flipper flips = { as q1
+        q1 q! as qq
+        qq 1 =
+        ? { sum sign flips * + |> sum                   -- MUTATION
+            flips maxflips > ? { flips |> maxflips }    -- MUTATION
         }
-        sign qq flips 1 + flipper-loop!
-     } -- q1 1 = :
+        : { q1 q1 q.set
+            q1 4 < not!
+            ? { 2 q1 1 - iloopy! }
+            qq flips 1 + inner-flipper!
+        } -- q1 1 = :
+     }
+     inner-flipper!
    } -- end, flipper-loop
 
    def :inner-mainloop sign = {
      1 p! as q1
      q1 1 = not! ? {
         setqfromp 2 n range!  -- MUTATION
-        sign q1 1 flipper-loop!
+        q1 1 sign flipper-loop!
      } -- end, q1 1 = not! ?
      sign 1 = ? {
           1 2 p.swap

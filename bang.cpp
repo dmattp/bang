@@ -5,10 +5,7 @@
 //////////////////////////////////////////////////////////////////
 
 #define PBIND(...) do {} while (0)
-#define OPTIMIZATION 0
 #define HAVE_MUTATION 1  // boo
-#define HAVE_RECURSIVE_FUNCTIONS 1
-#define HAVE_PARTIAL_OPTIMIZATION 1
 
 
 #if HAVE_MUTATION
@@ -722,7 +719,6 @@ namespace Ast
     };
 #endif 
     
-#if HAVE_PARTIAL_OPTIMIZATION
     class ApplyUpval : public PushUpval
     {
     public:
@@ -745,7 +741,6 @@ namespace Ast
             return rc.getUpValue( uvnumber_ );
         }
     };
-#endif 
 
     class PushUpvalByName : public Base
     {
@@ -844,7 +839,6 @@ namespace Ast
 
     // optimization, immediately run program rather than executing
     // push+apply
-#if HAVE_PARTIAL_OPTIMIZATION
     class ApplyProgram : public Program
     {
     public:
@@ -865,7 +859,6 @@ namespace Ast
         }
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-#endif 
 
     class IfElse : public Base
     {
@@ -902,7 +895,6 @@ namespace Ast
     }; // end class IfElse
 
 
-#if HAVE_RECURSIVE_FUNCTIONS
     class PushFunctionRec : public Base
     {
     protected:
@@ -922,9 +914,7 @@ namespace Ast
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-#endif
 
-#if HAVE_PARTIAL_OPTIMIZATION    
     class ApplyFunctionRec : public PushFunctionRec
     {
     public:
@@ -942,8 +932,6 @@ namespace Ast
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-#endif 
-    
     
 } // end, namespace Ast
 
@@ -1378,14 +1366,11 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 }
 
 
-#if HAVE_PARTIAL_OPTIMIZATION
 void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 {
     RunProgram( stack, this, rc.callstack() );
 }
-#endif 
     
-#if HAVE_RECURSIVE_FUNCTIONS
 
     const CallStack* RunContext::getCallstackForParentOf( const Ast::Program* prog ) const
     {
@@ -1441,17 +1426,11 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
         stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
     }
 }
-#endif 
-
-
-#if HAVE_PARTIAL_OPTIMIZATION
 void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
     auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
     RunProgram( stack, pRecFun_, parentcs );
 }
-#endif
-
 
 
 void Ast::Apply::ApplyValue( const Value& v, Stack& stack, const RunContext& rc )
@@ -1475,13 +1454,11 @@ void Ast::Apply::ApplyValue( const Value& v, Stack& stack, const RunContext& rc 
     }
 }
 
-#if HAVE_PARTIAL_OPTIMIZATION    
 void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc) const
 {
     const Value& v = this->getUpValue( rc );
     Ast::Apply::ApplyValue( v, stack, rc );
 };
-#endif 
 
     
 void Ast::Apply::run( Stack& stack, const RunContext& rc ) const
@@ -2228,7 +2205,6 @@ public:
 void OptimizeAst( std::vector<Ast::Base*>& ast )
 //void OptimizeAst( Ast::Program::astList_t& ast )
 {
-#if HAVE_PARTIAL_OPTIMIZATION
     class NoOp : public Ast::Base
     {
     public:
@@ -2354,7 +2330,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             possibleTail->convertToTailCall();
         }
     }
-#endif // HAVE_PARTIAL_OPTIMIZATION
 }
 
 namespace Primitives {
@@ -2655,7 +2630,6 @@ Parser::Program::Program
             
                 bool bFoundRecFunId = false;
 
-#if HAVE_RECURSIVE_FUNCTIONS                
                 if (pRecParsing)
                 {
                     const auto& recfunpair = pRecParsing->FindProgramForIdent(ident.name());
@@ -2666,7 +2640,6 @@ Parser::Program::Program
                         bFoundRecFunId = true;
                     }
                 }
-#endif 
 
                 if (!bFoundRecFunId)
                 {

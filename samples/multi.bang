@@ -1,7 +1,8 @@
 # 1 < ? 1; as N 'lib/iterate.bang' require! .times as times fun =
 
-    125   'samples/spectral.bang'     require! save-stack! drop!
-    10    'samples/binary-trees.bang' require! save-stack! drop!
+    125   'samples/spectral.bang'       require! save-stack! drop!
+    10    'samples/binary-trees.bang'   require! save-stack! drop!
+    8     'samples/fannkuck-redux.bang' require! save-stack! drop!
 --    19000 'samples/quicksort.bang'    require! save-stack! drop!
 
 ; N times!
