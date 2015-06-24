@@ -6,7 +6,7 @@
 
 #define PBIND(...) do {} while (0)
 #define HAVE_MUTATION 1  // boo
-
+#define OPT_TCO_APPLY_UPVAL 1
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -197,7 +197,7 @@ public:
     const Value& getUpValue( const std::string& uvName ) const;
 
     // for recursive invocation
-    const CallStack* getCallstackForParentOf( const Ast::Program* prog ) const;
+//    const CallStack* getCallstackForParentOf( const Ast::Program* prog ) const;
     const CallStack* callstack() const;
 //     SHAREDUPVALUE_CREF getUpValuesOfParent( const Ast::Program* prog );
 };
@@ -466,7 +466,9 @@ namespace Ast
                 case kApplyFunRec:  instr_ = kTCOApplyFunRec;  break;
                 case kIfElse:       instr_ = kTCOIfElse;       break;
                 case kApplyProgram: instr_ = kTCOApplyProgram; break;
-//                case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
+#if OPT_TCO_APPLY_UPVAL                    
+                case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
+#endif 
 //                 case kApply:        instr_ = kTCOApply;        break;
             }
         }
@@ -1249,7 +1251,7 @@ restartTco:
                 }
                 break;
 
-#if 0
+#if OPT_TCO_APPLY_UPVAL                    
                 case Ast::Base::kTCOApplyUpval:
                 {
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc );
@@ -1261,22 +1263,27 @@ restartTco:
                     else if( v.isfun() )
                     {
                         const auto& pfun = v.tofun();
+                        
                         BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(pfun.get());
                         if (pbound)
                         {
+#if 0
+                            CallStack cs( pbound->upvalues_ );  //~~~ FIXMECS
+                            RunProgram( stack, pbound->program_, &cs );
+#else
+                            frame.rebind( pbound->program_ );
+                            frame.upvalues = pbound->upvalues_;
+                            
 //                            frame.prev     = nullptr;
 //                             frame.prog     = pbound->program_;
 //                             frame.ppInstr  = TMPFACT_PROG_TO_RUNPROG(pbound->program_);
 //                             frame.upvalues = pbound->upvalues_;
-           CallStack cs( pbound->upvalues_ );  //~~~ FIXMECS
-           RunProgram( stack, pbound->program_, &cs );
 //                            frame.upvalues = pbound->upvalues_;
 //                            frame.rebind( pbound->program_ );
                             goto restartTco;
+#endif 
                         }
                         else
-                        /*
-                        */
                         {
                             pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not
                                                  // executing context!
@@ -1292,7 +1299,6 @@ restartTco:
                 }
                 break;
 #endif 
-
 
 #if OPTIMIZE                    
                 case Ast::Base::kTCOApply:
@@ -1314,6 +1320,7 @@ restartTco:
                 }
                 break;
 #endif // OPTIMIZE
+
             } // end,instr switch
         } // end, while loop incrementing PC
     }
@@ -1372,15 +1379,15 @@ void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 }
     
 
-    const CallStack* RunContext::getCallstackForParentOf( const Ast::Program* prog ) const
-    {
-        for (const CallStack* cs = &frame_; cs; cs = cs->prev )
-        {
-            if (cs->prog == prog)
-                return cs->prev; // may be able to replace with parent->upvalues, but not entirely clear.
-        }
-        throw std::runtime_error("no context for recursive function invocation!");
-    }
+//     const CallStack* RunContext::getCallstackForParentOf( const Ast::Program* prog ) const
+//     {
+//         for (const CallStack* cs = &frame_; cs; cs = cs->prev )
+//         {
+//             if (cs->prog == prog)
+//                 return cs->prev; // may be able to replace with parent->upvalues, but not entirely clear.
+//         }
+//         throw std::runtime_error("no context for recursive function invocation!");
+//     }
 
     const CallStack* RunContext::callstack() const
     {
@@ -1388,21 +1395,21 @@ void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
     }
 
     //~~~ In reality I think this should not be any different from BoundProgram.
-    class RecursiveInvocation : public Function
-    {
-        const Ast::Program* program_;
-        const CallStack* parentCallStack_;
-    public:
-        RecursiveInvocation( const Ast::Program* program, const CallStack* parentCallStack )
-        : program_( program ), parentCallStack_( parentCallStack )
-        {}
-        void apply( Stack& s )
-        {
-            //~~~FIXME: what if I return an inner call?  I'm not ref'ing the callstack
-            RunProgram( s, program_, parentCallStack_ );
-            // const CallStack* getCallstackForParentOf( const Ast::Program* prog );
-        }
-    };
+//     class RecursiveInvocation : public Function
+//     {
+//         const Ast::Program* program_;
+//         const CallStack* parentCallStack_;
+//     public:
+//         RecursiveInvocation( const Ast::Program* program, const CallStack* parentCallStack )
+//         : program_( program ), parentCallStack_( parentCallStack )
+//         {}
+//         void apply( Stack& s )
+//         {
+//             //~~~FIXME: what if I return an inner call?  I'm not ref'ing the callstack
+//             RunProgram( s, program_, parentCallStack_ );
+//             // const CallStack* getCallstackForParentOf( const Ast::Program* prog );
+//         }
+//     };
 
 //     SHAREDUPVALUE_CREF RunContext::getUpValuesOfParent( const Ast::Program* prog )
 //     {
@@ -1414,22 +1421,23 @@ void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
 //    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
-    if (nthparent_ == kNoParent)
-    {
-        SHAREDUPVALUE none;
-        const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, none );
-        stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
-    }
-    else
-    {
-        const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, rc.nthBindingParent( nthparent_ ) );
-        stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
-    }
+    SHAREDUPVALUE uv =
+        (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
+    const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, uv );
+    stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
 }
 void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
-    RunProgram( stack, pRecFun_, parentcs );
+    //const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
+#if 0
+//     auto parentcs = rc.getCallstackForParentOf( pRecFun_ );
+//     RunProgram( stack, pRecFun_, parentcs );
+#else
+    SHAREDUPVALUE uv =
+        (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
+    CallStack cs(uv);
+    RunProgram( stack, pRecFun_, &cs );
+#endif 
 }
 
 

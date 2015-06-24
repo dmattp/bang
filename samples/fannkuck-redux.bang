@@ -23,24 +23,33 @@ def :fannkuch n = {
    }
 
    fun i = i p! i q.set; as setqfromp
+--   fun = dup! p! swap! q.set; as setqfromp
 
    fun j = { j 1 + p! j p.set } as setjfromplus1
+
+   def :setjfromplus1x top = {
+     def :inner9 j = {
+       j 1 + p! j p.set
+       j top < j 1 + inner9!
+     }
+     1 inner9!
+   }
 
    def :permute-loop i = {
        i s! as sx
        sx 1 = not!
        ? { sx 1 - i s.set true }
        : {
-           i n < not!
-           ? { -- 'got exit' print!
-               sum maxflips false }
-           : {
+           i n <
+           ? {
               i i s.set
               1 p! as t
               setjfromplus1 1 i range!
+--              i setjfromplus1x!
               t i 1 + p.set
               i 1 + permute-loop!
            }
+           : { sum maxflips false }
        }
    }
 
@@ -52,8 +61,7 @@ def :fannkuch n = {
             flips maxflips > ? { flips |> maxflips }    -- MUTATION
         }
         : { q1 q1 q.set
-            q1 4 < not!
-            ? { 2 q1 1 - iloopy! }
+            q1 4 < not! ? { 2 q1 1 - iloopy! }
             qq flips 1 + inner-flipper!
         } -- q1 1 = :
      }
