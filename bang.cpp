@@ -6,10 +6,16 @@
 
 #define PBIND(...) do {} while (0)
 #define OPTIMIZATION 0
-#define HAVE_FUNCTIONS 0
+#define HAVE_MUTATION 1  // boo
 #define HAVE_RECURSIVE_FUNCTIONS 1
-#define HAVE_PARTIAL_FUNCTIONS 1
 #define HAVE_PARTIAL_OPTIMIZATION 1
+
+
+#if HAVE_MUTATION
+# if __GNUC__
+# warning Mutation enabled: You have strayed from the true and blessed path.
+#endif 
+#endif
 
 /*
   Keywords
@@ -108,7 +114,7 @@ namespace Bang {
         {
         }
 
-        const Value& getUpValue( NthParent uvnumber )
+        const Value& getUpValue( const NthParent uvnumber )
         {
             return (uvnumber == NthParent(0)) ? v_ : parent_->getUpValue( --uvnumber );
         }
@@ -116,6 +122,11 @@ namespace Bang {
         // lookup by string / name is expensive; used for experimental object
         // system.  obviously if it's "a hit" you can optimize out much of this cost
         const Value& getUpValue( const std::string& uvName );
+
+        SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber )
+        {
+            return (uvnumber == NthParent(1)) ? parent_ : parent_->nthParent( --uvnumber );
+        }
     };
 
     
@@ -183,6 +194,7 @@ public:
     }
 //    CLOSURE_CREF running() const { return pActiveFun_; }
     SHAREDUPVALUE_CREF upvalues() const;
+    SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
 
     const Value& getUpValue( NthParent up ) const;
     const Value& getUpValue( const std::string& uvName ) const;
@@ -479,7 +491,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "CloseValue(" << paramName_ << ")\n";
+            o << "CloseValue(" << paramName_ << ") " << std::hex << PtrToHash(this) << std::dec << "\n";
         }
 #if 0        
         const CloseValue* cvForName( const std::string& param ) const
@@ -507,6 +519,23 @@ namespace Ast
                     return kNoParent;
 
                 auto fbp = pUpvalParent_->FindBinding(varName);
+
+                return (fbp == kNoParent ) ? fbp : ++fbp;
+            }
+        }
+
+        const NthParent FindBinding( const CloseValue* target ) const
+        {
+            if (this == target)
+            {
+                return NthParent(0);
+            }
+            else
+            {
+                if (!pUpvalParent_)
+                    return kNoParent;
+
+                auto fbp = pUpvalParent_->FindBinding(target);
 
                 return (fbp == kNoParent ) ? fbp : ++fbp;
             }
@@ -670,6 +699,29 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
+#if HAVE_MUTATION    
+    class SetUpval : public Base
+    {
+    protected:
+        std::string name_;
+        NthParent uvnumber_; // index into the active Upvalues
+    public:
+        SetUpval( const std::string& name, NthParent uvnumber )
+        : name_( name ),
+          uvnumber_( uvnumber )
+        {
+        }
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "SetUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& ) const;
+    };
+#endif 
+    
 #if HAVE_PARTIAL_OPTIMIZATION
     class ApplyUpval : public PushUpval
     {
@@ -856,14 +908,16 @@ namespace Ast
     protected:
     public:
         Ast::Program* pRecFun_;
-        PushFunctionRec( Ast::Program* other )
-        : pRecFun_( other )
+        NthParent nthparent_;
+        PushFunctionRec( Ast::Program* other, NthParent boundAt )
+        : pRecFun_( other ),
+          nthparent_(boundAt)
         {}
 
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "PushFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
+            o << "PushFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
@@ -883,7 +937,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "]" << std::endl;
+            o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
@@ -1030,6 +1084,20 @@ public:
             const auto& str = msg.tostr();
             if (str == "#")
                 s.push( double(stack_.size()) );
+#if HAVE_MUTATION            
+            else if (str == "set")
+            {
+                int ndx = int(s.pop().tonum());
+                stack_[ndx] = s.pop();
+            }
+            else if (str == "swap")
+            {
+                int ndx1 = int(s.pop().tonum());
+                int ndx2 = int(s.pop().tonum());
+                std::swap( stack_[ndx1], stack_[ndx2] );
+//                stack_[ndx] = s.pop();
+            }
+#endif 
             else if (str == "push")
             {
                 auto pushit = NEW_BANGFUN(FunctionRestoreStack)( stack_ );
@@ -1166,8 +1234,8 @@ restartTco:
                     // no dynamic cast, should be safe since we know the type from instr_
 //                    std::cerr << "got kTCOApplyFunRec" << std::endl;
                     const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
-                    auto parentcs = rc.getCallstackForParentOf( afn->pRecFun_ ); // ->getParent();
-                    frame.rebind( afn->pRecFun_, parentcs );
+                    frame.rebind( afn->pRecFun_ );
+                    frame.upvalues = (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( afn->nthparent_ );
                     goto restartTco;
                 }
                 break;
@@ -1293,6 +1361,11 @@ SHAREDUPVALUE_CREF RunContext::upvalues() const
 {
     return frame_.upvalues;
 }
+
+SHAREDUPVALUE_CREF RunContext::nthBindingParent( const NthParent n ) const
+{
+    return n == NthParent(0) ? frame_.upvalues : frame_.upvalues->nthParent( n );
+}
     
 const Value& RunContext::getUpValue( NthParent uvnumber ) const
 {
@@ -1355,11 +1428,18 @@ void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
         
 void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
-    
-    const auto& newfun = NEW_BANGFUN(RecursiveInvocation)( pRecFun_, parentcs );
-
-    stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
+//    auto parentcs = rc.getCallstackForParentOf( pRecFun_ ); // ->getParent();
+    if (nthparent_ == kNoParent)
+    {
+        SHAREDUPVALUE none;
+        const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, none );
+        stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
+    }
+    else
+    {
+        const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, rc.nthBindingParent( nthparent_ ) );
+        stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
+    }
 }
 #endif 
 
@@ -1425,6 +1505,14 @@ void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
     stack.push( rc.getUpValue( uvnumber_ ) );
 };
 
+#if HAVE_MUTATION    
+void Ast::SetUpval::run( Stack& stack, const RunContext& rc) const
+{
+    const Value& v = rc.getUpValue( uvnumber_ );
+    const_cast<Value&>(v) = stack.pop(); // see the sort of horrible things mutation forces me to do
+};
+#endif 
+    
 // this nearly lets us create a sort of hash table / record / object system!
 //
 // This is really sort of 'experiment' code to make a quick&dirty object system /
@@ -1925,30 +2013,36 @@ class Parser
     {
         ParsingRecursiveFunStack* prev;
         Ast::Program *parentProgram;
+        const Ast::CloseValue* parentsBinding;
         std::string progname_;
 //        Ast::CloseValue* upvalueChain;
 //         Ast::CloseValue* FindCloseValueForIdent( const std::string& ident )
 //         {
 //             return upvalueChain->cvForName( ident );
 //         }
-        Ast::Program* FindProgramForIdent( const std::string& ident )
+        std::pair<Ast::Program*,const Ast::CloseValue*> FindProgramForIdent( const std::string& ident )
         {
             if (progname_ == ident)
-                return parentProgram;
+            {
+//                std::cerr << "found parent prog, ident=" << ident << " CloseValue=" << parentsBinding << "\n";
+                return std::pair<Ast::Program*,const Ast::CloseValue*>( parentProgram, parentsBinding );
+            }
             else if (prev)
                 return prev->FindProgramForIdent( ident );
             else
-                return nullptr;
+                return std::pair<Ast::Program*,const Ast::CloseValue*>( nullptr, nullptr );
         }
         
         ParsingRecursiveFunStack
         (   ParsingRecursiveFunStack* p,
             Ast::Program* parent,
+            const Ast::CloseValue* binding,
             const std::string& progname
 //            Ast::CloseValue* upvals
         )
         :  prev( p ),
            parentProgram(parent),
+           parentsBinding( binding ),
            progname_( progname )
         {}
     };
@@ -2032,7 +2126,6 @@ class Parser
         Ast::Program* stealProgram() { auto rc = pNewProgram_; pNewProgram_ = nullptr; return rc; }
     }; // end, class Fundef
 
-#if HAVE_PARTIAL_FUNCTIONS
     class Defdef
     {
 //        bool postApply_;
@@ -2048,6 +2141,7 @@ class Parser
         : pDefProg_(nullptr)
 //            pWithDefFun_(nullptr)
         {
+            const Ast::CloseValue* const lastParentUpvalue = upvalueChain;
             StreamMark mark(stream);
 
             eatwhitespace(mark);
@@ -2099,7 +2193,7 @@ class Parser
 
             // std::string defFunName = pWithDefFun_->getParamName();
             pDefProg_ = new Ast::Program(nullptr);
-            ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, *defname_ ); // , pWithDefFun_);
+            ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, lastParentUpvalue, *defname_ ); // , pWithDefFun_);
             Program progdef( mark, nullptr, upvalueChain, &recursiveStack ); // pDefFun_, &recursiveStack );
             const auto& subast = progdef.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
@@ -2117,7 +2211,6 @@ class Parser
         const std::string& getDefName() { return *defname_; }
 //        Ast::PushFun* stealWithDefFun() { auto rc = pWithDefFun_; pWithDefFun_ = nullptr; return rc; }
     }; // end, class Defdef
-#endif // HAVE_FUNCTIONS
     
     Program* program_;
 public:
@@ -2374,7 +2467,6 @@ Parser::Program::Program
                 continue;
             } catch ( const ErrorNoMatch& ) {}
 
-#if HAVE_PARTIAL_FUNCTIONS
             try
             {
                 Defdef fun( stream, upvalueChain, pRecParsing );
@@ -2385,8 +2477,6 @@ Parser::Program::Program
                 ast_.push_back( cv );
                 continue;
             } catch ( const ErrorNoMatch& ) {}
-#endif
-
 
             /////// Single character operators ///////
             StreamMark mark(stream);            
@@ -2430,6 +2520,20 @@ Parser::Program::Program
                 ast_.push_back( new Ast::Apply() );
                 continue;
             }
+#if HAVE_MUTATION            
+            else if (c == '|')
+            {
+                if (mark.getc() == '>')
+                {
+                    eatwhitespace(mark);
+                    Identifier ident( mark );
+                    mark.accept();
+                    const NthParent upvalNumber = upvalueChain->FindBinding( ident.name() );
+                    ast_.push_back( new Ast::SetUpval(ident.name(), upvalNumber) );
+                    continue;
+                }
+            }
+#endif 
             else if (c == '?')
             {
 //                std::cerr << "found if-else\n";
@@ -2554,10 +2658,11 @@ Parser::Program::Program
 #if HAVE_RECURSIVE_FUNCTIONS                
                 if (pRecParsing)
                 {
-                    Ast::Program* pRecFunForIdent = pRecParsing->FindProgramForIdent(ident.name());
-                    if (pRecFunForIdent)
+                    const auto& recfunpair = pRecParsing->FindProgramForIdent(ident.name());
+                    if (recfunpair.first)
                     {
-                        ast_.push_back( new Ast::PushFunctionRec( pRecFunForIdent) );
+                        auto nthbinding = upvalueChain->FindBinding( recfunpair.second );
+                        ast_.push_back( new Ast::PushFunctionRec( recfunpair.first, nthbinding ) );
                         bFoundRecFunId = true;
                     }
                 }

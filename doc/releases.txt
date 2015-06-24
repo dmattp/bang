@@ -6,8 +6,11 @@ Roadmap / Upcoming Releases
 v0.003
 
 * (very) Minimal String Library
+* Replace function closure with CloseValue and separate Upvalue chain
 * Replace ConditionalApply with IfElse
 * RunLoop optimization
+* basic file / line / column tracking for parse error messages
+* 'print' primitive
 
 v0.002
 
