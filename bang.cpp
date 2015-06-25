@@ -494,10 +494,8 @@ namespace Ast
                 case kApplyFunRec:  instr_ = kTCOApplyFunRec;  break;
                 case kIfElse:       instr_ = kTCOIfElse;       break;
                 case kApplyProgram: instr_ = kTCOApplyProgram; break;
-#if OPT_TCO_APPLY_UPVAL                    
                 case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
-                 case kApply:        instr_ = kTCOApply;        break;
-#endif 
+                case kApply:        instr_ = kTCOApply;        break;
             }
         }
     private:
@@ -514,26 +512,12 @@ namespace Ast
           paramName_( name )
         {}
         const std::string& valueName() const { return paramName_; }
-        virtual void run( Stack& stack, const RunContext& rc ) const {}
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "CloseValue(" << paramName_ << ") " << std::hex << PtrToHash(this) << std::dec << "\n";
         }
-#if 0        
-        const CloseValue* cvForName( const std::string& param ) const
-        {
-            return
-            (  (param == paramName_)
-            ? this
-            :   (   pUpvalParent_
-                ?   pUpvalParent_->cvForName(param)
-                :   nullptr
-                )
-            );
-        }
-#endif
-
+        
         const NthParent FindBinding( const std::string& varName ) const
         {
             if (this->paramName_ == varName)
@@ -625,8 +609,6 @@ namespace Ast
             indentlevel(level, o);
             o << "---\n";
         }
-        virtual void run( Stack& stack, const RunContext& ) const
-        {}
     };
     class EofMarker : public Base
     {
@@ -640,7 +622,6 @@ namespace Ast
             indentlevel(level, o);
             o << "<<< EOF >>>\n";
         }
-        virtual void run( Stack& stack, const RunContext& ) const;
     };
 
     class PushLiteral : public Base
@@ -738,11 +719,8 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "MakeCoroutine\n";
+            o << "YieldCoroutine\n";
         }
-
-        virtual void run( Stack& stack, const RunContext& ) const
-        {}
     };
     
     class PushUpval : public Base
@@ -851,8 +829,6 @@ namespace Ast
     };
 
 
-//    class PushProg;
-
     class Program : public Base
     {
     public:
@@ -874,15 +850,6 @@ namespace Ast
         {
             ast_ = newast;
         }
-
-//         Program& add( Ast::Base* action ) {
-//             ast_.push_back( action );
-//             return *this;
-//         }
-//         Program& add( Ast::Base& action ) {
-//             ast_.push_back( &action );
-//             return *this;
-//         }
         
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -1072,8 +1039,6 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
 #if !USE_GC    
 SimpleAllocator< std::shared_ptr<Upvalue> > gUpvalAlloc;
 #define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
-// # undef  NEW_CLOSURE
-// # define NEW_CLOSURE(a,b)           std::allocate_shared<FunctionClosure>( gFuncloseAlloc, a, b )
 #endif
 
 
@@ -1161,56 +1126,6 @@ namespace Primitives {
 }
 
 
-
-#if 0    
-    auto ApplyValue = [&]( const Value& calledFun ) -> bool
-    {
-        if (Ast::Apply::applyOrIsClosure( calledFun, stack, rc ))
-        {
-            pFunction = DYNAMIC_CAST_TO_CLOSURE(calledFun.tofun());
-            pFunction->bindParams( stack );
-            pProgram = pFunction->getProgram();
-            return true;
-        } // end , closure
-        else
-            return false;
-    };
-#endif
-
-#if 0    
-struct CallStack
-{
-//    const Ast::Program* prog;
-    const Ast::Base* const *ppInstr;
-    SHAREDUPVALUE upvalues;
-    CallStack( // const CallStack* inprev,
-        const Ast::Program* inprog, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
-    :
-    //prev( inprev ),
-    //prog( inprog ),
-    ppInstr( inppInstr ) // , /*initialupvalues(uv),*/
-    ,upvalues( uv )
-    {}
-    
-    void rebind( const Ast::Program* inprog )
-    {
-//        prog = inprog;
-        ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
-    }
-
-    void rebind( const Ast::Program* inprog, SHAREDUPVALUE_CREF uv )
-    {
-        this->rebind(inprog);
-        upvalues = uv;
-    }
-    
-    void rebind( const Ast::Base* const * inppInstr )
-    {
-        ppInstr = inppInstr;
-    }
-};
-#endif 
-
     class BoundProgram : public Function
     {
     public:
@@ -1228,7 +1143,6 @@ struct CallStack
     };
     
     
-// SimpleAllocator< CallStack > gCallStackAlloc;
     void throwNoFunVal( const Value& v )
     {
         std::ostringstream oss;
@@ -1270,6 +1184,11 @@ void repl_prompt()
 {
     std::cout << "Bang! " << std::flush;
 }
+
+void xferstack( Thread* from, Thread* to )
+{
+    from->stack.giveTo( to->stack );
+}
     
 void RunProgram
 (   
@@ -1309,6 +1228,7 @@ restartTco:
                         goto restartReturn;
                     else if (pThread->pCaller)
                     {
+                        xferstack( pThread, pThread->pCaller );
                         pThread = pThread->pCaller;
                         goto restartThread;
                     }
@@ -1343,6 +1263,7 @@ restartTco:
                 case Ast::Base::kYieldCoroutine:
                     if (pThread->pCaller)
                     {
+                        xferstack( pThread, pThread->pCaller );
                         pThread = pThread->pCaller;
                         goto restartThread;
                     }
@@ -1430,7 +1351,7 @@ restartTco:
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
@@ -1446,7 +1367,7 @@ restartTco:
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             inprog = pbound->program_;
@@ -1462,7 +1383,7 @@ restartTco:
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
@@ -1477,7 +1398,7 @@ restartTco:
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             inprog = pbound->program_;
@@ -2009,7 +1930,6 @@ class Parser
     public:
         ParseLiteral( StreamMark& mark )
         {
-//            std::cerr << "In ParseLiteral\n";
             try
             {
                 value_ = Value(ParseString(mark).content());
@@ -2074,18 +1994,12 @@ class Parser
         return true;
     }
 
-//    class Ast::PushFun;
     struct ParsingRecursiveFunStack
     {
         ParsingRecursiveFunStack* prev;
         Ast::Program *parentProgram;
         const Ast::CloseValue* parentsBinding;
         std::string progname_;
-//        Ast::CloseValue* upvalueChain;
-//         Ast::CloseValue* FindCloseValueForIdent( const std::string& ident )
-//         {
-//             return upvalueChain->cvForName( ident );
-//         }
         std::pair<Ast::Program*,const Ast::CloseValue*> FindProgramForIdent( const std::string& ident )
         {
             if (progname_ == ident)
@@ -2178,7 +2092,6 @@ class Parser
             const auto& subast = program.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
             pNewProgram_ = new Ast::Program( nullptr, functionAst );
-            // pNewFun_->setAst( program.ast() );
 
             mark.accept();
         }
@@ -2188,18 +2101,12 @@ class Parser
 
     class Defdef
     {
-//        bool postApply_;
-         Ast::Program* pDefProg_;
-//         Ast::PushFun* pWithDefFun_;
+        Ast::Program* pDefProg_;
         std::unique_ptr<std::string> defname_;
     public:
         ~Defdef() { delete pDefProg_; } // delete pWithDefFun_; 
-        Defdef( StreamMark& stream, const Ast::CloseValue* upvalueChain,
-        // PushFun* pParentFun,
-            ParsingRecursiveFunStack* pRecParsing )
-        //        :  postApply_(false),
+        Defdef( StreamMark& stream, const Ast::CloseValue* upvalueChain, ParsingRecursiveFunStack* pRecParsing )
         : pDefProg_(nullptr)
-//            pWithDefFun_(nullptr)
         {
             const Ast::CloseValue* const lastParentUpvalue = upvalueChain;
             StreamMark mark(stream);
@@ -2217,9 +2124,6 @@ class Parser
                 std::cerr << "got '" << c << "' expecting ':'" << std::endl;
                 throw ParseFail( mark.sayWhere(), "def name must start with ':'");
             }
-
-//             pDefFun_ =  new Ast::PushFun( pParentFun );
-//             pWithDefFun_ =  new Ast::PushFun( pParentFun );
 
             try
             {
@@ -2317,12 +2221,10 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             {
 //                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
                 Ast::ApplyProgram* newfun = new Ast::ApplyProgram( pup );
-//                newfun->reparentKids(pup); // ugly
                 ast[i] = newfun;
                 ast[i+1] = &noop;
-                
                 // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
-                // 'reparent' or redesign this thing
+                // 'reparent' or redesign this thing) ? still true??
                 ++i;
                 continue;
             }
@@ -2820,34 +2722,6 @@ public:
         return nullptr;
     }
 
-//     Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::Program* parent )
-//     {
-//         StreamMark mark(stream);
-
-//         try
-//         {
-//             Parser parser( mark, parent );
-
-//             Ast::Program* p = new Ast::Program( parent, parser.programAst() );
-            
-//             if (bDump)
-//                 p->dump( 0, std::cerr );
-
-//             return p;
-//         }
-//         catch (const ErrorEof& )
-//         {
-//             std::cerr << "Found EOF without valid program!" << std::endl;
-//         }
-//         catch (const std::runtime_error& e )
-//         {
-//             std::cerr << "Runtime parse error b01: " << e.what() << std::endl;
-//             throw e;
-//         }
-
-//         return nullptr;
-//     }
-    
     
     Ast::Program* parseNoUpvals( RegurgeIo& stream, bool bDump )
     {
@@ -2911,11 +2785,6 @@ public:
 }; // end, class RequireKeyword
 
 
-void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
-{
-//    std::cerr << "Found EOF!" << std::endl;
-}
-    
 
 
 void Ast::Require::run( Stack& stack, const RunContext& rc ) const

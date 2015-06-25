@@ -305,8 +305,13 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 stack_.erase( stack_.begin() + bound_->mark, stack_.end() );
             }
         }
-    
+
     public:
+        void giveTo( Stack& other )
+        {
+            this->giveTo( other.stack_ );
+        }
+    
         Stack()
         : bound_(nullptr)
         {}
