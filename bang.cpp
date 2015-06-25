@@ -184,6 +184,7 @@ namespace Ast { class Base; }
 class RunContext
 {
 public:
+    RunContext* prev;
     const Ast::Base* const *ppInstr;
     SHAREDUPVALUE    upvalues_;
 public:    
@@ -193,9 +194,10 @@ public:
     const Value& getUpValue( const std::string& uvName ) const;
 
 
-    RunContext( const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
-    :  ppInstr( inppInstr ) // , /*initialupvalues(uv),*/
-      ,upvalues_( uv )
+    RunContext( RunContext* inprev, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
+    :  prev(inprev),
+       ppInstr( inppInstr ), // , /*initialupvalues(uv),*/
+       upvalues_( uv )
     {}
     
 //     void rebind( const Ast::Program* inprog )
@@ -1192,15 +1194,25 @@ struct CallStack
         v.dump(oss);
         throw std::runtime_error(oss.str());
     }
+
+SimpleAllocator<RunContext> gAllocRc;
+RunContext* gRunContext = nullptr;    
     
 void RunProgram
-(   Stack& stack,
+(   
+    Stack& stack,
     const Ast::Program* inprog,
-    SHAREDUPVALUE_CREF upvalues
+    SHAREDUPVALUE upvalues
 )
 {
 // ~~~todo: save initial upvalue, destroy when closing program?
-    RunContext frame( TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
+restartNonTail:
+    RunContext* pFrame =
+        new (gAllocRc.allocate(sizeof(RunContext)))
+        RunContext( gRunContext, TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
+restartReturn:
+    gRunContext = pFrame;
+    RunContext& frame = *pFrame;
 restartTco:
     try
     {
@@ -1213,6 +1225,9 @@ restartTco:
                     // destroy inaccesible upvalues created by this program?
                     // is it necessary, or automatic since "upvalues" will be
                     // destroyed here?
+                    gRunContext = pFrame->prev;
+                    pFrame->~RunContext();
+                    gAllocRc.deallocate( pFrame, sizeof(RunContext) );
                     return;
 
                 case Ast::Base::kCloseValue:
