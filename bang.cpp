@@ -111,6 +111,8 @@ namespace Bang {
         {
         }
 
+        const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
+
         const Value& getUpValue( const NthParent uvnumber )
         {
             return (uvnumber == NthParent(0)) ? v_ : parent_->getUpValue( --uvnumber );
@@ -943,8 +945,6 @@ struct FcStack
 template <class Tp>
 FcStack<Tp>* FcStack<Tp>::head(nullptr);
 
-//class FunctionClosure;
-
 //    static int gAllocated;
 
 template <class Tp>
@@ -1117,20 +1117,21 @@ namespace Primitives {
 
 struct CallStack
 {
-    const Ast::Program* prog;
+//    const Ast::Program* prog;
     const Ast::Base* const *ppInstr;
     SHAREDUPVALUE upvalues;
     CallStack( // const CallStack* inprev,
         const Ast::Program* inprog, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
     :
     //prev( inprev ),
-    prog( inprog ), ppInstr( inppInstr ) // , /*initialupvalues(uv),*/
+    //prog( inprog ),
+    ppInstr( inppInstr ) // , /*initialupvalues(uv),*/
     ,upvalues( uv )
     {}
     
     void rebind( const Ast::Program* inprog )
     {
-        prog = inprog;
+//        prog = inprog;
         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
     }
 
@@ -1153,7 +1154,7 @@ struct CallStack
         SHAREDUPVALUE upvalues_;
     public:
         BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues )
-        : program_( program ), upvalues_( upvalues )
+        : Function(true), program_( program ), upvalues_( upvalues )
         {}
         void dump( std::ostream & out )
         {
@@ -1253,12 +1254,12 @@ restartTco:
                         throwNoFunVal(v);
                     else
                     {
-                        const auto& pfun = v.tofun();
-                        BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(v.tofun().get());
-                        if (!pbound)
+                        BANGFUN_CREF pfun = v.tofun();
+                        if (!pfun->isClosure())
                             pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
                         else
                         {
+                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
                             frame.rebind( pbound->program_, pbound->upvalues_ );
                             goto restartTco;
                         }
@@ -1275,12 +1276,12 @@ restartTco:
                         throwNoFunVal(v);
                     else
                     {
-                        const auto& pfun = v.tofun();
-                        BoundProgram* pbound = dynamic_cast<Bang::BoundProgram*>(v.tofun().get());
-                        if (!pbound)
+                        BANGFUN_CREF pfun= v.tofun();
+                        if (!pfun->isClosure())
                             pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not // executing context!
                         else
                         {
+                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
                             frame.rebind( pbound->program_, pbound->upvalues_ );
                             goto restartTco;
                         }
@@ -2111,6 +2112,11 @@ public:
         program_ = new Program( mark, parent, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
     }
 
+    Parser( StreamMark& mark, const Ast::CloseValue* upvalchain )
+    {
+        program_ = new Program( mark, nullptr /*parent*/, upvalchain, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+    }
+    
     const Ast::Program::astList_t& programAst()
     {
         return program_->ast();
@@ -2558,7 +2564,7 @@ Parser::Program::Program
 
                 if (!bFoundRecFunId)
                 {
-                    const NthParent upvalNumber = upvalueChain->FindBinding( ident.name() );
+                    const NthParent upvalNumber = upvalueChain ? upvalueChain->FindBinding( ident.name() ) : kNoParent;
                 
                     if (upvalNumber == kNoParent)
                     {
@@ -2605,15 +2611,16 @@ public:
     {
     }
 
-    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::Program* parent )
+
+    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::CloseValue* upvalchain )
     {
         StreamMark mark(stream);
 
         try
         {
-            Parser parser( mark, parent );
+            Parser parser( mark, upvalchain );
 
-            Ast::Program* p = new Ast::Program( parent, parser.programAst() );
+            Ast::Program* p = new Ast::Program( nullptr /* parent */, parser.programAst() );
             
             if (bDump)
                 p->dump( 0, std::cerr );
@@ -2633,7 +2640,36 @@ public:
         return nullptr;
     }
 
-    Ast::Program* parseNoParent( RegurgeIo& stream, bool bDump )
+//     Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::Program* parent )
+//     {
+//         StreamMark mark(stream);
+
+//         try
+//         {
+//             Parser parser( mark, parent );
+
+//             Ast::Program* p = new Ast::Program( parent, parser.programAst() );
+            
+//             if (bDump)
+//                 p->dump( 0, std::cerr );
+
+//             return p;
+//         }
+//         catch (const ErrorEof& )
+//         {
+//             std::cerr << "Found EOF without valid program!" << std::endl;
+//         }
+//         catch (const std::runtime_error& e )
+//         {
+//             std::cerr << "Runtime parse error b01: " << e.what() << std::endl;
+//             throw e;
+//         }
+
+//         return nullptr;
+//     }
+    
+    
+    Ast::Program* parseNoUpvals( RegurgeIo& stream, bool bDump )
     {
         return parseToProgram( stream, bDump, nullptr );
 
@@ -2649,14 +2685,14 @@ public:
         if (stdin_)
         {
             RegurgeStdinRepl strmStdin;
-            fun = this->parseNoParent( strmStdin, bDump );
+            fun = this->parseNoUpvals( strmStdin, bDump );
         }
         else
         {
             RegurgeFile strmFile( fileName_ );
             try
             {
-                fun = this->parseNoParent( strmFile, bDump );
+                fun = this->parseNoUpvals( strmFile, bDump );
             }
             catch( const ParseFail& e )
             {
@@ -2709,11 +2745,13 @@ void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
     RequireKeyword req(nullptr);
     RegurgeStdinRepl strmStdin;
     try {
-        Ast::Program *pProgram = req.parseToProgram( strmStdin, gDumpMode, nullptr );  // self->pushfun() ); //~~~
-                                                                                       // nullptr should be parent
-                                                                                       // prog (if that's at all
-                                                                                       // needed), so parent program sort of
-                                                                                       // needs to be available in RunContext
+    SHAREDUPVALUE_CREF uv = rc.upvalues();
+        Ast::Program *pProgram =
+            req.parseToProgram
+            (   strmStdin,
+                gDumpMode,
+                uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr)
+            );
         
         RunProgram( stack, pProgram, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
     } catch (const std::exception& e ) {
