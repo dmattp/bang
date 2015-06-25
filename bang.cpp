@@ -70,7 +70,8 @@ And there are primitives, until a better library / module system is in place.
 
 const char* const BANG_VERSION = "0.003";
 
- #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
+// #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
+ #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
@@ -1256,6 +1257,16 @@ public:
       pCaller( incaller )
     {}
 };
+
+void RunApplyValue( const Value& v, Stack& stack, const RunContext& frame )
+{
+    switch (v.type())
+    {
+        case Value::kFun: v.tofun()->apply(stack); break;
+        case Value::kFunPrimitive: v.tofunprim()( stack, frame ); break;
+        default: throwNoFunVal(v);
+    }
+}
     
     
 void RunProgram
@@ -1395,26 +1406,18 @@ restartTco:
                 }
                 break;
                 
-
-#if OPT_TCO_APPLY_UPVAL                    
                 case Ast::Base::kTCOApplyUpval:
                 {
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
-                    if (v.isfunprim())
-                        v.tofunprim()( stack, frame );
-                    else if( !v.isfun() )
-                        throwNoFunVal(v);
-                    else
+                    switch (v.type())
                     {
-                        BANGFUN_CREF pfun = v.tofun();
-                        if (!pfun->isClosure())
-                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
-                        else
-                        {
-                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+                        default: RunApplyValue( v, stack, frame ); break;
+                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kBoundFun:
+                            BoundProgram* pbound = v.toboundfun();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
-                        }
+                
                     }
                 }
                 break;
@@ -1422,32 +1425,15 @@ restartTco:
                 case Ast::Base::kApplyUpval:
                 {
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
-                    if (v.isfunprim())
-                        v.tofunprim()( stack, frame );
-                    else if( !v.isfun() )
+                    switch (v.type())
                     {
-                        if (!v.isthread())
-                            throwNoFunVal(v);
-                        else
-                        {
-                            std::cerr << "got switch to coroutine" << std::endl;
-                            const auto& thread = v.tothread();
-                            pThread = thread.get();
-                            goto restartThread;
-                        }
-                    }
-                    else
-                    {
-                        BANGFUN_CREF pfun = v.tofun();
-                        if (!pfun->isClosure())
-                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
-                        else
-                        {
-                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+                        default: RunApplyValue( v, stack, frame ); break;
+                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kBoundFun:
+                            BoundProgram* pbound = v.toboundfun();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
-                        }
                     }
                 }
                 break;
@@ -1455,21 +1441,14 @@ restartTco:
                 case Ast::Base::kTCOApply:
                 {
                     const Value& v = stack.pop();
-                    if (v.isfunprim())
-                        v.tofunprim()( stack, frame );
-                    else if( !v.isfun() )
-                        throwNoFunVal(v);
-                    else
+                    switch (v.type())
                     {
-                        BANGFUN_CREF pfun= v.tofun();
-                        if (!pfun->isClosure())
-                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not // executing context!
-                        else
-                        {
-                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+                        default: RunApplyValue( v, stack, frame ); break;
+                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kBoundFun:
+                            BoundProgram* pbound = v.toboundfun();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
-                        }
                     }
                 }
                 break;
@@ -1477,27 +1456,18 @@ restartTco:
                 case Ast::Base::kApply:
                 {
                     const Value& v = stack.pop();
-                    if (v.isfunprim())
-                        v.tofunprim()( stack, frame );
-                    else if( !v.isfun() )
-                        throwNoFunVal(v);
-                    else
+                    switch (v.type())
                     {
-                        BANGFUN_CREF pfun= v.tofun();
-                        if (!pfun->isClosure())
-                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not // executing context!
-                        else
-                        {
-                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+                        default: RunApplyValue( v, stack, frame ); break;
+                        case Value::kThread: pThread = v.tothread().get(); goto restartThread;
+                        case Value::kBoundFun:
+                            BoundProgram* pbound = v.toboundfun();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
-                        }
                     }
                 }
                 break;
-#endif // OPT_TCO_APPLY_UPVAL
-
             } // end,instr switch
         } // end, while loop incrementing PC
 
@@ -1510,14 +1480,14 @@ restartTco:
 
         void BoundProgram::apply( Stack& s )
         {
-            throw std::runtime_error("should not be called");
+            throw std::runtime_error("x99 should not be called");
 //            RunProgram( s, program_, upvalues_ );
         }
 
     
     void Ast::Program::run( Stack& stack, const RunContext& rc ) const
     {
-        stack.push( STATIC_CAST_TO_BANGFUN(NEW_BANGFUN(BoundProgram)( this, rc.upvalues() )) );
+        stack.push( NEW_BANGFUN(BoundProgram)( this, rc.upvalues() ) );
     }
 
     void Ast::IfElse::run( Stack& stack, const RunContext& rc ) const
@@ -1525,7 +1495,7 @@ restartTco:
         Ast::Program* p = this->branchTaken(stack);
         if (p)
         {
-            throw std::runtime_error("should not be called");
+            throw std::runtime_error("x98 should not be called");
 //            RunProgram( stack, p, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
         }
     }
@@ -1554,7 +1524,7 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 
 void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 {
-    throw std::runtime_error("should not be called");
+    throw std::runtime_error("x97 should not be called");
     //RunProgram( stack, this, rc.upvalues() );
 }
     
@@ -1563,20 +1533,20 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
-    const auto& newfun = NEW_BANGFUN(BoundProgram)( pRecFun_, uv );
-    stack.push( STATIC_CAST_TO_BANGFUN(newfun) );
+    stack.push( NEW_BANGFUN(BoundProgram)( pRecFun_, uv ) ); //STATIC_CAST_TO_BANGFUN(newfun) );
 }
 void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
 //     SHAREDUPVALUE uv =
 //         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
-            throw std::runtime_error("should not be called");
+            throw std::runtime_error("x96 should not be called");
 //    RunProgram( stack, pRecFun_, uv );
 }
 
 
 void Ast::Apply::ApplyValue( const Value& v, Stack& stack, const RunContext& rc )
 {
+    std::runtime_error("x03 should not be called");
     if (v.isfunprim())
     {
         const tfn_primitive pprim = v.tofunprim();
@@ -1598,6 +1568,7 @@ void Ast::Apply::ApplyValue( const Value& v, Stack& stack, const RunContext& rc 
 
 void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc) const
 {
+    std::runtime_error("x02 should not be called");
     const Value& v = this->getUpValue( rc );
     Ast::Apply::ApplyValue( v, stack, rc );
 };
@@ -1605,6 +1576,7 @@ void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc) const
     
 void Ast::Apply::run( Stack& stack, const RunContext& rc ) const
 {
+    std::runtime_error("x01 should not be called");
     Ast::Apply::ApplyValue( stack.pop(), stack, rc );
 }
 
@@ -1628,14 +1600,10 @@ void Ast::MakeCoroutine::go( Stack& stack, Thread* incaller )
 {
     // virtual void run( Stack& stack, const RunContext& ) const;
     const Value& v = stack.pop(); // function basis for coroutine
-    if (!v.isfun())
+    if (!v.isboundfun())
         throw std::runtime_error("MakeCoroutine requires a function");
     
-    BANGFUN_CREF pfun = v.tofun();
-    if (!pfun->isClosure())
-        throw std::runtime_error("MakeCoroutine requires a function");
-    
-    BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+    BoundProgram* pbound = v.toboundfun(); 
     
     auto thread = NEW_BANGTHREAD( incaller );
 
@@ -3029,7 +2997,7 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
 
     const auto& closure = me.parseToBoundProgramNoUpvals( stack, false );
     
-    stack.push( STATIC_CAST_TO_BANGFUN(closure) );
+    stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
     

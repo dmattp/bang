@@ -19,6 +19,7 @@ namespace Bang
 {
     class Stack;
     class Function;
+    class BoundProgram;
     class RunContext;
    
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
@@ -36,13 +37,14 @@ typedef Function* bangfunptr_t;
 typedef std::shared_ptr<Function> bangfunptr_t;
 typedef std::shared_ptr<Thread> bangthreadptr_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
-  #define BANGTHREAD_CREF const Bang::bangthreadptr_t&
   #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Bang::Function>(f)
   #define NEW_BANGFUN(A)             std::make_shared<A>
-  #define NEW_BANGTHREAD             std::make_shared<Thread>
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
+
+#define NEW_BANGTHREAD             std::make_shared<Thread>
+#define BANGTHREAD_CREF const Bang::bangthreadptr_t&
 #define BANGTHREADPTR bangthreadptr_t
 
 
@@ -55,13 +57,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if USE_GC            
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
+                case kBoundFun: // fall through
                 case kFun:  new (v_.cfun) std::shared_ptr<Function>( rhs.tofun() ); return;
 #endif
                 case kStr:  new (v_.cstr) std::string( rhs.tostr() ); return;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
                 case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
-                case kThread: thread_ = rhs.thread_; return;
+                case kThread:  new (v_.cthread) std::shared_ptr<Thread>( rhs.tothread() ); return;
                 default: return;
             }
         }
@@ -73,6 +76,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if USE_GC            
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
+                case kBoundFun: // fall through
                 case kFun:
                     new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
 #endif
@@ -80,7 +84,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
                 case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
-                case kThread: thread_ = std::move(rhs.thread_); return;
+                case kThread:  new (v_.cthread) std::shared_ptr<Thread>( rhs.tothread() ); return;
                 default: return;
             }
         }
@@ -88,13 +92,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         inline void free_manual_storage()
         {
             using namespace std;
+            if (type_ == kStr)
+                reinterpret_cast<string*>(v_.cstr)->~string();
 #if !USE_GC            
-            if (type_ == kFun)
+            else if (type_ == kBoundFun || type_ == kFun)
                 reinterpret_cast<shared_ptr<Function>*>(v_.cfun)->~shared_ptr<Function>();
-            else
 #endif 
-                if (type_ == kStr)
-                    reinterpret_cast<string*>(v_.cstr)->~string();
+            else if (type_ == kThread)
+                reinterpret_cast<BANGTHREADPTR*>(v_.cthread)->~shared_ptr<Thread>();
         }
     public:
         enum EValueType
@@ -104,6 +109,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             kNum,
             kStr,
             kFun,
+            kBoundFun,
             kFunPrimitive,
             kThread
         };
@@ -117,10 +123,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #else
             char     cfun[sizeof(std::shared_ptr<Function>)];
 #endif
+            char cthread[sizeof(BANGTHREADPTR)];
             tfn_primitive funprim;
         } v_;
-
-        BANGTHREADPTR thread_;
 
         Value( const Value& rhs )
         : type_( rhs.type_ )
@@ -184,6 +189,12 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #endif 
         }
 
+        Value( const std::shared_ptr<BoundProgram>& bp )
+        : type_( kBoundFun )
+        {
+            new (v_.cfun) std::shared_ptr<BoundProgram>(bp);
+        }
+        
         // these really dont seem to help much, probably for reasons
         // i don't quite understand.  not fully grokking move semantics yet
         Value( BANGFUNPTR&& f )
@@ -205,7 +216,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value( BANGTHREAD_CREF thread )
         : type_( kThread )
         {
-            thread_ = thread;
+            new (v_.cthread) std::shared_ptr<Thread>(thread);
         }
 
         ~Value()
@@ -232,10 +243,18 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         EValueType type_;
 
+        BoundProgram* toboundfun() const
+        {
+            return
+            reinterpret_cast<BoundProgram*>
+            (   reinterpret_cast<const std::shared_ptr<BoundProgram>* >(v_.cfun)->get()
+            );
+        }
 
         bool isnum()  const { return type_ == kNum; }
         bool isbool() const { return type_ == kBool; }
         bool isfun()  const { return type_ == kFun; }
+        bool isboundfun()  const { return type_ == kBoundFun; }
         bool isstr()  const { return type_ == kStr; }
         bool isfunprim()  const { return type_ == kFunPrimitive; }
         bool isthread()  const { return type_ == kThread; }
@@ -245,8 +264,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         bool   tobool() const { return v_.b; }
         const std::string& tostr() const { return *reinterpret_cast<const std::string*>(v_.cstr); }
         tfn_primitive tofunprim() const { return v_.funprim; }
-        BANGTHREAD_CREF tothread() const { return thread_; }
-
+        BANGTHREAD_CREF tothread() const {
+            return *reinterpret_cast<const std::shared_ptr<Thread>* >(v_.cthread);
+        }
         void tostring( std::ostream& ) const;
     
         void dump( std::ostream& o ) const;
@@ -318,6 +338,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         void push( const Value& v ) { stack_.push_back( v ); }
         void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
+        void push( const std::shared_ptr<BoundProgram>& bp ) { stack_.emplace_back( bp ); }
 //        void push( BANGCLOSURE&& fun ) { stack_.emplace_back( fun ); }
         void push( double num ) { stack_.emplace_back(num); }
         void push( bool b ) { stack_.emplace_back(b); }
