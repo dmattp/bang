@@ -25,7 +25,7 @@ namespace Bang
 
     namespace Ast { class CloseValue; }
 
-    class FunctionClosure;
+    class Thread;
     
 #if USE_GC
 typedef Function* bangfunptr_t;
@@ -34,13 +34,16 @@ typedef Function* bangfunptr_t;
   #define NEW_BANGFUN(A)             new A
 #else
 typedef std::shared_ptr<Function> bangfunptr_t;
-typedef std::shared_ptr<FunctionClosure> bangclosure_t;
+typedef std::shared_ptr<Thread> bangthreadptr_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
+  #define BANGTHREAD_CREF const Bang::bangthreadptr_t&
   #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Bang::Function>(f)
   #define NEW_BANGFUN(A)             std::make_shared<A>
+  #define NEW_BANGTHREAD             std::make_shared<Thread>
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
+#define BANGTHREADPTR bangthreadptr_t
 
 
     class Value
@@ -58,6 +61,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
                 case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
+                case kThread: thread_ = rhs.thread_; return;
                 default: return;
             }
         }
@@ -76,6 +80,7 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
                 case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
+                case kThread: thread_ = std::move(rhs.thread_); return;
                 default: return;
             }
         }
@@ -99,7 +104,8 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
             kNum,
             kStr,
             kFun,
-            kFunPrimitive
+            kFunPrimitive,
+            kThread
         };
 
         union Union {
@@ -113,6 +119,8 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
 #endif
             tfn_primitive funprim;
         } v_;
+
+        BANGTHREADPTR thread_;
 
         Value( const Value& rhs )
         : type_( rhs.type_ )
@@ -193,7 +201,13 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         {
             v_.funprim = pprim;
         }
-    
+
+        Value( BANGTHREAD_CREF thread )
+        : type_( kThread )
+        {
+            thread_ = thread;
+        }
+
         ~Value()
         {
             free_manual_storage();
@@ -224,12 +238,14 @@ typedef std::shared_ptr<FunctionClosure> bangclosure_t;
         bool isfun()  const { return type_ == kFun; }
         bool isstr()  const { return type_ == kStr; }
         bool isfunprim()  const { return type_ == kFunPrimitive; }
+        bool isthread()  const { return type_ == kThread; }
         EValueType type() const { return type_; }
 
         double tonum()  const { return v_.num; }
         bool   tobool() const { return v_.b; }
         const std::string& tostr() const { return *reinterpret_cast<const std::string*>(v_.cstr); }
         tfn_primitive tofunprim() const { return v_.funprim; }
+        BANGTHREAD_CREF tothread() const { return thread_; }
 
         void tostring( std::ostream& ) const;
     

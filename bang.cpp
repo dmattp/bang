@@ -70,7 +70,7 @@ And there are primitives, until a better library / module system is in place.
 
 const char* const BANG_VERSION = "0.003";
 
- #define kDefaultScript "c:/m/n2proj/bang/test/lit-01.bang";
+ #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
@@ -148,11 +148,13 @@ namespace {
         else if (type_ == kStr)
             o << this->tostr();
         else if (type_ == kFun)
-            o << "(function)";
+            o << "<function>";
         else if (type_ == kFunPrimitive)
-            o << "(prim.function)";
+            o << "<prim.function>";
+        else if (type_ == kThread)
+            o << "<thread>";
         else
-            o << "(???)";
+            o << "<?Value?>";
     }
 
 
@@ -198,6 +200,10 @@ public:
     :  prev(inprev),
        ppInstr( inppInstr ), // , /*initialupvalues(uv),*/
        upvalues_( uv )
+    {}
+
+    RunContext()
+    : prev(nullptr), ppInstr(nullptr)
     {}
     
 //     void rebind( const Ast::Program* inprog )
@@ -465,7 +471,9 @@ namespace Ast
             kTCOApplyUpval,
             kTCOApplyProgram,
             kTCOApplyFunRec,
-            kTCOIfElse
+            kTCOIfElse,
+            kMakeCoroutine,
+            kYieldCoroutine
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
@@ -690,6 +698,42 @@ namespace Ast
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
+    };
+
+    class MakeCoroutine : public Base
+    {
+    public:
+        MakeCoroutine()
+        : Base(kMakeCoroutine)
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "MakeCoroutine\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& ) const
+        {}
+
+        static void go( Stack& stack, Thread* incaller );
+    };
+
+    class YieldCoroutine : public Base
+    {
+    public:
+        YieldCoroutine()
+        : Base( kYieldCoroutine )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "MakeCoroutine\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& ) const
+        {}
     };
     
     class PushUpval : public Base
@@ -1197,12 +1241,19 @@ struct CallStack
 
 SimpleAllocator<RunContext> gAllocRc;
 
-struct Thread
+class Thread
 {
+public:
     Bang::Stack stack;
     RunContext* callframe;
+    Thread* pCaller;
     Thread()
-    : callframe( nullptr )
+    : callframe( nullptr ),
+      pCaller( nullptr )
+    {}
+    Thread( Thread* incaller )
+    : callframe( nullptr ),
+      pCaller( incaller )
     {}
 };
     
@@ -1239,8 +1290,30 @@ restartTco:
                     pThread->callframe = prev;
                     if (prev)
                         goto restartReturn;
-                    else 
+                    else if (pThread->pCaller)
+                    {
+                        pThread = pThread->pCaller;
+                        goto restartThread;
+                    }
+                    else
                         return;
+                }
+
+                case Ast::Base:: kMakeCoroutine:
+                {
+                    Ast::MakeCoroutine::go( stack, pThread );
+                }
+                break;
+
+                case Ast::Base::kYieldCoroutine:
+                {
+                    if (pThread->pCaller)
+                    {
+                        pThread = pThread->pCaller;
+                        goto restartThread;
+                    }
+                    else
+                        return; // nowhere to go
                 }
 
                 case Ast::Base::kCloseValue:
@@ -1352,7 +1425,17 @@ restartTco:
                     if (v.isfunprim())
                         v.tofunprim()( stack, frame );
                     else if( !v.isfun() )
-                        throwNoFunVal(v);
+                    {
+                        if (!v.isthread())
+                            throwNoFunVal(v);
+                        else
+                        {
+                            std::cerr << "got switch to coroutine" << std::endl;
+                            const auto& thread = v.tothread();
+                            pThread = thread.get();
+                            goto restartThread;
+                        }
+                    }
                     else
                     {
                         BANGFUN_CREF pfun = v.tofun();
@@ -1540,6 +1623,30 @@ void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
 {
     stack.push( rc.getUpValue( uvnumber_ ) );
 };
+
+void Ast::MakeCoroutine::go( Stack& stack, Thread* incaller )
+{
+    // virtual void run( Stack& stack, const RunContext& ) const;
+    const Value& v = stack.pop(); // function basis for coroutine
+    if (!v.isfun())
+        throw std::runtime_error("MakeCoroutine requires a function");
+    
+    BANGFUN_CREF pfun = v.tofun();
+    if (!pfun->isClosure())
+        throw std::runtime_error("MakeCoroutine requires a function");
+    
+    BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+    
+    auto thread = NEW_BANGTHREAD( incaller );
+
+    // start me off pointing at the BoundProgram, ready to roll
+    thread->callframe =
+        new (gAllocRc.allocate(sizeof(RunContext)))
+        RunContext( nullptr, TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+    
+    stack.push( Value(thread) );
+}
+    
 
 #if HAVE_MUTATION    
 void Ast::SetUpval::run( Stack& stack, const RunContext& rc) const
@@ -2647,6 +2754,26 @@ Parser::Program::Program
                     continue;
                 }
 
+                if (ident.name() == "coroutine")
+                {
+                    if (mark.getc()=='!')
+                    {
+                        mark.accept();
+                        ast_.push_back( new Ast::MakeCoroutine() );
+                        continue;
+                    }
+                }
+
+                if (ident.name() == "yield")
+                {
+                    if (mark.getc()=='!')
+                    {
+                        mark.accept();
+                        ast_.push_back( new Ast::YieldCoroutine() );
+                        continue;
+                    }
+                }
+                
                 if (ident.name() == "require")
                 {
                     mark.accept();
