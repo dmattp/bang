@@ -1196,22 +1196,33 @@ struct CallStack
     }
 
 SimpleAllocator<RunContext> gAllocRc;
-RunContext* gRunContext = nullptr;    
+
+struct Thread
+{
+    Bang::Stack stack;
+    RunContext* callframe;
+    Thread()
+    : callframe( nullptr )
+    {}
+};
+    
     
 void RunProgram
 (   
-    Stack& stack,
+    Thread* pThread,
     const Ast::Program* inprog,
     SHAREDUPVALUE inupvalues
 )
 {
 // ~~~todo: save initial upvalue, destroy when closing program?
 restartNonTail:
-    gRunContext =
+    pThread->callframe =
         new (gAllocRc.allocate(sizeof(RunContext)))
-        RunContext( gRunContext, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
+        RunContext( pThread->callframe, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
+restartThread:
+    Stack& stack = pThread->stack;
 restartReturn:
-    RunContext& frame = *gRunContext;
+    RunContext& frame = *(pThread->callframe);
 restartTco:
     try
     {
@@ -1221,10 +1232,16 @@ restartTco:
             switch (pInstr->instr_)
             {
                 case Ast::Base::kBreakProg:
-                    // destroy inaccesible upvalues created by this program?
-                    // is it necessary, or automatic since "upvalues" will be
-                    // destroyed here?
-                    goto returnToPriorFrame;
+                {
+                    RunContext* prev = frame.prev;
+                    frame.~RunContext();
+                    gAllocRc.deallocate( &frame, sizeof(RunContext) );
+                    pThread->callframe = prev;
+                    if (prev)
+                        goto restartReturn;
+                    else 
+                        return;
+                }
 
                 case Ast::Base::kCloseValue:
                     frame.upvalues_ =
@@ -1401,17 +1418,6 @@ restartTco:
             } // end,instr switch
         } // end, while loop incrementing PC
 
-    returnToPriorFrame:
-       {
-           RunContext* prev = gRunContext->prev;
-           gRunContext->~RunContext();
-           gAllocRc.deallocate( gRunContext, sizeof(RunContext) );
-           gRunContext = prev;
-           if (gRunContext)
-               goto restartReturn;
-           else 
-               return;
-       }
     }
     catch (const std::runtime_error& e)
     {
@@ -1422,7 +1428,7 @@ restartTco:
         void BoundProgram::apply( Stack& s )
         {
             throw std::runtime_error("should not be called");
-            RunProgram( s, program_, upvalues_ );
+//            RunProgram( s, program_, upvalues_ );
         }
 
     
@@ -1437,7 +1443,7 @@ restartTco:
         if (p)
         {
             throw std::runtime_error("should not be called");
-            RunProgram( stack, p, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
+//            RunProgram( stack, p, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
         }
     }
     
@@ -1465,8 +1471,8 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 
 void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 {
-            throw std::runtime_error("should not be called");
-    RunProgram( stack, this, rc.upvalues() );
+    throw std::runtime_error("should not be called");
+    //RunProgram( stack, this, rc.upvalues() );
 }
     
         
@@ -1479,10 +1485,10 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 }
 void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
-    SHAREDUPVALUE uv =
-        (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
+//     SHAREDUPVALUE uv =
+//         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
             throw std::runtime_error("should not be called");
-    RunProgram( stack, pRecFun_, uv );
+//    RunProgram( stack, pRecFun_, uv );
 }
 
 
@@ -2832,13 +2838,13 @@ public:
         return boundprog;
     }
     
-    void parseAndRun(Stack& stack, bool bDump)
+    void parseAndRun( Thread& thread, bool bDump)
     {
-        const auto& closure = parseToBoundProgramNoUpvals( stack, bDump );
+        const auto& closure = parseToBoundProgramNoUpvals( thread.stack, bDump );
             
         try
         {
-            RunProgram( stack, closure->program_, closure->upvalues_ );
+            RunProgram( &thread, closure->program_, closure->upvalues_ );
             // closure->apply( stack ); // , closure );
         }
         catch( AstExecFail ast )
@@ -2878,7 +2884,7 @@ void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
                 uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr)
             );
         
-        RunProgram( stack, pProgram, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
+//        RunProgram( stack, pProgram, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
     } catch (const std::exception& e ) {
         std::cerr << "Error: " << e.what() << std::endl;
     }
@@ -2948,7 +2954,7 @@ int main( int argc, char* argv[] )
 
     gDumpMode = bDump;
 
-    Bang::Stack stack;
+    Bang::Thread thread;
 
     if (gReplMode)
         Bang::repl_prompt();
@@ -2958,8 +2964,8 @@ int main( int argc, char* argv[] )
         try
         {
             Bang::RequireKeyword requireMain( fname );
-            requireMain.parseAndRun( stack, bDump );
-            stack.dump( std::cout );
+            requireMain.parseAndRun( thread, bDump );
+            thread.stack.dump( std::cout );
         }
         catch( const std::exception& e )
         {
