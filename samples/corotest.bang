@@ -1,0 +1,23 @@
+900999 as N
+
+def :coro = {
+    def :inner n = {
+       -- n '%@ hello from coroutine!\n' print!
+       yield!
+       n 1 + inner!
+    }
+    1000 inner!
+}
+
+'lib/iterate.bang' require! .range as range 
+
+coro coroutine! as co
+
+def :testme n = {
+    co!
+    -- n '%@ returned from coroutine\n' print!
+    n N <
+    ? n 1 + testme!
+    : n "Reached final value=%@\n" print!
+}
+1 testme!
