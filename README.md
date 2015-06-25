@@ -2,7 +2,7 @@ Bang! Copyright (c) 2015 David M. Placek (MIT License)
 
 # The Bang! Programming Language
 
-Bang! is a minimal functional language that provides lexically scoped first class functions in a simple language with a minimalist syntax.
+Bang! is a simple functional language that provides first class functions, lexical scope, recursion, objects, and coroutines with a minimalist approach and lightweight syntax.
 
 Bang! was developed with the goal of offering language constructs with the most abstractive power and minimum complexity.  A stack-based program model and postfix syntax are employed for syntactic simplicity.  Recursion with tail call optimization is provided for iteration, and dynamic binding lookup supports module namespaces and a simple object / record syntax.
 
@@ -17,21 +17,21 @@ Or they can be as complicated as you wish to make them, with all the abstractive
 
 # Status
 
-Bang! is less than a month old and many features are incomplete and specifications are tentative.  The current implementation is naive but usable.  Very little optimization and endurance testing has been applied, and there are probably issues that make it unsuitable for production environments.  But it does demonstrate the concepts and runs small scripts with bearable performance.
+Bang! is barely a month old and many features are incomplete and specifications are tentative.  The current implementation is naive but usable.  Performance is reasonable, but not quite competitive with more mature interpreted languages such as Lua or Ruby.  There are probably issues that make it unsuitable for use in long-lived production environments.  But it does demonstrate the concepts and runs small scripts quite ably.
 
 # Introduction
 
 ## Functional Foundation
 
-The central construct in Bang! is the function. First class functions are arguably the single most malleable single language facility, so Bang! attempts to keep this central concept simple and close to the surface.  All Bang! functions take at most a single parameter which keeps the implementation simple, but lexical scoping allows creation of functions with any number of parameters.
+The central construct in Bang! is the function. First class functions are arguably the single most malleable single language facility, so Bang! attempts to keep this concept simple and close to the surface.
 
-All functions have access to a working stack.  Literals (numbers, strings, booleans, or functions) are pushed to the stack when encountered in the program. When functions are applied they pop their arguments off the working stack and can push results back onto the stack.
+All functions have access to a working stack.  Literals (numbers, strings, booleans, or functions) are pushed to the stack when encountered in the program. When functions are applied they pop their arguments off the working stack and can push results back onto the stack.  Values from the stack can be bound to symbolic names either as a function parameter or local variable.
 
 A function to square a number is written like this:
 
      fun number = number number *
 
-A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator pops the top value from the stack and applies the function.  When a function accepting a parameter is applied, the top value from the stack is popped of and bound to the symbolic name given to the parameter, in this case 'number'.  Then the function body is executed, which pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  Multiply pops two values off the stack, multiplies, and pushes the result.
+A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator pops the top value from the stack and applies the function.  When a function accepting a parameter is applied, the top value from the stack is popped of and bound to the symbolic name given to the parameter, in this case 'number'.  Then the function body is executed, which pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  The multiply operator pops two values off the stack, multiplies, and pushes the result back to the stack.
 
 So a Bang! program simply consists of pushing values onto the program stack then applying those values to functions.  Minimally this resembles the common "reverse polish notation" style calculators.
 
@@ -46,27 +46,23 @@ At the end of a program Bang! simply dumps the contents remaining on the stack a
        fun number = { number number * }!
     > 9
 
-Semicolons can be used to terminate a function body and braces will close multiple levels of open function scopes.  Many languages have a distinct concept for variables, but in bang there is only the function construct.  "Variables" are simply function parameters which are bound to a function parameter with a symbolic name.  The variable can then be used inside the function body, so each variable declaration essentially opens a new function body.
+Semicolons can be used to terminate a function body and braces will close multiple levels of open function scopes.  Many languages distinguish between function parameters and local variables, but in Bang! these concepts are essentially the same.  "Variables" are simply symbolic names for values popped off the stack, whether as a function parameter or whether bound at any other time within a function body.  Bound variables are available throughout the remainder of the function body and bindings declared within the function are dropped with the close of the function body.
 
-Bang! provides a shorthand keyword, "as", which implies an immediate application of the subsequent function body:
+Bang! provides the "as" keyword to immediately bind the value at the top of the stack to a symbolic name.
 
     3.14159 as Pi
     ...
 
-is equivalent to
-
-    3.14159 fun Pi = { ... } !
-
-This makes variable declarations read more naturally.  Function values can be bound to symbalic names similarly, allowing named functions.
+Function values can be bound to symbalic names similarly, allowing named functions.
 
       3.14 as PI
       fun radius = radius radius * PI *; as CalculateArea
       25.0 CalculateArea!
     > 1962.5    
 
-When the program's end of file is reached, any open function bodies are closed.  So with a single "function-with-one-parameter" construct we can create symbolic variables, anonymous functions, and named functions. 
+When the program's end of file is reached, any open function bodies are closed.
 
-Now what if we need a function more than a single parameter? Here's where the inherent power of first class functions and lexical closures show their stuff.  Without defining any additional language syntax, we can actually already construct functions that take as many variables as we like.
+What if we need a function more than a single parameter? Here's where the inherent power of first class functions and lexical closures come into play.  Without defining any additional language syntax, we can construct functions that take as many variables as we like.
 
 A function to add two values could be written like this:
 
@@ -95,14 +91,13 @@ and apply it:
     
       3 4 plus!
 
-Granted, this may not be "pretty" compared to languages which give you syntax like
+But this is not really "pretty" compared to languages which give you syntax like
 
       function plus( x, y )
         x + y
       end
-      plus(3,4)
 
-and figuring out where you need to put the semicolons and exclamations can be daunting. But we're not too far off from more traditional syntax, and we've still got our small bag of syntax tricks to throw at it.
+and the stacking of semicolons and exclamations can get ugly. But we're not too far off from a traditional feeling syntax, and we've got a small bag of syntax tricks to throw at it yet.
 
 First, we can get move the inner '!' up to the front to clean up some of the backend noise:
 
@@ -110,9 +105,7 @@ First, we can get move the inner '!' up to the front to clean up some of the bac
          fun! y = x y +; ;
       as plus
 
-Better, but we can still end up with a list of semicolons that you have to count out.  Why is that?  If you've ever worked with lisp you're familiar with the ")))))))" problem that lisp haters harp on. Although the postfix notation avoids some of the explicit "expression bounding" for operations, a similar problem arises here because we need to bound the extent of function definitions. Semicolons end up stacking up as you close out however many "fun" levels are active.
-
-To help with this Bang! provides a "curly brace" syntax which closes out any binding levels created after the open brace.  Where lisp might leave 12 stacked parentheses, in Bang! you can close out a whole group of nested fundef's with a single brace.  Unlike many traditional languages the braces only need to be used sparingly since it's just a programmer aid and not a syntax requirement.
+Better, but we can still end up with a list of semicolons that you have to count out.  To help with this, Bang! provides a "curly brace" syntax which closes out any open functions created within the open brace. Unlike many traditional languages, the braces are just a programmer aid and not a syntax requirement, so they can be used sparingly.
 
 So now we've got:
 
@@ -120,9 +113,7 @@ So now we've got:
          fun! y = x y +
       } as plus
 
-That's starting to look a bit better.  One more syntax trick and we're almost there.
-
-Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we do with "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The two following "plus" definitions are equivalent:
+That's starting to look a bit better.  One more syntax trick and we're almost there. Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we do with "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The two following "plus" definitions are equivalent:
 
       fun x = {
           fun! y = x y +
