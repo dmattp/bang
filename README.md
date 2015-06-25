@@ -4,9 +4,7 @@ Bang! Copyright (c) 2015 David M. Placek (MIT License)
 
 Bang! is a simple functional language that provides first class functions, lexical scope, recursion, objects, and coroutines with a minimalist approach and lightweight syntax.
 
-Bang! was developed with the goal of offering language constructs with the most abstractive power and minimum complexity.  A stack-based program model and postfix syntax are employed for syntactic simplicity.  Recursion with tail call optimization is provided for iteration, and dynamic binding lookup supports module namespaces and a simple object / record syntax.
-
-"Bang! for the buck" is the idea here.  Keep the language small and the feel light, but start with a solid foundation.
+Bang! was developed with the goal of offering language constructs with the most abstractive power and minimum complexity.  A stack-based program model and postfix syntax are employed for syntactic simplicity.  Recursion with tail call optimization is provided for iteration.  "Bang! for the buck" is the idea here.  Keep the language small and the feel light, but start with a solid foundation.
 
 Programs can be as simple as:
 
@@ -31,9 +29,9 @@ A function to square a number is written like this:
 
      fun number = number number *
 
-A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator pops the top value from the stack and applies the function.  When a function accepting a parameter is applied, the top value from the stack is popped of and bound to the symbolic name given to the parameter, in this case 'number'.  Then the function body is executed, which pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  The multiply operator pops two values off the stack, multiplies, and pushes the result back to the stack.
+A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator, expecting to find a function value at top of the stack, pops off the top value and applies it.  If the function accepts a parameter, the next value from the stack is popped off and bound to the symbolic name given to the parameter- in this example, the parameter is called 'number'.  In this case the function body pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  Multiply operates as you might expect, popping two values off the stack, multiplying, and pushing the result back to the stack.
 
-So a Bang! program simply consists of pushing values onto the program stack then applying those values to functions.  Minimally this resembles the common "reverse polish notation" style calculators.
+So a Bang! program simply consists of pushing values onto the program stack then applying those values to functions.  This resembles the common "reverse polish notation" style calculators.
 
        3.14
        60
@@ -43,7 +41,8 @@ So a Bang! program simply consists of pushing values onto the program stack then
 At the end of a program Bang! simply dumps the contents remaining on the stack and you have your program output.
 
        3
-       fun number = { number number * }!
+       fun number = number number *;
+       !
     > 9
 
 Semicolons can be used to terminate a function body and braces will close multiple levels of open function scopes.  Many languages distinguish between function parameters and local variables, but in Bang! these concepts are essentially the same.  "Variables" are simply symbolic names for values popped off the stack, whether as a function parameter or whether bound at any other time within a function body.  Bound variables are available throughout the remainder of the function body and bindings declared within the function are dropped with the close of the function body.
