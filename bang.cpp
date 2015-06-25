@@ -70,7 +70,7 @@ And there are primitives, until a better library / module system is in place.
 
 const char* const BANG_VERSION = "0.003";
 
-// #define kDefaultScript "c:\\m\\n2proj\\bang\\tmp\\binding.bang";
+ #define kDefaultScript "c:/m/n2proj/bang/test/lit-01.bang";
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
@@ -1202,14 +1202,14 @@ void RunProgram
 (   
     Stack& stack,
     const Ast::Program* inprog,
-    SHAREDUPVALUE upvalues
+    SHAREDUPVALUE inupvalues
 )
 {
 // ~~~todo: save initial upvalue, destroy when closing program?
 restartNonTail:
     gRunContext =
         new (gAllocRc.allocate(sizeof(RunContext)))
-        RunContext( gRunContext, TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
+        RunContext( gRunContext, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
 restartReturn:
     RunContext& frame = *gRunContext;
 restartTco:
@@ -1251,6 +1251,15 @@ restartTco:
                     goto restartTco;
                 }
                 break;
+
+                case Ast::Base::kApplyFunRec:
+                {
+                    const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
+                    inprog = afn->pRecFun_;
+                    inupvalues = (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ );
+                    goto restartNonTail;
+                }
+                break;
                 
                 case Ast::Base::kTCOIfElse:
                 {
@@ -1264,6 +1273,19 @@ restartTco:
                 }
                 break;
 
+                case Ast::Base::kIfElse:
+                {
+                    const Ast::IfElse* ifelse = reinterpret_cast<const Ast::IfElse*>(pInstr);
+                    const Ast::Program* p = ifelse->branchTaken(stack);
+                    if (p)
+                    {
+                        inprog = p;
+                        inupvalues = frame.upvalues_;
+                        goto restartNonTail;
+                    }
+                }
+                break;
+                
                 case Ast::Base::kTCOApplyProgram:
                 {
                     //std::cerr << "got kTCOApplyProgram\n";
@@ -1272,6 +1294,17 @@ restartTco:
                     goto restartTco;
                 }
                 break;
+
+                case Ast::Base::kApplyProgram:
+                {
+                    //std::cerr << "got kTCOApplyProgram\n";
+                    const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr);
+                    inprog = afn;
+                    inupvalues = frame.upvalues_;
+                    goto restartNonTail;
+                }
+                break;
+                
 
 #if OPT_TCO_APPLY_UPVAL                    
                 case Ast::Base::kTCOApplyUpval:
@@ -1291,6 +1324,29 @@ restartTco:
                             BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
+                        }
+                    }
+                }
+                break;
+                
+                case Ast::Base::kApplyUpval:
+                {
+                    const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
+                    if (v.isfunprim())
+                        v.tofunprim()( stack, frame );
+                    else if( !v.isfun() )
+                        throwNoFunVal(v);
+                    else
+                    {
+                        BANGFUN_CREF pfun = v.tofun();
+                        if (!pfun->isClosure())
+                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
+                        else
+                        {
+                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+                            inprog = pbound->program_;
+                            inupvalues = pbound->upvalues_;
+                            goto restartNonTail;
                         }
                     }
                 }
@@ -1317,6 +1373,29 @@ restartTco:
                     }
                 }
                 break;
+
+                case Ast::Base::kApply:
+                {
+                    const Value& v = stack.pop();
+                    if (v.isfunprim())
+                        v.tofunprim()( stack, frame );
+                    else if( !v.isfun() )
+                        throwNoFunVal(v);
+                    else
+                    {
+                        BANGFUN_CREF pfun= v.tofun();
+                        if (!pfun->isClosure())
+                            pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not // executing context!
+                        else
+                        {
+                            BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
+                            inprog = pbound->program_;
+                            inupvalues = pbound->upvalues_;
+                            goto restartNonTail;
+                        }
+                    }
+                }
+                break;
 #endif // OPT_TCO_APPLY_UPVAL
 
             } // end,instr switch
@@ -1328,11 +1407,11 @@ restartTco:
            gRunContext->~RunContext();
            gAllocRc.deallocate( gRunContext, sizeof(RunContext) );
            gRunContext = prev;
-        //goto restartReturn;
-        return;
+           if (gRunContext)
+               goto restartReturn;
+           else 
+               return;
        }
-                    
-        
     }
     catch (const std::runtime_error& e)
     {
@@ -1342,6 +1421,7 @@ restartTco:
 
         void BoundProgram::apply( Stack& s )
         {
+            throw std::runtime_error("should not be called");
             RunProgram( s, program_, upvalues_ );
         }
 
@@ -1356,6 +1436,7 @@ restartTco:
         Ast::Program* p = this->branchTaken(stack);
         if (p)
         {
+            throw std::runtime_error("should not be called");
             RunProgram( stack, p, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
         }
     }
@@ -1384,6 +1465,7 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
 
 void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
 {
+            throw std::runtime_error("should not be called");
     RunProgram( stack, this, rc.upvalues() );
 }
     
@@ -1399,6 +1481,7 @@ void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
+            throw std::runtime_error("should not be called");
     RunProgram( stack, pRecFun_, uv );
 }
 
@@ -2755,7 +2838,8 @@ public:
             
         try
         {
-            closure->apply( stack ); // , closure );
+            RunProgram( stack, closure->program_, closure->upvalues_ );
+            // closure->apply( stack ); // , closure );
         }
         catch( AstExecFail ast )
         {
