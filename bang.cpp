@@ -71,7 +71,7 @@ And there are primitives, until a better library / module system is in place.
 const char* const BANG_VERSION = "0.003";
 
 // #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
- #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
+// #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
@@ -458,7 +458,10 @@ namespace Ast
     {
     public:
         virtual void dump( int, std::ostream& o ) const = 0;
-        virtual void run( Stack& stack, const RunContext& ) const = 0;
+        virtual void run( Stack& stack, const RunContext& ) const
+        {
+            throw std::runtime_error("Ast::Base::run should never be called");
+        }
         enum EAstInstr {
             kUnk,
             kBreakProg,
@@ -474,7 +477,8 @@ namespace Ast
             kTCOApplyFunRec,
             kTCOIfElse,
             kMakeCoroutine,
-            kYieldCoroutine
+            kYieldCoroutine,
+            kEofMarker
         };
         Base() : instr_(kUnk) {}
         Base( EAstInstr i ) : instr_( i ) {}
@@ -627,6 +631,10 @@ namespace Ast
     class EofMarker : public Base
     {
     public:
+        EofMarker()
+        : Base( kEofMarker )
+        {}
+        
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -796,8 +804,6 @@ namespace Ast
             o << "ApplyUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
         }
 
-        virtual void run( Stack& stack, const RunContext& ) const;
-
         const Value& getUpValue( const RunContext& rc ) const
         {
             return rc.getUpValue( uvnumber_ );
@@ -842,10 +848,6 @@ namespace Ast
                 o << " ***                                 <== *** FAILED *** ";
             o << std::endl;
         }
-        
-        virtual void run( Stack& stack, const RunContext& ) const;
-        static void ApplyValue( const Value& v, Stack& stack, const RunContext& rc );
-//        static bool applyOrIsClosure( const Value& v, Stack& stack, const RunContext& );
     };
 
 
@@ -919,7 +921,6 @@ namespace Ast
                 [&]( const Ast::Base* ast ) { ast->dump( level+1, o ); }
             );
         }
-        virtual void run( Stack& stack, const RunContext& ) const;
     };
 
     class IfElse : public Base
@@ -939,8 +940,6 @@ namespace Ast
             stack.pop_back();
             return isCond ? if_ : else_;
         }
-        
-        void run( Stack& stack, const RunContext& rc ) const;
         
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -991,8 +990,6 @@ namespace Ast
             indentlevel(level, o);
             o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
         }
-
-        virtual void run( Stack& stack, const RunContext& ) const;
     };
     
 } // end, namespace Ast
@@ -1268,6 +1265,11 @@ void RunApplyValue( const Value& v, Stack& stack, const RunContext& frame )
     }
 }
     
+    Ast::Program* parseStdinToProgram( const Ast::CloseValue* closeValueChain );
+void repl_prompt()
+{
+    std::cout << "Bang! " << std::flush;
+}
     
 void RunProgram
 (   
@@ -1293,6 +1295,10 @@ restartTco:
             const Ast::Base* pInstr = *(frame.ppInstr++);
             switch (pInstr->instr_)
             {
+                default:
+                    pInstr->run( stack, frame );
+                    break;
+
                 case Ast::Base::kBreakProg:
                 {
                     RunContext* prev = frame.prev;
@@ -1310,14 +1316,31 @@ restartTco:
                         return;
                 }
 
-                case Ast::Base:: kMakeCoroutine:
+                case Ast::Base::kEofMarker:
                 {
-                    Ast::MakeCoroutine::go( stack, pThread );
+                    stack.dump( std::cout );
+                    repl_prompt();
+    
+                    try
+                    {
+                        SHAREDUPVALUE_CREF uv = frame.upvalues_;
+                        Ast::Program *pProgram =
+                            parseStdinToProgram( uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr) );
+                        frame.rebind( TMPFACT_PROG_TO_RUNPROG(pProgram) ); 
+                        goto restartTco;
+                    }
+                    catch (const std::exception& e )
+                    {
+                        std::cerr << "Error: " << e.what() << std::endl;
+                    }
                 }
                 break;
 
+                case Ast::Base:: kMakeCoroutine:
+                    Ast::MakeCoroutine::go( stack, pThread );
+                    break;
+
                 case Ast::Base::kYieldCoroutine:
-                {
                     if (pThread->pCaller)
                     {
                         pThread = pThread->pCaller;
@@ -1325,7 +1348,6 @@ restartTco:
                     }
                     else
                         return; // nowhere to go
-                }
 
                 case Ast::Base::kCloseValue:
                     frame.upvalues_ =
@@ -1335,10 +1357,6 @@ restartTco:
                             stack.pop()
                         );
                     break; // goto restartTco;
-
-                default:
-                    pInstr->run( stack, frame );
-                    break;
 
                 case Ast::Base::kTCOApplyFunRec:
                 {
@@ -1478,11 +1496,11 @@ restartTco:
     }
 }
 
-        void BoundProgram::apply( Stack& s )
-        {
-            throw std::runtime_error("x99 should not be called");
-//            RunProgram( s, program_, upvalues_ );
-        }
+    void BoundProgram::apply( Stack& s )
+    {
+        // this is handled in main RunProgram machine
+        throw std::runtime_error("BoundProgram::Apply should not be called");
+    }
 
     
     void Ast::Program::run( Stack& stack, const RunContext& rc ) const
@@ -1490,16 +1508,6 @@ restartTco:
         stack.push( NEW_BANGFUN(BoundProgram)( this, rc.upvalues() ) );
     }
 
-    void Ast::IfElse::run( Stack& stack, const RunContext& rc ) const
-    {
-        Ast::Program* p = this->branchTaken(stack);
-        if (p)
-        {
-            throw std::runtime_error("x98 should not be called");
-//            RunProgram( stack, p, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(p), rc.upvalues() );
-        }
-    }
-    
 
 SHAREDUPVALUE_CREF RunContext::upvalues() const
 {
@@ -1521,63 +1529,11 @@ const Value& RunContext::getUpValue( const std::string& uvName ) const
     return upvalues_->getUpValue( uvName );
 }
 
-
-void Ast::ApplyProgram::run( Stack& stack, const RunContext& rc ) const
-{
-    throw std::runtime_error("x97 should not be called");
-    //RunProgram( stack, this, rc.upvalues() );
-}
-    
-        
 void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
     stack.push( NEW_BANGFUN(BoundProgram)( pRecFun_, uv ) ); //STATIC_CAST_TO_BANGFUN(newfun) );
-}
-void Ast::ApplyFunctionRec::run( Stack& stack, const RunContext& rc ) const
-{
-//     SHAREDUPVALUE uv =
-//         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
-            throw std::runtime_error("x96 should not be called");
-//    RunProgram( stack, pRecFun_, uv );
-}
-
-
-void Ast::Apply::ApplyValue( const Value& v, Stack& stack, const RunContext& rc )
-{
-    std::runtime_error("x03 should not be called");
-    if (v.isfunprim())
-    {
-        const tfn_primitive pprim = v.tofunprim();
-        pprim( stack, rc );
-    }
-    else if( v.isfun() )
-    {
-        const auto& pfun = v.tofun();
-        pfun->apply( stack ); // no RC - bound programs run in pushing context anyway, not executing context!
-    }
-    else
-    {
-        std::ostringstream oss;
-        oss << "Called apply without function; found type=" << v.type_ << " V=";
-        v.dump(oss);
-        throw std::runtime_error(oss.str());
-    }
-}
-
-void Ast::ApplyUpval::run( Stack& stack, const RunContext& rc) const
-{
-    std::runtime_error("x02 should not be called");
-    const Value& v = this->getUpValue( rc );
-    Ast::Apply::ApplyValue( v, stack, rc );
-};
-
-    
-void Ast::Apply::run( Stack& stack, const RunContext& rc ) const
-{
-    std::runtime_error("x01 should not be called");
-    Ast::Apply::ApplyValue( stack.pop(), stack, rc );
 }
 
 void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
@@ -1590,7 +1546,6 @@ void Ast::ApplyPrimitive::run( Stack& stack, const RunContext& rc ) const
     primitive_( stack, rc );
 };
 
-
 void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
 {
     stack.push( rc.getUpValue( uvnumber_ ) );
@@ -1601,7 +1556,7 @@ void Ast::MakeCoroutine::go( Stack& stack, Thread* incaller )
     // virtual void run( Stack& stack, const RunContext& ) const;
     const Value& v = stack.pop(); // function basis for coroutine
     if (!v.isboundfun())
-        throw std::runtime_error("MakeCoroutine requires a function");
+        throw std::runtime_error("MakeCoroutine requires a bound function");
     
     BoundProgram* pbound = v.toboundfun(); 
     
@@ -2955,34 +2910,10 @@ public:
     }
 }; // end, class RequireKeyword
 
-void repl_prompt()
-{
-    std::cout << "Bang! " << std::flush;
-}
 
 void Ast::EofMarker::run( Stack& stack, const RunContext& rc ) const
 {
 //    std::cerr << "Found EOF!" << std::endl;
-
-    stack.dump( std::cout );
-    repl_prompt();
-    
-//    CLOSURE_CREF self = rc.running();
-    RequireKeyword req(nullptr);
-    RegurgeStdinRepl strmStdin;
-    try {
-    SHAREDUPVALUE_CREF uv = rc.upvalues();
-        Ast::Program *pProgram =
-            req.parseToProgram
-            (   strmStdin,
-                gDumpMode,
-                uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr)
-            );
-        
-//        RunProgram( stack, pProgram, rc.upvalues() ); // TMPFACT_PROG_TO_RUNPROG(pProgram), rc.upvalues() );
-    } catch (const std::exception& e ) {
-        std::cerr << "Error: " << e.what() << std::endl;
-    }
 }
     
 
@@ -3000,6 +2931,18 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
     stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
+
+    Ast::Program* parseStdinToProgram( const Ast::CloseValue* closeValueChain )
+    {
+        RequireKeyword req(nullptr);
+        RegurgeStdinRepl strmStdin;
+        return
+        req.parseToProgram
+        (   strmStdin,
+            gDumpMode,
+            closeValueChain
+        );
+    }
     
 } // end namespace Bang
 
