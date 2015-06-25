@@ -180,21 +180,39 @@ void indentlevel( int level, std::ostream& o )
     }
 }
 
-namespace Ast { class Program; }    
-//struct CallStack;    
+namespace Ast { class Base; }    
 class RunContext
 {
 public:
-    SHAREDUPVALUE_CREF upvalues_;
+    const Ast::Base* const *ppInstr;
+    SHAREDUPVALUE    upvalues_;
 public:    
-    RunContext( SHAREDUPVALUE_CREF uv )
-    : upvalues_( uv )
-    {
-    }
     SHAREDUPVALUE_CREF upvalues() const;
     SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
     const Value& getUpValue( NthParent up ) const;
     const Value& getUpValue( const std::string& uvName ) const;
+
+
+    RunContext( const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
+    :  ppInstr( inppInstr ) // , /*initialupvalues(uv),*/
+      ,upvalues_( uv )
+    {}
+    
+//     void rebind( const Ast::Program* inprog )
+//     {
+//         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
+//     }
+
+    void rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv )
+    {
+        ppInstr = inppInstr;
+        upvalues_ = uv;
+    }
+    
+    void rebind( const Ast::Base* const * inppInstr )
+    {
+        ppInstr = inppInstr;
+    }
 };
 
 
@@ -1115,6 +1133,7 @@ namespace Primitives {
     };
 #endif
 
+#if 0    
 struct CallStack
 {
 //    const Ast::Program* prog;
@@ -1146,6 +1165,7 @@ struct CallStack
         ppInstr = inppInstr;
     }
 };
+#endif 
 
     class BoundProgram : public Function
     {
@@ -1180,10 +1200,8 @@ void RunProgram
 )
 {
 // ~~~todo: save initial upvalue, destroy when closing program?
-// const Ast::Base* const* ppInstr = &(pProgram->getAst()->front());
-    CallStack frame( inprog, TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
+    RunContext frame( TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
 restartTco:
-    RunContext rc( frame.upvalues );
     try
     {
         while (true)
@@ -1198,16 +1216,16 @@ restartTco:
                     return;
 
                 case Ast::Base::kCloseValue:
-                    frame.upvalues =
+                    frame.upvalues_ =
                         NEW_UPVAL
                         (   reinterpret_cast<const Ast::CloseValue*>(pInstr),
-                            frame.upvalues,
+                            frame.upvalues_,
                             stack.pop()
                         );
                     break; // goto restartTco;
 
                 default:
-                    pInstr->run( stack, rc );
+                    pInstr->run( stack, frame );
                     break;
 
                 case Ast::Base::kTCOApplyFunRec:
@@ -1216,8 +1234,8 @@ restartTco:
 //                    std::cerr << "got kTCOApplyFunRec" << std::endl;
                     const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
                     frame.rebind
-                    (  afn->pRecFun_,
-                        (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( afn->nthparent_ )
+                    (  TMPFACT_PROG_TO_RUNPROG(afn->pRecFun_),
+                        (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ )
                     );
                     goto restartTco;
                 }
@@ -1239,7 +1257,7 @@ restartTco:
                 {
                     //std::cerr << "got kTCOApplyProgram\n";
                     const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr); 
-                    frame.rebind( afn );
+                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(afn) );
                     goto restartTco;
                 }
                 break;
@@ -1247,9 +1265,9 @@ restartTco:
 #if OPT_TCO_APPLY_UPVAL                    
                 case Ast::Base::kTCOApplyUpval:
                 {
-                    const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( rc );
+                    const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
                     if (v.isfunprim())
-                        v.tofunprim()( stack, rc );
+                        v.tofunprim()( stack, frame );
                     else if( !v.isfun() )
                         throwNoFunVal(v);
                     else
@@ -1260,7 +1278,7 @@ restartTco:
                         else
                         {
                             BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
-                            frame.rebind( pbound->program_, pbound->upvalues_ );
+                            frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
                         }
                     }
@@ -1271,7 +1289,7 @@ restartTco:
                 {
                     const Value& v = stack.pop();
                     if (v.isfunprim())
-                        v.tofunprim()( stack, rc );
+                        v.tofunprim()( stack, frame );
                     else if( !v.isfun() )
                         throwNoFunVal(v);
                     else
@@ -1282,7 +1300,7 @@ restartTco:
                         else
                         {
                             BoundProgram* pbound = reinterpret_cast<Bang::BoundProgram*>(pfun.get());
-                            frame.rebind( pbound->program_, pbound->upvalues_ );
+                            frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
                         }
                     }
