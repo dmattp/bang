@@ -10,7 +10,7 @@
 
 #if HAVE_MUTATION
 # if __GNUC__
-# warning Mutation enabled: You have strayed from the true and blessed path.
+//# warning Mutation enabled: You have strayed from the true and blessed path.
 #endif 
 #endif
 
@@ -1207,12 +1207,11 @@ void RunProgram
 {
 // ~~~todo: save initial upvalue, destroy when closing program?
 restartNonTail:
-    RunContext* pFrame =
+    gRunContext =
         new (gAllocRc.allocate(sizeof(RunContext)))
         RunContext( gRunContext, TMPFACT_PROG_TO_RUNPROG(inprog), upvalues );
 restartReturn:
-    gRunContext = pFrame;
-    RunContext& frame = *pFrame;
+    RunContext& frame = *gRunContext;
 restartTco:
     try
     {
@@ -1225,10 +1224,7 @@ restartTco:
                     // destroy inaccesible upvalues created by this program?
                     // is it necessary, or automatic since "upvalues" will be
                     // destroyed here?
-                    gRunContext = pFrame->prev;
-                    pFrame->~RunContext();
-                    gAllocRc.deallocate( pFrame, sizeof(RunContext) );
-                    return;
+                    goto returnToPriorFrame;
 
                 case Ast::Base::kCloseValue:
                     frame.upvalues_ =
@@ -1325,6 +1321,18 @@ restartTco:
 
             } // end,instr switch
         } // end, while loop incrementing PC
+
+    returnToPriorFrame:
+       {
+           RunContext* prev = gRunContext->prev;
+           gRunContext->~RunContext();
+           gAllocRc.deallocate( gRunContext, sizeof(RunContext) );
+           gRunContext = prev;
+        //goto restartReturn;
+        return;
+       }
+                    
+        
     }
     catch (const std::runtime_error& e)
     {
