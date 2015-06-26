@@ -202,8 +202,8 @@ I'm hestitant to add a firm list or array structure to Bang! because I think a l
 
     def :map xform = {
       def :innermap = {
-        fun val = innermap! val xform!;
-        # 1 > ?
+        # 0 > 
+        ? as val innermap! val xform!
       }
       innermap!
     }
@@ -339,22 +339,20 @@ Library files or modules can be included with the "require" keyword.  Require lo
 
     def :map xform = {
       def :innermap = {
-        fun val = innermap! val xform!;
-        # 1 > ?
+        # 0 > 
+        ? as val innermap! val xform!
       }
       innermap!
     }
     
     def :filter predicate = {
-        def :filter-xform v = {
-          fun = v; v predicate!?
-        }
-        filter-xform map!
+        fun v = { v predicate! ? v }
+        map!
     }
     
     fun = lookup
     
-Users may access these functions by requiring [hof.lib]
+Users may access these functions by requiring [hof.bang]
 
     'lib/hof.bang' require! as hof
 
@@ -369,17 +367,14 @@ Or rebound to local upvalues as
 # Roadmap
 
 * Improve parse / runtime error reporting
-* coroutines, coroutines, coroutines.  Maybe even full continuations and call/cc
-* Eval and programatic code generation
-* Test integration with Boehm GC to fix my shared_ptr woes??
+* Libraries
+** String library (borrow from Lua?)
+** Import module namespace into working AST/environment e.g for REPL
+** SRFI implementations
 * user defined operators and consistency with primitive operators ala scala?
 * Working indentation in bang-mode.el
-* REPL
-* Libraries
-** SRFI implementations
-** String library (borrow from Lua?)
-* Library / Module Mechanism
-** Import module namespace into working AST/environment e.g for REPL
+* Eval and programatic code generation
+* Fix integration with Boehm GC to improve performance?
 
 # Summary of Language Elements
 

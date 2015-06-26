@@ -4,13 +4,13 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define PBIND(...) do {} while (0)
-#define HAVE_MUTATION 1  // boo
-#define OPT_TCO_APPLY_UPVAL 1
+#define PBIND(...) do {} while (0) // debugging blocks
+#define HAVE_MUTATION 0  // boo
+#define HAVE_ARRAY_MUTATION 1
 
 #if HAVE_MUTATION
 # if __GNUC__
-//# warning Mutation enabled: You have strayed from the true and blessed path.
+# warning Mutation enabled: You have strayed from the true and blessed path.
 #endif 
 #endif
 
@@ -64,11 +64,13 @@ And there are primitives, until a better library / module system is in place.
 # include <windows.h> // for load library
 # if !__GNUC__
 #  include <codecvt> // to convert to wstring
-# endif 
+# endif
+#else
+# include <dlfcn.h>
 #endif
 
 
-const char* const BANG_VERSION = "0.003";
+const char* const BANG_VERSION = "0.004";
 
 // #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
 // #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
@@ -1088,7 +1090,11 @@ public:
             const auto& str = msg.tostr();
             if (str == "#")
                 s.push( double(stack_.size()) );
-#if HAVE_MUTATION            
+#if HAVE_ARRAY_MUTATION
+            // I'm a little more willing to accept mutating arrays (vs upvals) just
+            // because I don't know why.  The stack-to-array still feels less like part of the core
+            // language I guess, and still more of a library.  Maybe I should just move it into
+            // a library.  Why not?  It can be moved to a library after all.
             else if (str == "set")
             {
                 int ndx = int(s.pop().tonum());
@@ -2324,9 +2330,10 @@ namespace Primitives {
 #else
     typedef __declspec(dllexport) int (*tfn_libopen)( Stack*, const RunContext* );
 #endif
+    
+#if defined(_WIN32)
     void crequire( Bang::Stack&s, const RunContext& rc )
     {
-#if defined(_WIN32)
         const auto& v = s.pop();
         const auto& libname = v.tostr();
 #if UNICODE
@@ -2352,8 +2359,39 @@ namespace Primitives {
 //                       << " stack=0x" << std::hex <<  (void*)&s << std::dec << std::endl;
 
         reinterpret_cast<tfn_libopen>(proc)( &s, &rc );
-#endif
     }
+#else
+    void crequire( Bang::Stack&s, const RunContext& rc )
+    {
+        const auto& v = s.pop();
+        std::string libname = v.tostr();
+
+        if (libname.substr(libname.size()-1-3,std::string::npos) != ".so")
+        {
+            libname += ".so";
+        }
+
+        const auto& llstr = libname.c_str();
+
+        void *lib = dlopen( llstr, RTLD_NOW | RTLD_GLOBAL );
+
+        if (!lib)
+        {
+            std::cerr << "Could not load library=" << libname << std::endl;
+            return;
+        }
+        void* voidproc = dlsym( lib, "bang_open" );
+        if (!voidproc)
+        {
+            std::cerr << "Could not find 'bang_open()' in library=" << libname << std::endl;
+            return;
+        }
+//         std::cerr << "Calling 'bang_open()' in library=" << libname 
+//                       << " stack=0x" << std::hex <<  (void*)&s << std::dec << std::endl;
+
+        reinterpret_cast<tfn_libopen>(voidproc)( &s, &rc );
+    }
+#endif
 }
 
 

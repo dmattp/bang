@@ -1,0 +1,19 @@
+
+def :coro = {
+    'hello from coroutine!\n' print!
+    yield!
+    
+    'hello again from coroutine!\n' print!
+    yield!
+    
+    'hello a third time from coroutine!\n' print!
+}
+
+coro coroutine! as co
+'created coroutine\n' print!
+
+co! 'returned from coroutine once\n' print!
+
+co! 'returned from coroutine twice\n' print!
+
+co! 'returned from coroutine a third time\n' print!

@@ -14,12 +14,12 @@ def :quicksort = {
 
 'lib/iterate.bang' require! .times as times
 
-'mathlib' crequire!.random as random
+'mathlib' crequire! .random as random
 
 def :testQuicksort numItems = { 
   random numItems times!
   quicksort!
-  numItems 99 > ? save-stack! drop!
+  numItems 499 > ? save-stack! drop!
 }
 
 -- 

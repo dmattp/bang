@@ -1,0 +1,18 @@
+1000 hello from coroutine!
+rc=5000 8 returned from coroutine
+1007 hello from coroutine!
+rc=5007 7 returned from coroutine
+1013 hello from coroutine!
+rc=5013 6 returned from coroutine
+1018 hello from coroutine!
+rc=5018 5 returned from coroutine
+1022 hello from coroutine!
+rc=5022 4 returned from coroutine
+1025 hello from coroutine!
+rc=5025 3 returned from coroutine
+1027 hello from coroutine!
+rc=5027 2 returned from coroutine
+1028 hello from coroutine!
+rc=5028 1 returned from coroutine
+Reached final value=1
+8
