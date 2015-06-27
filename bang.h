@@ -24,7 +24,7 @@ namespace Bang
    
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
 
-    namespace Ast { class CloseValue; }
+    namespace Ast { class CloseValue; class Program; class Base; }
 
     class Thread;
     
@@ -38,14 +38,15 @@ typedef std::shared_ptr<Function> bangfunptr_t;
 typedef std::shared_ptr<Thread> bangthreadptr_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
   #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Bang::Function>(f)
-  #define NEW_BANGFUN(A)             std::make_shared<A>
+//#define NEW_BANGFUN(A) false ^ std::make_shared<A>
+ #define NEW_BANGFUN(A)  std::make_shared<A>
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
 
-#define NEW_BANGTHREAD             std::make_shared<Thread>
+#define NEW_BANGTHREAD  std::make_shared<Thread>
 #define BANGTHREAD_CREF const Bang::bangthreadptr_t&
-#define BANGTHREADPTR bangthreadptr_t
+#define BANGTHREADPTR   bangthreadptr_t
 
 
     class Value
@@ -389,14 +390,78 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         : public gc
 #endif
     {
-        bool isClosure_;
         Function( const Function& ); // uncopyable
+        Function& operator=(const Function&);
+    private:
     public:
-        Function() : isClosure_(false) {}
-        Function( bool isc ) : isClosure_(isc) {};
+        std::weak_ptr<Function> self_;
+        Function() {} // : isClosure_(false) {}
         virtual ~Function() {}
-        bool isClosure() { return isClosure_; }
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };
+
     
+    
+    // if RunProgram is called outside of an active thread, use pNullThread;
+    // this should cause the C-call to RunProgram to return when kBreakProg is found.
+extern Thread* pNullThread;
+void RunProgram
+(   
+    Thread* pThread,
+    const Ast::Program* inprog,
+    SHAREDUPVALUE inupvalues
+);
+
+    class NthParent {
+        int nth_;
+    public:
+        explicit NthParent( int n ) : nth_(n) {}
+        NthParent operator++() const { return NthParent(nth_+1); }
+        NthParent operator--() const { return NthParent(nth_-1); }
+        bool operator==( NthParent other ) const { return nth_ == other.nth_; }
+        int toint() const { return nth_; } // use judiciously, please
+    };
+
+class RunContext
+{
+public:
+    Thread* thread;
+    RunContext* prev;
+    const Ast::Base* const *ppInstr;
+    SHAREDUPVALUE    upvalues_;
+public:    
+    SHAREDUPVALUE_CREF upvalues() const;
+    SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
+    const Value& getUpValue( NthParent up ) const;
+    const Value& getUpValue( const std::string& uvName ) const;
+
+
+    RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv );
+    RunContext();
+    void rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv );
+    void rebind( const Ast::Base* const * inppInstr );
+};
+    
+    class BoundProgram : public Function
+    {
+    public:
+        const Ast::Program* program_;
+        SHAREDUPVALUE upvalues_;
+    public:
+        BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues );
+        void dump( std::ostream & out );
+        virtual void apply( Stack& s );
+    };
 } // end, namespace Bang
+
+
+// template <class T>
+// static const std::shared_ptr<T>&
+// operator^ (bool,const std::shared_ptr<T>& this1 )
+// {
+// //    this1->self_ = std::static_pointer_cast<Bang::Function>(this1);
+//     return this1;
+// }
+
+
+

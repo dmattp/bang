@@ -88,16 +88,6 @@ namespace {
 namespace Bang {
 
 
-    class NthParent {
-        int nth_;
-    public:
-        explicit NthParent( int n ) : nth_(n) {}
-        NthParent operator++() const { return NthParent(nth_+1); }
-        NthParent operator--() const { return NthParent(nth_-1); }
-        bool operator==( NthParent other ) const { return nth_ == other.nth_; }
-        int toint() const { return nth_; } // use judiciously, please
-    };
-
     static const NthParent kNoParent=NthParent(INT_MAX);
 
 
@@ -151,11 +141,11 @@ namespace {
         else if (type_ == kStr)
             o << this->tostr();
         else if (type_ == kFun)
-            o << "<function>";
+            o << "<fun=" << this->tofun().get() << ">";
         else if (type_ == kFunPrimitive)
             o << "<prim.function>";
         else if (type_ == kThread)
-            o << "<thread>";
+            o << "<thread=" << this->tothread().get() << ">";
         else
             o << "<?Value?>";
     }
@@ -186,27 +176,9 @@ void indentlevel( int level, std::ostream& o )
 }
 
 namespace Ast { class Base; }    
-class RunContext
-{
-public:
-    RunContext* prev;
-    const Ast::Base* const *ppInstr;
-    SHAREDUPVALUE    upvalues_;
-public:    
-    SHAREDUPVALUE_CREF upvalues() const;
-    SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
-    const Value& getUpValue( NthParent up ) const;
-    const Value& getUpValue( const std::string& uvName ) const;
 
-
-    RunContext( RunContext* inprev, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
-    :  prev(inprev),
-       ppInstr( inppInstr ), // , /*initialupvalues(uv),*/
-       upvalues_( uv )
-    {}
-
-    RunContext()
-    : prev(nullptr), ppInstr(nullptr)
+    RunContext::RunContext()
+    : thread(nullptr), prev(nullptr), ppInstr(nullptr)
     {}
     
 //     void rebind( const Ast::Program* inprog )
@@ -214,18 +186,16 @@ public:
 //         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
 //     }
 
-    void rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv )
+    void RunContext::rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv )
     {
         ppInstr = inppInstr;
         upvalues_ = uv;
     }
     
-    void rebind( const Ast::Base* const * inppInstr )
+    void RunContext::rebind( const Ast::Base* const * inppInstr )
     {
         ppInstr = inppInstr;
     }
-};
-
 
 namespace Primitives
 {
@@ -1132,22 +1102,15 @@ namespace Primitives {
 }
 
 
-    class BoundProgram : public Function
-    {
-    public:
-        const Ast::Program* program_;
-        SHAREDUPVALUE upvalues_;
-    public:
-        BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues )
-        : Function(true), program_( program ), upvalues_( upvalues )
+        BoundProgram::BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues )
+        : // Function(true),
+          program_( program ), upvalues_( upvalues )
         {}
-        void dump( std::ostream & out )
+    
+        void BoundProgram::dump( std::ostream & out )
         {
             program_->dump( 0, std::cerr );
         }
-        virtual void apply( Stack& s );
-    };
-    
     
     void throwNoFunVal( const Value& v )
     {
@@ -1175,6 +1138,13 @@ public:
     {}
 };
 
+    RunContext::RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
+    :  thread(inthread),
+       prev(inthread->callframe),
+       ppInstr( inppInstr ), // , /*initialupvalues(uv),*/
+       upvalues_( uv )
+    {}
+    
 void RunApplyValue( const Value& v, Stack& stack, const RunContext& frame )
 {
     switch (v.type())
@@ -1195,6 +1165,10 @@ void xferstack( Thread* from, Thread* to )
 {
     from->stack.giveTo( to->stack );
 }
+
+static Thread gNullThread;
+    
+Thread* pNullThread( &gNullThread );
     
 void RunProgram
 (   
@@ -1207,8 +1181,9 @@ void RunProgram
 restartNonTail:
     pThread->callframe =
         new (gAllocRc.allocate(sizeof(RunContext)))
-        RunContext( pThread->callframe, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
+        RunContext( pThread, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
 restartThread:
+    pThread->callframe->thread = pThread;
     Stack& stack = pThread->stack;
 restartReturn:
     RunContext& frame = *(pThread->callframe);
@@ -1492,7 +1467,7 @@ void Ast::MakeCoroutine::go( Stack& stack, Thread* incaller )
     // start me off pointing at the BoundProgram, ready to roll
     thread->callframe =
         new (gAllocRc.allocate(sizeof(RunContext)))
-        RunContext( nullptr, TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+        RunContext( thread.get(), TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
     
     stack.push( Value(thread) );
 }
@@ -2107,12 +2082,13 @@ class Parser
 
     class Defdef
     {
+        bool postApply_;
         Ast::Program* pDefProg_;
         std::unique_ptr<std::string> defname_;
     public:
         ~Defdef() { delete pDefProg_; } // delete pWithDefFun_; 
         Defdef( StreamMark& stream, const Ast::CloseValue* upvalueChain, ParsingRecursiveFunStack* pRecParsing )
-        : pDefProg_(nullptr)
+        : postApply_(false), pDefProg_(nullptr)
         {
             const Ast::CloseValue* const lastParentUpvalue = upvalueChain;
             StreamMark mark(stream);
@@ -2122,9 +2098,15 @@ class Parser
             if (!eatReservedWord( "def", mark ))
                 throw ErrorNoMatch();
 
+            char c = mark.getc();
+            if (c == '!')
+                postApply_ = true;
+            else
+                mark.regurg(c);
+
             eatwhitespace(mark);
 
-            char c = mark.getc();
+            c = mark.getc();
             if (c != ':')
             {
                 std::cerr << "got '" << c << "' expecting ':'" << std::endl;
@@ -2171,6 +2153,7 @@ class Parser
             mark.accept();
         }
 
+        bool hasPostApply() const { return postApply_; }
         Ast::Program* stealDefProg() { auto rc = pDefProg_; pDefProg_ = nullptr; return rc; }
         const std::string& getDefName() { return *defname_; }
     }; // end, class Defdef
@@ -2468,9 +2451,15 @@ Parser::Program::Program
                 Defdef fun( stream, upvalueChain, pRecParsing );
                 
                 ast_.push_back( fun.stealDefProg() );
-                Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, fun.getDefName() );
-                upvalueChain = cv;
-                ast_.push_back( cv );
+                
+                if (fun.hasPostApply())
+                    ast_.push_back( new Ast::Apply() );
+                else
+                {
+                    Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, fun.getDefName() );
+                    upvalueChain = cv;
+                    ast_.push_back( cv );
+                }
                 continue;
             } catch ( const ErrorNoMatch& ) {}
 
@@ -2864,7 +2853,7 @@ Test against reference output:
 
   dir test\*.bang | %{ $t=.\bang $_;  $ref = cat .\test\$("out." + $_.name + ".out"); if (compare-object $t $ref) { throw "FAILED $($_.name)!" } }  
  */
-int main( int argc, char* argv[] )
+int bangmain( int argc, char* argv[] )
 {
     std::cerr << "Bang! v" << BANG_VERSION << " - Welcome!" << std::endl;
 

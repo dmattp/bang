@@ -11,3 +11,11 @@ out.*.out
 *.lastbuildstate
 *.bad
 build/site.mak
+*.sdf
+*.suo
+ipch
+thoughts
+*.vcxproj.user
+Debug
+Release
+bang.sln

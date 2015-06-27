@@ -212,12 +212,10 @@ Each value on the stack is transformed by the provided function.  The 'innermap'
 
 Given this map function, we can write a "filter" function that leaves only those functions on the stack which pass a certain predicate test:
 
-      def :filter predicate = {
-          def :filter-xform v = {
-            fun = v; v predicate!?
-          }
-          filter-xform map!
-      }
+    def :filter predicate = {
+        fun v = { v predicate! ? v }
+        map!
+    }
 
 To help with the use of the working stack, a couple other niceties are provided.  "nth" pushes (duplicates) the nth value on the stack.  "save-stack" clears the stack contents, saving them into a function that will push them back onto the stack when applied.
 

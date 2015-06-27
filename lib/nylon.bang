@@ -1,0 +1,43 @@
+
+
+'c:/m/bangproj/bangnylon/bangnylon' crequire! as nsys
+
+
+def :cord cordfun = {
+
+    cordfun 'creating cord fn=%s\n' print!
+    
+    cordfun coroutine! as coro
+
+    def :sleep seconds = {
+        fun = {
+--            seconds 'got timer callback after %s seconds\n' print!
+            coro nsys.schedule!
+        } seconds nsys.addOneShot!
+
+        yield!
+--        seconds 'coroutine woke up after %s seconds\n' print!
+    }
+
+    fun = lookup; as f-lookup
+
+    'calling coroutine\n' print!
+    
+    f-lookup coro!
+
+    f-lookup
+}
+
+
+nsys.waitforthread as waitforthread
+
+def :runloop = {
+--    # 'stk=%s nylon mainloop wait for thread\n' print!
+    waitforthread! as thread
+--    # thread 'stk=%s nylon mainloop got thread=%s\n' print!
+    thread!
+    runloop!
+}
+
+
+fun = lookup
