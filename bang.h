@@ -404,8 +404,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     
     // if RunProgram is called outside of an active thread, use pNullThread;
     // this should cause the C-call to RunProgram to return when kBreakProg is found.
-extern Thread* pNullThread;
-void RunProgram
+DLLEXPORT Thread* pNullThread;
+DLLEXPORT void RunProgram
 (   
     Thread* pThread,
     const Ast::Program* inprog,

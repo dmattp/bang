@@ -1168,9 +1168,9 @@ void xferstack( Thread* from, Thread* to )
 
 static Thread gNullThread;
     
-Thread* pNullThread( &gNullThread );
-    
-void RunProgram
+
+DLLEXPORT Thread* pNullThread( &gNullThread );
+DLLEXPORT void RunProgram
 (   
     Thread* pThread,
     const Ast::Program* inprog,
@@ -2853,7 +2853,7 @@ Test against reference output:
 
   dir test\*.bang | %{ $t=.\bang $_;  $ref = cat .\test\$("out." + $_.name + ".out"); if (compare-object $t $ref) { throw "FAILED $($_.name)!" } }  
  */
-int bangmain( int argc, char* argv[] )
+DLLEXPORT int bangmain( int argc, char* argv[] )
 {
     std::cerr << "Bang! v" << BANG_VERSION << " - Welcome!" << std::endl;
 
@@ -2909,4 +2909,6 @@ int bangmain( int argc, char* argv[] )
     while (gReplMode);
     
     std::cerr << "toodaloo!" << std::endl;
+
+    return 0;
 }

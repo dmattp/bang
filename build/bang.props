@@ -13,6 +13,10 @@
     <ClCompile>
           <AdditionalIncludeDirectories>$(DIR_BANG_SRC);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(DIR_BANG_SRC)/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>banglib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   
 </Project>
