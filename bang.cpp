@@ -1396,6 +1396,22 @@ restartTco:
     }
 }
 
+
+
+    DLLEXPORT void CallIntoSuspendedCoroutine( Bang::Thread *bthread, const BoundProgram* bprog )
+    {
+        // this is an awful mess.
+        auto prevcaller = bthread->pCaller;
+        auto prevcf = bthread->callframe;
+        bthread->pCaller = nullptr;
+        bthread->callframe = nullptr;
+        // auto bprog = v->toboundfun(); 
+        Bang::RunProgram( bthread, bprog->program_, bprog->upvalues_ );
+        bthread->pCaller = prevcaller;
+        bthread->callframe = prevcf;
+    }
+
+    
     void BoundProgram::apply( Stack& s )
     {
         // this is handled in main RunProgram machine

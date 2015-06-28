@@ -13,7 +13,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9877DDCA-C476-4560-9F75-AE6C681F9B63}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>radrug</RootNamespace>
+    <RootNamespace>mathlib</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
@@ -43,11 +43,11 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;\usr\lib;$(SolutionDir)$(Configuration)\;c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\debug;C:\Dev\PCS_SDKS\JAG\NewDev\PlatformSystemsSDK\Lib\NT-VS10\Debug;..\Debug;..\..\n2\build\src\$(Configuration)</LibraryPath>
+    <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;$(SolutionDir)$(Configuration)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;\usr\lib;$(SolutionDir)$(Configuration)\;c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\debug;C:\Dev\PCS_SDKS\JAG\NewDev\PlatformSystemsSDK\Lib\NT-VS10\Debug;..\Debug;..\..\n2\build\src\$(Configuration)</LibraryPath>
+    <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;$(SolutionDir)$(Configuration)</LibraryPath>
   </PropertyGroup>
 
   <Import Project="build/bang.props" />
@@ -57,13 +57,13 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <SuppressStartupBanner>false</SuppressStartupBanner>
-      <PreprocessorDefinitions>RADRUG_LIMITED;WIN32;_WINDOWS;_USRDLL;RADRUG_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SuppressStartupBanner>false</SuppressStartupBanner>
-      <AdditionalDependencies>radio.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;ForecourtInterface.lib;RadRam.lib;RadPipeClient.lib;XMLParse.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -74,7 +74,6 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <LibraryPath>c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\debug;$(LibraryPath)</LibraryPath>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -86,7 +85,6 @@
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <LibraryPath>c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\Release;$(LibraryPath)</LibraryPath>
     </Link>
   </ItemDefinitionGroup>
   

@@ -411,6 +411,8 @@ DLLEXPORT void RunProgram
     SHAREDUPVALUE inupvalues
 );
 
+    DLLEXPORT void CallIntoSuspendedCoroutine( Bang::Thread *bthread, const BoundProgram* bprog );
+    
     class NthParent {
         int nth_;
     public:
