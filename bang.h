@@ -4,7 +4,7 @@
 #include <ostream>
 
 
-#if defined(_WIN32)
+#if defined(WIN32)
 # define DLLEXPORT _declspec(dllexport)
 #else
 # define DLLEXPORT
@@ -404,7 +404,6 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     
     // if RunProgram is called outside of an active thread, use pNullThread;
     // this should cause the C-call to RunProgram to return when kBreakProg is found.
-DLLEXPORT Thread* pNullThread;
 DLLEXPORT void RunProgram
 (   
     Thread* pThread,
@@ -452,6 +451,27 @@ public:
         void dump( std::ostream & out );
         virtual void apply( Stack& s );
     };
+
+
+class Thread
+{
+public:
+    Bang::Stack stack;
+    RunContext* callframe;
+    Thread* pCaller;
+    Thread()
+    : callframe( nullptr ),
+      pCaller( nullptr )
+    {}
+    Thread( Thread* incaller )
+    : callframe( nullptr ),
+      pCaller( incaller )
+    {}
+    static DLLEXPORT Thread* nullthread();
+};
+
+// extern Thread* pNullThread;
+    
 } // end, namespace Bang
 
 

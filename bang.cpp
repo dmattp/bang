@@ -330,7 +330,7 @@ namespace Primitives
         std::cout << std::endl;
     }
 
-    void print( Stack& s, const RunContext& ctx )
+    void format2ostream(  Stack& s, std::ostream& strout )
     {
         const Value& vfmt = s.pop();
         const auto& fmt = vfmt.tostr();
@@ -353,28 +353,39 @@ namespace Primitives
             if (found == string::npos)
             {
                 if (pos == string::npos)
-                    std::cout << fmt;
+                    strout << fmt;
                 else    
-                    std::cout << fmt.substr( 0, pos + 1 );
+                    strout << fmt.substr( 0, pos + 1 );
             }
             else
             {
                 const Value& v = s.pop();
                 if (found > 0)
                     subpar( found - 1 );
-                v.tostring(std::cout); //  << v.tostring(); // "XXX";
+                v.tostring(strout); //  << v.tostring(); // "XXX";
                 size_t afterParam = found + 2;
                 if (pos==std::string::npos)
-                    std::cout << fmt.substr( afterParam ); //
+                    strout << fmt.substr( afterParam ); //
                 else
-                    std::cout << fmt.substr( afterParam, pos - afterParam + 1 );
+                    strout << fmt.substr( afterParam, pos - afterParam + 1 );
             }
         };
 
         subpar( std::string::npos );
-        
-        //std::cout << std::endl;
     }
+
+    void print( Stack& s, const RunContext& ctx )
+    {
+        format2ostream( s, std::cout );
+    }
+
+    void format( Stack& s, const RunContext& ctx )
+    {
+        std::ostringstream oss;
+        format2ostream( s, oss );
+        s.push( oss.str() );
+    }
+
     
     void beginStackBound( Stack& s, const RunContext& ctx )
     {
@@ -1122,22 +1133,6 @@ namespace Primitives {
 
 SimpleAllocator<RunContext> gAllocRc;
 
-class Thread
-{
-public:
-    Bang::Stack stack;
-    RunContext* callframe;
-    Thread* pCaller;
-    Thread()
-    : callframe( nullptr ),
-      pCaller( nullptr )
-    {}
-    Thread( Thread* incaller )
-    : callframe( nullptr ),
-      pCaller( incaller )
-    {}
-};
-
     RunContext::RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
     :  thread(inthread),
        prev(inthread->callframe),
@@ -1167,9 +1162,9 @@ void xferstack( Thread* from, Thread* to )
 }
 
 static Thread gNullThread;
-    
-
 DLLEXPORT Thread* pNullThread( &gNullThread );
+DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
+    
 DLLEXPORT void RunProgram
 (   
     Thread* pThread,
@@ -1214,7 +1209,10 @@ restartTco:
                         goto restartThread;
                     }
                     else
+                    {
+//                        std::cerr << "exiting prog stack=" << &(pThread->stack) <<  " stksize=" << pThread->stack.size() << "\n";
                         return;
+                    }
                 }
 
                 case Ast::Base::kEofMarker:
@@ -2651,6 +2649,7 @@ Parser::Program::Program
                 if (rwPrimitive( "dup",    &Primitives::dup    ) ) continue;
                 if (rwPrimitive( "nth",    &Primitives::nth    ) ) continue;
                 if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
+                if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
                 if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
 //                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;

@@ -1,6 +1,6 @@
 
 
-'c:/m/bangproj/bangnylon/bangnylon' crequire! as nsys
+'bangnylon' crequire! as nsys
 
 
 def :cord cordfun = {
@@ -8,6 +8,8 @@ def :cord cordfun = {
     cordfun 'creating cord fn=%s\n' print!
     
     cordfun coroutine! as coro
+
+    def :schedule = coro nsys.schedule!;
 
     def :sleep seconds = {
         fun = {
