@@ -4,9 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define PBIND(...) do {} while (0) // debugging blocks
 #define HAVE_MUTATION 0  // boo
-#define HAVE_ARRAY_MUTATION 1
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -1044,59 +1042,6 @@ public:
     }
 };
 
-class FunctionStackToArray : public Function
-{
-    std::vector<Value> stack_;
-public:
-    FunctionStackToArray( Stack& s )
-    {
-        s.giveTo( stack_ );
-    }
-
-    //~~~ i still think, sort of, that the shared_ptr here should be to myself
-    // rather than the nearest running closure.  Because if I already exist as
-    // a shared_ptr, how do I find that?  It's sort of a weakness of the STL
-    // because if I'm invoked through a shared_ptr, I never have access to the
-    // shared reference counted, but I sort of need that, e.g., to "Clone()" or
-    // to do something that takes another reference to me. 
-    virtual void apply( Stack& s ) // , CLOSURE_CREF running )
-    {
-        const Value& msg = s.pop();
-        if (msg.isnum())
-        {
-            s.push( stack_[int(msg.tonum())] );
-        }
-        else if (msg.isstr())
-        {
-            const auto& str = msg.tostr();
-            if (str == "#")
-                s.push( double(stack_.size()) );
-#if HAVE_ARRAY_MUTATION
-            // I'm a little more willing to accept mutating arrays (vs upvals) just
-            // because I don't know why.  The stack-to-array still feels less like part of the core
-            // language I guess, and still more of a library.  Maybe I should just move it into
-            // a library.  Why not?  It can be moved to a library after all.
-            else if (str == "set")
-            {
-                int ndx = int(s.pop().tonum());
-                stack_[ndx] = s.pop();
-            }
-            else if (str == "swap")
-            {
-                int ndx1 = int(s.pop().tonum());
-                int ndx2 = int(s.pop().tonum());
-                std::swap( stack_[ndx1], stack_[ndx2] );
-//                stack_[ndx] = s.pop();
-            }
-#endif 
-            else if (str == "push")
-            {
-                auto pushit = NEW_BANGFUN(FunctionRestoreStack)( stack_ );
-                s.push( STATIC_CAST_TO_BANGFUN(pushit) );
-            }
-        }
-    }
-};
 
 
 namespace Primitives {
@@ -1104,11 +1049,6 @@ namespace Primitives {
     {
         const auto& restoreFunction = NEW_BANGFUN(FunctionRestoreStack)( s );
         s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
-    }
-    void stackToArray( Stack& s, const RunContext& rc )
-    {
-        const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
-        s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
     }
 }
 
@@ -2667,7 +2607,7 @@ Parser::Program::Program
                 if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
                 if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
-                if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
+//                if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
 //                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
                 if (rwPrimitive( "tostring", &Primitives::tostring    ) ) continue;

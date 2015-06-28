@@ -1,6 +1,7 @@
 
 #include <memory>
 #include <vector>
+#include <iterator>
 #include <ostream>
 
 
@@ -286,11 +287,17 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             Bound* prev;
             Bound( int m, Bound *p ) : mark(m), prev(p) {}
         };
-        friend class FunctionRestoreStack;
-        friend class FunctionStackToArray;
+         friend class FunctionRestoreStack;
+//         friend class FunctionStackToArray;
         std::vector<Value> stack_;
         Bound* bound_;
 
+
+    public:
+        std::back_insert_iterator<std::vector<Value> > back_inserter()
+        {
+            return std::back_inserter( stack_ );
+        }
         void giveTo( std::vector<Value>& other )
         {
             if (!bound_)
@@ -306,8 +313,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 stack_.erase( stack_.begin() + bound_->mark, stack_.end() );
             }
         }
-
-    public:
+        
         void giveTo( Stack& other )
         {
             this->giveTo( other.stack_ );

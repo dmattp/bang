@@ -7,6 +7,7 @@ endif
 all:: bang$(EXT_EXE) #-- mathlib.dll
 #all:: bang$(EXT_SO)
 all:: mathlib$(EXT_SO)
+all:: arraylib$(EXT_SO)
 all:: stringlib$(EXT_SO)
 
 CPPFLAGS += --std=c++11 -O2
@@ -23,6 +24,9 @@ bang$(EXT_EXE): bangmain.cpp bang.h Makefile bang$(EXT_SO)
 	$(CXX) $(CPPFLAGS)  $< -L. -lbang -o $@
 
 mathlib$(EXT_SO): mathlib.cpp bang.h
+	$(CXX) $(CPPFLAGS) -shared -o $@ $<
+
+arraylib$(EXT_SO): arraylib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
 
 stringlib$(EXT_SO): stringlib.cpp bang.h

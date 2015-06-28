@@ -4,6 +4,7 @@
 # 1 < ? 8; as N
 
 'lib/iterate.bang' require! .range as range
+'arraylib' crequire! .from-stack as stack-to-array
 
 # N "fannkuck start stack=%@ N=%@\n" print!
 

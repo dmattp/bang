@@ -35,6 +35,7 @@ def :range last = {
 --- ---   +
 --- ---   1.0 swap! /
 --- --- }
+'arraylib' crequire! .from-stack as stack-to-array
 
 def :Av N = {
   stack-to-array! as input
