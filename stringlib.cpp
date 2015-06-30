@@ -44,6 +44,15 @@ namespace String
         checkstrtype( sRt );
         s.push( sLt.tostr() < sRt.tostr() );
     }
+
+    void byte( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        checkstrtype(s.loc_top());
+        const auto& str = s.pop().tostr();
+        int ndx = s.pop().tonum();
+        s.push( (double)str[ndx] );
+        // s.push( sLt.tostr() < sRt.tostr() );
+    }
     
     void to_bytes( Bang::Stack& s, const Bang::RunContext& ctx)
     {
@@ -79,6 +88,7 @@ namespace String
             (  str == "len"    ? &len
             :  str == "sub"    ? &sub
             :  str == "lt"     ? &lt
+            :  str == "byte"     ? &byte
             :  str == "to-bytes"   ? &to_bytes
             :  str == "from-bytes"   ? &from_bytes
             :  nullptr

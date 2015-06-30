@@ -37,6 +37,10 @@ namespace Array
     public:
         FunctionStackToArray( Stack& s )
         {
+        }
+
+        void appendStack( Stack& s )
+        {
             s.giveTo( stack_ );
         }
 
@@ -76,6 +80,20 @@ namespace Array
                     std::swap( stack_[ndx1], stack_[ndx2] );
 //                stack_[ndx] = s.pop();
                 }
+                else if (str == "insert")
+                {
+                    int ndx = int(s.pop().tonum());
+                    stack_.insert( stack_.begin()+ndx, s.pop() );
+                }
+                else if (str == "erase")
+                {
+                    int ndx = int(s.pop().tonum());
+                    stack_.erase( stack_.begin()+ndx );
+                }
+                else if (str == "append")
+                {
+                    this->appendStack(s);
+                }
 #endif 
                 else if (str == "push")
                 {
@@ -86,7 +104,16 @@ namespace Array
         }
     };
 
+    
+
     void stackToArray( Stack& s, const RunContext& rc )
+    {
+        const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
+        toArrayFun->appendStack(s);
+        s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
+    }
+
+    void stackNew( Stack& s, const RunContext& rc )
     {
         const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
         s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
@@ -97,19 +124,19 @@ namespace Array
     {
         const Bang::Value& v = s.pop();
         if (!v.isstr())
-            throw std::runtime_error("Math library . operator expects string");
+            throw std::runtime_error("Array library . operator expects string");
         const auto& str = v.tostr();
         
         const Bang::tfn_primitive p =
-            (  str == "from-stack"    ? &stackToArray
-            :  str == "biteme"   ? &stackToArray // test
+            (  str == "from-stack" ? &stackToArray
+            :  str == "new"        ? &stackNew // test
             :  nullptr
             );
 
         if (p)
             s.push( p );
         else
-            throw std::runtime_error("Math library does not implement" + str);
+            throw std::runtime_error("Array library does not implement: " + str);
     }
     
 } // end namespace Math

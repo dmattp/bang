@@ -5,7 +5,7 @@
 
 def :cord cordfun = {
 
-    cordfun 'creating cord fn=%s\n' print!
+--    cordfun 'creating cord fn=%s\n' print!
     
     cordfun coroutine! as coro
 
@@ -23,7 +23,7 @@ def :cord cordfun = {
 
     fun = lookup; as f-lookup
 
-    'calling coroutine\n' print!
+--    'calling coroutine\n' print!
     
     f-lookup coro!
 
