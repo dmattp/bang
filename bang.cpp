@@ -4,7 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define HAVE_MUTATION 0  // boo
+#define HAVE_MUTATION 1  // boo
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -71,6 +71,7 @@ And there are primitives, until a better library / module system is in place.
 const char* const BANG_VERSION = "0.004";
 
 // #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
+//#define kDefaultScript "c:/m/n2proj/bang/tmp/cbad1.bang";
 // #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
 
 //~~~temporary #define for refactoring
@@ -577,8 +578,34 @@ struct ParseFail : public std::runtime_error
     : std::runtime_error( mywhat( where, emsg ) )
     {}
 };
+
+
+class InteractiveEnvironment
+{
+    static void norepl_prompt() {}
+public:
+    std::function<void(void)> repl_prompt;
+    InteractiveEnvironment()
+    : repl_prompt( &InteractiveEnvironment::norepl_prompt )
+    {
+    }
+};
+
+    class ParsingContext
+    {
+    public:
+        InteractiveEnvironment interact;
+        ParsingContext( InteractiveEnvironment& env )
+        : interact( env )
+        {}
+        ParsingContext() 
+        {}
+    };
     
 
+    Ast::Program* parseStdinToProgram(ParsingContext& ctx, const Ast::CloseValue* closeValueChain );
+
+    
 namespace Ast
 {
     class BreakProg : public Base
@@ -594,9 +621,22 @@ namespace Ast
     class EofMarker : public Base
     {
     public:
-        EofMarker()
-        : Base( kEofMarker )
+        ParsingContext& parsectx_;
+        EofMarker( ParsingContext& ctx )
+        : Base( kEofMarker ),
+          parsectx_(ctx)
         {}
+
+        void repl_prompt() const
+        {
+            parsectx_.interact.repl_prompt();
+        }
+
+        Ast::Program* getNextProgram( const Ast::CloseValue* closeValueChain ) const
+        {
+            return parseStdinToProgram( parsectx_, closeValueChain );
+        }
+        
         
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -692,10 +732,14 @@ namespace Ast
 
     class YieldCoroutine : public Base
     {
+        bool xferstack_;
     public:
-        YieldCoroutine()
-        : Base( kYieldCoroutine )
+        YieldCoroutine(bool xferstack )
+        : Base( kYieldCoroutine ),
+          xferstack_( xferstack )
         {}
+
+        bool shouldXferstack() const { return xferstack_; }
 
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -784,8 +828,9 @@ namespace Ast
 
     class Require : public Base
     {
+        // ParsingContext& parsectx_;
     public:
-        Require() {}
+        Require() {} // ParsingContext& parsectx) : parsectx_( parsectx ) {}
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -1053,6 +1098,11 @@ namespace Primitives {
 }
 
 
+
+    
+    
+
+
         BoundProgram::BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues )
         : // Function(true),
           program_( program ), upvalues_( upvalues )
@@ -1073,6 +1123,32 @@ namespace Primitives {
 
 SimpleAllocator<RunContext> gAllocRc;
 
+
+    void Thread::setcallin(Thread*caller)
+    {
+        if (!callframe)
+        {
+            // maybe this should just be done in constructor.
+            
+            // start me off pointing at the BoundProgram, ready to roll
+            // no dynamic cast for quickness. responsibility of caller to insure passed Function is a BoundFunction.
+            BoundProgram* pbound = reinterpret_cast<BoundProgram*>( boundProg_.get() );
+
+            this->callframe =
+                new (gAllocRc.allocate(sizeof(RunContext)))
+                RunContext( this, TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+        }
+
+        //~~~ i think this is not quite right.  what if i'm called multiple times from separate threads;
+        // then yield out to intermediate callers; when i'm done, who do i return to?  I shouldn't return
+        // to the last caller (to whom I returned control via yield), but maybe there should be a caller
+        // stack or something, such that when I yield I pop off the last caller.  Or no, maybe it shouldn't
+        // matter; because I always return to the last person who resumed me, so I think this is correct.
+        // perhaps there should be something to e.g., set pCaller to nullptr after I yield back to that
+        // caller at least.
+        pCaller = caller;
+    }
+    
     RunContext::RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv )
     :  thread(inthread),
        prev(inthread->callframe),
@@ -1090,12 +1166,6 @@ void RunApplyValue( const Value& v, Stack& stack, const RunContext& frame )
     }
 }
     
-    Ast::Program* parseStdinToProgram( const Ast::CloseValue* closeValueChain );
-void repl_prompt()
-{
-    std::cout << "Bang! " << std::flush;
-}
-
 void xferstack( Thread* from, Thread* to )
 {
     from->stack.giveTo( to->stack );
@@ -1155,16 +1225,29 @@ restartTco:
                     }
                 }
 
+                case Ast::Base::kYieldCoroutine:
+                    if (pThread->pCaller)
+                    {
+                        if (reinterpret_cast<const Ast::YieldCoroutine*>(pInstr)->shouldXferstack())
+                            xferstack( pThread, pThread->pCaller );
+                        pThread = pThread->pCaller;
+                        goto restartThread;
+                    }
+                    else
+                        return; // nowhere to go
+
+                
+
                 case Ast::Base::kEofMarker:
                 {
                     stack.dump( std::cout );
-                    repl_prompt();
+                    auto pEof = reinterpret_cast<const Ast::EofMarker*>(pInstr);
+                    pEof->repl_prompt();
     
                     try
                     {
                         SHAREDUPVALUE_CREF uv = frame.upvalues_;
-                        Ast::Program *pProgram =
-                            parseStdinToProgram( uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr) );
+                        Ast::Program *pProgram = pEof->getNextProgram( uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr) );
                         frame.rebind( TMPFACT_PROG_TO_RUNPROG(pProgram) ); 
                         goto restartTco;
                     }
@@ -1178,16 +1261,6 @@ restartTco:
                 case Ast::Base:: kMakeCoroutine:
                     Ast::MakeCoroutine::go( stack, pThread );
                     break;
-
-                case Ast::Base::kYieldCoroutine:
-                    if (pThread->pCaller)
-                    {
-                        xferstack( pThread, pThread->pCaller );
-                        pThread = pThread->pCaller;
-                        goto restartThread;
-                    }
-                    else
-                        return; // nowhere to go
 
                 case Ast::Base::kCloseValue:
                     frame.upvalues_ =
@@ -1263,14 +1336,18 @@ restartTco:
                     goto restartNonTail;
                 }
                 break;
+
+#define KTHREAD_CASE \
+                case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread); xferstack(pThread,other); pThread = other; goto restartThread; }
                 
+                /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
                 case Ast::Base::kTCOApplyUpval:
                 {
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
+                        KTHREAD_CASE
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
@@ -1280,13 +1357,14 @@ restartTco:
                 }
                 break;
                 
+                /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
                 case Ast::Base::kApplyUpval:
                 {
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
+                        KTHREAD_CASE
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             inprog = pbound->program_;
@@ -1317,7 +1395,7 @@ restartTco:
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
-                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
+                        KTHREAD_CASE    
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
                             inprog = pbound->program_;
@@ -1407,22 +1485,17 @@ void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
     stack.push( rc.getUpValue( uvnumber_ ) );
 };
 
+
 void Ast::MakeCoroutine::go( Stack& stack, Thread* incaller )
 {
     // virtual void run( Stack& stack, const RunContext& ) const;
     const Value& v = stack.pop(); // function basis for coroutine
+    
     if (!v.isboundfun())
         throw std::runtime_error("MakeCoroutine requires a bound function");
     
-    BoundProgram* pbound = v.toboundfun(); 
-    
-    auto thread = NEW_BANGTHREAD( incaller );
+    auto thread = NEW_BANGTHREAD( v.tofun() );
 
-    // start me off pointing at the BoundProgram, ready to roll
-    thread->callframe =
-        new (gAllocRc.allocate(sizeof(RunContext)))
-        RunContext( thread.get(), TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
-    
     stack.push( Value(thread) );
 }
     
@@ -1683,6 +1756,7 @@ bool eatwhitespace( StreamMark& stream )
 }
 
 
+    
 class Parser
 {
     class Number
@@ -1794,14 +1868,14 @@ class Parser
         }
         bool value() { return value_; }
     };
-    
+
 
     struct ParsingRecursiveFunStack;
     class Program
     {
         Ast::Program::astList_t ast_;
     public:
-        Program( StreamMark&, const Ast::Program* parent, const Ast::CloseValue* upvalueChain,
+        Program( ParsingContext& pc, StreamMark&, const Ast::Program* parent, const Ast::CloseValue* upvalueChain,
             ParsingRecursiveFunStack* pRecParsing );
 
         const Ast::Program::astList_t& ast() { return ast_; }
@@ -1969,7 +2043,7 @@ class Parser
     public:
         ~Fundef() { delete pNewProgram_; }
         
-        Fundef( StreamMark& stream,
+        Fundef( ParsingContext& parsectx, StreamMark& stream,
             const Ast::CloseValue* upvalueChain,
             // const Ast::PushFun* pParentFun,
             ParsingRecursiveFunStack* pRecParsing
@@ -2023,7 +2097,7 @@ class Parser
             }
 
             //~~~ programParent??
-            Program program( mark, nullptr, upvalueChain, pRecParsing );
+            Program program( parsectx, mark, nullptr, upvalueChain, pRecParsing );
             const auto& subast = program.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
             pNewProgram_ = new Ast::Program( nullptr, functionAst );
@@ -2041,7 +2115,7 @@ class Parser
         std::unique_ptr<std::string> defname_;
     public:
         ~Defdef() { delete pDefProg_; } // delete pWithDefFun_; 
-        Defdef( StreamMark& stream, const Ast::CloseValue* upvalueChain, ParsingRecursiveFunStack* pRecParsing )
+        Defdef( ParsingContext& parsectx, StreamMark& stream, const Ast::CloseValue* upvalueChain, ParsingRecursiveFunStack* pRecParsing )
         : postApply_(false), pDefProg_(nullptr)
         {
             const Ast::CloseValue* const lastParentUpvalue = upvalueChain;
@@ -2100,7 +2174,7 @@ class Parser
             // std::string defFunName = pWithDefFun_->getParamName();
             pDefProg_ = new Ast::Program(nullptr);
             ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, lastParentUpvalue, *defname_ ); // , pWithDefFun_);
-            Program progdef( mark, nullptr, upvalueChain, &recursiveStack ); // pDefFun_, &recursiveStack );
+            Program progdef( parsectx, mark, nullptr, upvalueChain, &recursiveStack ); // pDefFun_, &recursiveStack );
             const auto& subast = progdef.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
             pDefProg_->setAst( functionAst );
@@ -2114,14 +2188,14 @@ class Parser
     
     Program* program_;
 public:
-    Parser( StreamMark& mark, const Ast::Program* parent )
+    Parser( ParsingContext& ctx, StreamMark& mark, const Ast::Program* parent )
     {
-        program_ = new Program( mark, parent, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+        program_ = new Program( ctx, mark, parent, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
     }
 
-    Parser( StreamMark& mark, const Ast::CloseValue* upvalchain )
+    Parser( ParsingContext& ctx, StreamMark& mark, const Ast::CloseValue* upvalchain )
     {
-        program_ = new Program( mark, nullptr /*parent*/, upvalchain, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+        program_ = new Program( ctx, mark, nullptr /*parent*/, upvalchain, nullptr ); // 0,0,0 = no upvalues, no recursive chain
     }
     
     const Ast::Program::astList_t& programAst()
@@ -2336,7 +2410,8 @@ namespace Primitives {
 
 
 Parser::Program::Program
-(   StreamMark& stream,
+(   ParsingContext& parsecontext,
+    StreamMark& stream,
     const Ast::Program* parent,
     const Ast::CloseValue* upvalueChain,
     ParsingRecursiveFunStack* pRecParsing
@@ -2390,7 +2465,7 @@ Parser::Program::Program
             //////////////////////////////////////////////////////////////////
             try
             {
-                Fundef fun( stream, upvalueChain, pRecParsing );
+                Fundef fun( parsecontext, stream, upvalueChain, pRecParsing );
 
                 ast_.push_back( fun.stealProgram() );
 
@@ -2402,7 +2477,7 @@ Parser::Program::Program
 
             try
             {
-                Defdef fun( stream, upvalueChain, pRecParsing );
+                Defdef fun( parsecontext, stream, upvalueChain, pRecParsing );
                 
                 ast_.push_back( fun.stealDefProg() );
                 
@@ -2480,7 +2555,7 @@ Parser::Program::Program
                 mark.accept();
                 try
                 {
-                    Program ifBranch( stream, nullptr, upvalueChain, pRecParsing );
+                    Program ifBranch( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
                     Ast::Program* ifProg = new Ast::Program( nullptr, ifBranch.ast() );
                     Ast::Program* elseProg = nullptr;
                     eatwhitespace(stream);
@@ -2493,7 +2568,7 @@ Parser::Program::Program
                     {
                         mark.accept();
 //                        std::cerr << "  found else clause\n";
-                        Program elseBranch( stream, nullptr, upvalueChain, pRecParsing );
+                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
                         elseProg = new Ast::Program( nullptr, elseBranch.ast() );
                     }
                         
@@ -2570,12 +2645,22 @@ Parser::Program::Program
                     }
                 }
 
+                if (ident.name() == "yield-nil")
+                {
+                    if (mark.getc()=='!')
+                    {
+                        mark.accept();
+                        ast_.push_back( new Ast::YieldCoroutine(false) );
+                        continue;
+                    }
+                }
+                
                 if (ident.name() == "yield")
                 {
                     if (mark.getc()=='!')
                     {
                         mark.accept();
-                        ast_.push_back( new Ast::YieldCoroutine() );
+                        ast_.push_back( new Ast::YieldCoroutine(true) );
                         continue;
                     }
                 }
@@ -2656,7 +2741,7 @@ Parser::Program::Program
     {
         stream.accept();
         if (gReplMode)
-            ast_.push_back( new Ast::EofMarker() );
+            ast_.push_back( new Ast::EofMarker(parsecontext) );
         else
             ast_.push_back( new Ast::BreakProg() );
         OptimizeAst( ast_ );
@@ -2676,13 +2761,13 @@ public:
     }
 
 
-    Ast::Program* parseToProgram( RegurgeIo& stream, bool bDump, const Ast::CloseValue* upvalchain )
+    Ast::Program* parseToProgram( ParsingContext& parsectx, RegurgeIo& stream, bool bDump, const Ast::CloseValue* upvalchain )
     {
         StreamMark mark(stream);
 
         try
         {
-            Parser parser( mark, upvalchain );
+            Parser parser( parsectx, mark, upvalchain );
 
             Ast::Program* p = new Ast::Program( nullptr /* parent */, parser.programAst() );
             
@@ -2705,30 +2790,30 @@ public:
     }
 
     
-    Ast::Program* parseNoUpvals( RegurgeIo& stream, bool bDump )
+    Ast::Program* parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump )
     {
-        return parseToProgram( stream, bDump, nullptr );
+        return parseToProgram( ctx, stream, bDump, nullptr );
 
         // fun->setAst( *pProgram );
 
         // return pProgram;
     }
 
-    std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( Stack& stack, bool bDump )
+    std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, Stack& stack, bool bDump )
     {
         Ast::Program* fun;
 
         if (stdin_)
         {
             RegurgeStdinRepl strmStdin;
-            fun = this->parseNoUpvals( strmStdin, bDump );
+            fun = this->parseNoUpvals( ctx, strmStdin, bDump );
         }
         else
         {
             RegurgeFile strmFile( fileName_ );
             try
             {
-                fun = this->parseNoUpvals( strmFile, bDump );
+                fun = this->parseNoUpvals( ctx, strmFile, bDump );
             }
             catch( const ParseFail& e )
             {
@@ -2744,9 +2829,9 @@ public:
         return boundprog;
     }
     
-    void parseAndRun( Thread& thread, bool bDump)
+    void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
     {
-        const auto& closure = parseToBoundProgramNoUpvals( thread.stack, bDump );
+        const auto& closure = parseToBoundProgramNoUpvals( ctx, thread.stack, bDump );
             
         try
         {
@@ -2756,7 +2841,7 @@ public:
         catch( AstExecFail ast )
         {
             gFailedAst = ast.pStep;
-            closure->dump( std::cerr );
+//            closure->dump( std::cerr );
             std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
         }
         catch( const std::exception& e )
@@ -2776,20 +2861,21 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
         throw std::runtime_error("no filename found for require??");
 
     RequireKeyword me( v.tostr().c_str() );
-
-    const auto& closure = me.parseToBoundProgramNoUpvals( stack, false );
+    ParsingContext parsectx_;
+    const auto& closure = me.parseToBoundProgramNoUpvals( parsectx_, stack, false );
     
     stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
 
-    Ast::Program* parseStdinToProgram( const Ast::CloseValue* closeValueChain )
+    Ast::Program* parseStdinToProgram( ParsingContext& ctx, const Ast::CloseValue* closeValueChain )
     {
         RequireKeyword req(nullptr);
         RegurgeStdinRepl strmStdin;
         return
         req.parseToProgram
-        (   strmStdin,
+        (   ctx,
+            strmStdin,
             gDumpMode,
             closeValueChain
         );
@@ -2797,6 +2883,11 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
     
 } // end namespace Bang
 
+
+void repl_prompt()
+{
+    std::cout << "Bang! " << std::flush;
+}
 
 
 /*
@@ -2813,6 +2904,9 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
     std::cerr << "Bang! v" << BANG_VERSION << " - Welcome!" << std::endl;
 
     bool bDump = false;
+
+    Bang::InteractiveEnvironment interact;
+
     if (argc > 1)
     {
         if (std::string("-dump") == argv[1])
@@ -2825,6 +2919,7 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
         if (std::string("-i") == argv[1])
         {
             gReplMode = true;
+            interact.repl_prompt = &repl_prompt;
             argv[1] = argv[2];
             --argc;
         }
@@ -2838,6 +2933,7 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 #else
         fname = nullptr; // kDefaultScript;
         gReplMode = true;
+        interact.repl_prompt = &repl_prompt;
 #endif 
     }
 
@@ -2845,15 +2941,15 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 
     Bang::Thread thread;
 
-    if (gReplMode)
-        Bang::repl_prompt();
+    interact.repl_prompt();
     
+    Bang::ParsingContext parsectx( interact );
     do
     {
         try
         {
             Bang::RequireKeyword requireMain( fname );
-            requireMain.parseAndRun( thread, bDump );
+            requireMain.parseAndRun( parsectx, thread, bDump );
             thread.stack.dump( std::cout );
         }
         catch( const std::exception& e )

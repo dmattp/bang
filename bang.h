@@ -300,9 +300,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         }
         void giveTo( std::vector<Value>& other )
         {
+            if (stack_.size() < 1)
+                return;
+            
             if (!bound_)
             {
-                 other = stack_;
+                for (auto it = stack_.begin(); it < stack_.end(); ++it )
+                    other.push_back( *it );
+                // other = stack_;
                  stack_.clear();
 //                stack_.swap( other );
             }
@@ -467,17 +472,22 @@ public:
     Bang::Stack stack;
     RunContext* callframe;
     Thread* pCaller;
+    BANGFUNPTR boundProg_; // probably should have distinct type, BANGBOUNDPROGPTR or something
     Thread()
-    : callframe( nullptr ),
+    : // pInteract( nullptr ),
+      callframe( nullptr ),
       pCaller( nullptr )
     {}
-    Thread( Thread* incaller )
+    Thread( BANGFUNPTR boundProg )
     : callframe( nullptr ),
-      pCaller( incaller )
+      pCaller( nullptr ),
+      boundProg_( boundProg  )
     {}
     static DLLEXPORT Thread* nullthread();
-};
 
+    void setcallin(Thread*caller);
+};
+    
 // extern Thread* pNullThread;
     
 } // end, namespace Bang
