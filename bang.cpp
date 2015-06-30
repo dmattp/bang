@@ -80,7 +80,6 @@ const char* const BANG_VERSION = "0.004";
 #include "bang.h"
 
 namespace {
-    bool gReplMode(false);
     bool gDumpMode(false);
 }
 
@@ -140,7 +139,9 @@ namespace {
         else if (type_ == kStr)
             o << this->tostr();
         else if (type_ == kFun)
-            o << "<fun=" << this->tofun().get() << ">";
+            o << "<cfun=" << this->tofun().get() << ">";
+        else if (type_ == kBoundFun)
+            o << "<bangfun=" << this->tofun().get() << ">";
         else if (type_ == kFunPrimitive)
             o << "<prim.function>";
         else if (type_ == kThread)
@@ -584,9 +585,11 @@ class InteractiveEnvironment
 {
     static void norepl_prompt() {}
 public:
+    bool bEof;
     std::function<void(void)> repl_prompt;
     InteractiveEnvironment()
-    : repl_prompt( &InteractiveEnvironment::norepl_prompt )
+    : repl_prompt( &InteractiveEnvironment::norepl_prompt ),
+      bEof(false)
     {
     }
 };
@@ -600,6 +603,7 @@ public:
         {}
         ParsingContext() 
         {}
+        bool insertEof() { return interact.bEof; }
     };
     
 
@@ -634,6 +638,7 @@ namespace Ast
 
         Ast::Program* getNextProgram( const Ast::CloseValue* closeValueChain ) const
         {
+//            std::cerr << "EofMarker::getNextProgram\n";
             return parseStdinToProgram( parsectx_, closeValueChain );
         }
         
@@ -2740,7 +2745,7 @@ Parser::Program::Program
     catch (const ErrorEof&)
     {
         stream.accept();
-        if (gReplMode)
+        if (parsecontext.insertEof())
             ast_.push_back( new Ast::EofMarker(parsecontext) );
         else
             ast_.push_back( new Ast::BreakProg() );
@@ -2862,8 +2867,8 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
 
     RequireKeyword me( v.tostr().c_str() );
     ParsingContext parsectx_;
-    const auto& closure = me.parseToBoundProgramNoUpvals( parsectx_, stack, false );
-    
+    const auto& closure = me.parseToBoundProgramNoUpvals( parsectx_, stack, gDumpMode );
+
     stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
@@ -2918,8 +2923,8 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 
         if (std::string("-i") == argv[1])
         {
-            gReplMode = true;
             interact.repl_prompt = &repl_prompt;
+            interact.bEof = true;
             argv[1] = argv[2];
             --argc;
         }
@@ -2932,8 +2937,8 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
         fname = kDefaultScript;
 #else
         fname = nullptr; // kDefaultScript;
-        gReplMode = true;
         interact.repl_prompt = &repl_prompt;
+        interact.bEof = true;
 #endif 
     }
 
@@ -2957,7 +2962,7 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
             std::cerr << "Error: " << e.what() << std::endl;
         }
     }
-    while (gReplMode);
+    while (interact.bEof);
     
     std::cerr << "toodaloo!" << std::endl;
 
