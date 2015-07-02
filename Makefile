@@ -5,23 +5,23 @@ ifeq (,$(BUILD_FOR)) # if site.mak doesn't include a target (linux.mak,win32.mak
 endif
 
 all:: bang$(EXT_EXE) #-- mathlib.dll
-#all:: bang$(EXT_SO)
 all:: mathlib$(EXT_SO)
 all:: arraylib$(EXT_SO)
 all:: stringlib$(EXT_SO)
 
-CPPFLAGS += --std=c++11 -O2
+CPPOPTLEVEL ?= -O2
+CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
 
 ifeq (1,$(USE_GC))
  LDFLAGS_GC=-L$(DIR_BOEHM_LIB) -lgc
  CPPFLAGS_GC=-D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)
 endif
 
-bang$(EXT_SO): bang.cpp bang.h Makefile
-	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) -shared -o $@
+libbang$(EXT_SO): bang.cpp bang.h Makefile
+	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) $(LDFLAGS_DL) -shared -o $@
 
-bang$(EXT_EXE): bangmain.cpp bang.h Makefile bang$(EXT_SO)
-	$(CXX) $(CPPFLAGS)  $< -L. -lbang -o $@
+bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
+	$(CXX) $(CPPFLAGS)  $< -L$(PWD) -lbang -o $@
 
 mathlib$(EXT_SO): mathlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
