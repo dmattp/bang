@@ -11,6 +11,9 @@
 # warning Mutation enabled: You have strayed from the true and blessed path.
 #endif 
 #endif
+#define HAVE_DOT_OPERATOR 1
+#define HAVE_APPLY_2_OPT 0
+#define DOT_OPERATOR_INLINE 1
 
 /*
   Keywords
@@ -102,11 +105,23 @@ namespace Bang {
         {
         }
 
+        bool binds( const std::string& name );
+
         const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
 
-        const Value& getUpValue( const NthParent uvnumber )
+        const Value& getUpValue( NthParent uvnumber )
         {
+#if 1
+            Upvalue* uv = this;
+            while ( uvnumber != NthParent(0) )
+            {
+                uv = uv->parent_.get();
+                uvnumber = --uvnumber;
+            }
+            return uv->v_;
+#else
             return (uvnumber == NthParent(0)) ? v_ : parent_->getUpValue( --uvnumber );
+#endif 
         }
 
         // lookup by string / name is expensive; used for experimental object
@@ -139,7 +154,14 @@ namespace {
         else if (type_ == kStr)
             o << this->tostr();
         else if (type_ == kFun)
-            o << "<cfun=" << this->tofun().get() << ">";
+        {
+            auto f = this->tofun().get();
+            o << "<cfun="
+              << this->tofun().get()
+              << ' '
+              << typeid(*f).name() // dynamic type information is nice here
+              << '>';
+        }
         else if (type_ == kBoundFun)
             o << "<bangfun=" << this->tofun().get() << ">";
         else if (type_ == kFunPrimitive)
@@ -453,6 +475,9 @@ namespace Ast
             kApplyUpval,
             kApplyProgram,
             kApplyFunRec,
+#if DOT_OPERATOR_INLINE            
+            kApplyDotOperator,
+#endif 
             kIfElse,
             kTCOApply,
             kTCOApplyUpval,
@@ -538,7 +563,11 @@ namespace Ast
     };
 }
 
-
+        bool Upvalue::binds( const std::string& name )
+        {
+            return closer_->valueName() == name;
+        }
+    
     const Value& Upvalue::getUpValue( const std::string& uvName )
     {
         if (uvName == closer_->valueName())
@@ -673,6 +702,31 @@ namespace Ast
         }
     };
 
+    class ApplyDotOperator : public Base
+    {
+        std::string msgStr_; // method
+    public:
+        ApplyDotOperator( const std::string& msgStr )
+        :
+#if DOT_OPERATOR_INLINE
+        Base( kApplyDotOperator ),
+#endif 
+        msgStr_( msgStr )
+        {}
+        const std::string& getMsgStr() const { return msgStr_; }
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyDotOperator(" << msgStr_ << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+#if DOT_OPERATOR_INLINE
+        { throw std::runtime_error("ApplyDotOperator::run should not be called"); }
+#else
+        ;
+#endif 
+    };
+    
     class PushPrimitive: public Base
     {
 //        friend void OptimizeAst( std::vector<Ast::Base*>& ast );
@@ -716,6 +770,28 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
+    class Apply2Primitives : public Base
+    {
+        tfn_primitive primitive1_;
+        tfn_primitive primitive2_;
+    public:
+        Apply2Primitives( tfn_primitive p1, tfn_primitive p2 )
+        : primitive1_( p1 ), primitive2_( p2 )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "Apply2Primitives op=??\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& rc ) const
+        {
+            primitive1_( stack, rc );
+            primitive2_( stack, rc );
+        }
+    };
+    
     class MakeCoroutine : public Base
     {
     public:
@@ -1037,7 +1113,7 @@ struct SimpleAllocator
         FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
         --hdr;
         static char freeOne;
-        if ((++freeOne & 0xF) == 0)
+        if ((++freeOne & 0x1F) == 0)
         {
 //            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
 //            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
@@ -1092,6 +1168,26 @@ public:
     }
 };
 
+namespace {
+    SHAREDUPVALUE replace_upvalue( SHAREDUPVALUE_CREF tail, const std::string& varname, const Value& newval )
+    {
+        if (tail->binds(varname))
+        {
+            return NEW_UPVAL( tail->upvalParseChain(), tail->nthParent(NthParent(1)), newval );
+        }
+        else
+        {
+            SHAREDUPVALUE_CREF currparent = tail->nthParent( NthParent(1) );
+            
+            if (!currparent)
+                throw std::runtime_error("rebind-fun: could not find upvalue="+varname);
+            
+            SHAREDUPVALUE_CREF newparent = replace_upvalue( currparent, varname, newval );
+            
+            return NEW_UPVAL( tail->upvalParseChain(), newparent, currparent->getUpValue(NthParent(0)));
+        }
+    }
+}
 
 
 namespace Primitives {
@@ -1099,6 +1195,21 @@ namespace Primitives {
     {
         const auto& restoreFunction = NEW_BANGFUN(FunctionRestoreStack)( s );
         s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
+    }
+    void rebindFunction( Stack& s, const RunContext& rc )
+    {
+        const Value& v = s.pop();
+        if (!v.isboundfun())
+            throw std::runtime_error("rebind-fun: not a bound function");
+        auto bprog = v.toboundfun();
+        const Value& vbindname = s.pop();
+        const auto& bindname = vbindname.tostr();
+        const Value& newval = s.pop();
+
+        SHAREDUPVALUE newchain = replace_upvalue( bprog->upvalues_, bindname, newval );
+
+        const auto& newfun = NEW_BANGFUN(BoundProgram)( bprog->program_, newchain );
+        s.push( newfun );
     }
 }
 
@@ -1378,6 +1489,25 @@ restartTco:
                     }
                 }
                 break;
+
+#if DOT_OPERATOR_INLINE
+                case Ast::Base::kApplyDotOperator:
+                {
+                    const Value& v = stack.pop(); // the function to apply
+                    stack.push( reinterpret_cast<const Ast::ApplyDotOperator*>(pInstr)->getMsgStr() );
+                    switch (v.type())
+                    {
+                        default: RunApplyValue( v, stack, frame ); break;
+                        KTHREAD_CASE
+                        case Value::kBoundFun:
+                            BoundProgram* pbound = v.toboundfun();
+                            inprog = pbound->program_;
+                            inupvalues = pbound->upvalues_;
+                            goto restartNonTail;
+                    }
+                }
+                break;
+#endif 
                 
                 case Ast::Base::kTCOApply:
                 {
@@ -1385,6 +1515,7 @@ restartTco:
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
+                        //~~~ should this setcallin? as with KTHREAD_CASE? or is it intentionally different
                         case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
                             BoundProgram* pbound = v.toboundfun();
@@ -1421,6 +1552,7 @@ restartTco:
 
 
 
+
     DLLEXPORT void CallIntoSuspendedCoroutine( Bang::Thread *bthread, const BoundProgram* bprog )
     {
         // this is an awful mess.
@@ -1434,6 +1566,33 @@ restartTco:
         bthread->callframe = prevcf;
     }
 
+#if !DOT_OPERATOR_INLINE
+    void Ast::ApplyDotOperator::run( Stack& stack, const RunContext& ctx ) const
+        {
+            // now apply
+            const Value& v = stack.pop(); // the function to apply
+            stack.push( v_ );
+            switch (v.type())
+            {
+                case Value::kFun: v.tofun()->apply(stack); break;
+                case Value::kFunPrimitive: v.tofunprim()( stack, ctx ); break;
+                case Value::kBoundFun:
+                {
+                    BoundProgram* bprog = v.toboundfun();
+//                    std::cerr << "dot operator calling boundfun upval1=" << bprog->upvalues_->upvalParseChain()->valueName() << "\n";
+                    // RunProgram( ctx.thread, bprog->program_, bprog->upvalues_ );
+                    CallIntoSuspendedCoroutine( ctx.thread, bprog );
+//                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+                }
+                break;
+//                case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread);
+//                xferstack(pThread,other); pThread = other; goto restartThread; }
+                default:
+                    throw std::runtime_error("dot operator not supported on value type");
+            }
+        }
+#endif 
+    
     
     void BoundProgram::apply( Stack& s )
     {
@@ -1522,7 +1681,9 @@ void Ast::PushUpvalByName::run( Stack& stack, const RunContext& rc) const
     const Value& vName = stack.pop();
     
     if (!vName.isstr())
-        throw std::runtime_error("PushUpvalByName (lookup) did not find string!");
+    {
+        throw std::runtime_error("PushUpvalByName (lookup) name is not string" );
+    }
     
     stack.push( rc.getUpValue( vName.tostr() ) );
 }
@@ -2324,6 +2485,24 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     }
 
     delNoops();
+
+#if HAVE_APPLY_2_OPT    
+    for (int i = 0; i < ast.size() - 1; ++i)
+    {
+        const Ast::ApplyPrimitive* aprim1 = dynamic_cast<const Ast::ApplyPrimitive*>(ast[i]);
+        if (aprim1)
+        {
+            Ast::ApplyPrimitive* aprim2 = dynamic_cast<Ast::ApplyPrimitive*>(ast[i+1]);
+            if (aprim2)
+            {
+                ast[i] = new Ast::Apply2Primitives( aprim1->primitive_, aprim2->primitive_ );
+                ast[i+1] = &noop;
+                ++i;
+            }
+        }
+    }
+    delNoops();
+#endif 
     
     const int astLen = ast.size();
     if (astLen > 1) // last instr should always be "kBreakProg"
@@ -2596,11 +2775,15 @@ Parser::Program::Program
                 {
                     Identifier methodName( mark );
                     mark.accept();
-                    
+
+#if HAVE_DOT_OPERATOR
+                    ast_.push_back( new Ast::ApplyDotOperator( (methodName.name())) );
+#else
                     ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
                     ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
                        ast_.push_back( new Ast::Apply() ); // haveto apply the swap
                     ast_.push_back( new Ast::Apply() ); // now apply to the object!!
+#endif 
                     continue;
                 }
                 catch (const ErrorNoMatch& )
@@ -2697,6 +2880,7 @@ Parser::Program::Program
                 if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
                 if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
+                if (rwPrimitive( "rebind-fun",    &Primitives::rebindFunction    ) ) continue;
 //                if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
 //                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;

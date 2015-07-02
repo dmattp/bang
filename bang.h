@@ -431,6 +431,7 @@ DLLEXPORT void RunProgram
         NthParent operator++() const { return NthParent(nth_+1); }
         NthParent operator--() const { return NthParent(nth_-1); }
         bool operator==( NthParent other ) const { return nth_ == other.nth_; }
+        bool operator!=( NthParent other ) const { return nth_ != other.nth_; }
         int toint() const { return nth_; } // use judiciously, please
     };
 

@@ -65,9 +65,10 @@ namespace Array
                     s.push( double(stack_.size()) );
 #if HAVE_ARRAY_MUTATION
                 // I'm a little more willing to accept mutating arrays (vs upvals) just
-                // because I don't know why.  The stack-to-array still feels less like part of the core
-                // language I guess, and still more of a library.  Maybe I should just move it into
-                // a library.  Why not?  It can be moved to a library after all.
+                // because I don't know why.  Because arraylib is currently a library, and libraries
+                // are even more tentative and easier to replace than the core language, does not
+                // imply new syntax, and can always be retained as a deprecated library alongside
+                // mutation free alternatives or something.
                 else if (str == "set")
                 {
                     int ndx = int(s.pop().tonum());

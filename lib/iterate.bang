@@ -7,13 +7,21 @@ def :times = { swap! as loopFun
 }
 
 
+--def :range last = { swap! as do-me
+--   def! :inner current = {
+--      current do-me!
+--      current last <
+--      ? current 1 + inner!
+--   }
+--   -- first inner!
+--}
+
 def :range last = { swap! as do-me
    def! :inner current = {
-      current do-me!
-      current last <
-      ? current 1 + inner!
+      current last > not! ?
+         current do-me!
+         current 1 + inner!
    }
-   -- first inner!
 }
 
 fun = lookup
