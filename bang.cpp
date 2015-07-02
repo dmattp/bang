@@ -162,7 +162,7 @@ namespace {
               << '>';
         }
         else if (type_ == kBoundFun)
-            o << "<bangfun=" << this->tofun().get() << ">";
+            o << "<bangfun=" << this->toboundfun()->program_ << ">";
         else if (type_ == kFunPrimitive)
             o << "<prim.function>";
         else if (type_ == kThread)
@@ -631,7 +631,32 @@ public:
         {}
         ParsingContext() 
         {}
-        bool insertEof() { return interact.bEof; }
+        virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain );
+    };
+
+    class StreamMark;
+
+    class ImportParsingContext : public ParsingContext
+    {
+        ParsingContext& parsecontext_;
+        StreamMark& stream_;
+        const Ast::Program* parent_;
+        const Ast::CloseValue* upvalueChain_;
+        void* pRecParsing_; /* ParsingRecursiveFunStack */
+    public:
+        ImportParsingContext
+        (   ParsingContext& parsecontext,
+            StreamMark& stream,
+            const Ast::Program* parent,
+            const Ast::CloseValue* upvalueChain,
+            void* pRecParsing
+        ) :
+        parsecontext_(parsecontext), stream_(stream),
+        parent_(parent), upvalueChain_( upvalueChain ),
+        pRecParsing_( pRecParsing )
+        {
+        }
+        virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain );
     };
     
 
@@ -1045,6 +1070,13 @@ namespace Ast
     
 } // end, namespace Ast
 
+    Ast::Base* ParsingContext::hitEof( const Ast::CloseValue* uvchain )
+    {
+        if (interact.bEof)
+            return ( new Ast::EofMarker(*this) );
+        else
+            return ( new Ast::BreakProg() );
+    }
 
 
 #if !USE_GC
@@ -2347,6 +2379,17 @@ public:
     }
 };
 
+    Ast::Base* ImportParsingContext::hitEof( const Ast::CloseValue* uvchain )
+    {
+//        std::cerr << "import hit eof! (continue next prog)\n";
+
+        Parser p( parsecontext_, stream_, uvchain );
+
+        Ast::Program pushprog( parent_, p.programAst() );
+        return new Ast::ApplyProgram( &pushprog );
+    }
+    
+
 void OptimizeAst( std::vector<Ast::Base*>& ast )
 //void OptimizeAst( Ast::Program::astList_t& ast )
 {
@@ -2551,6 +2594,111 @@ namespace Primitives {
 
 
     
+class RequireKeyword
+{
+    const std::string fileName_;
+    bool stdin_;
+public:
+    RequireKeyword( const char* fname )
+    :  fileName_( fname ? fname : "" ),
+       stdin_( !fname )
+    {
+    }
+
+
+    Ast::Program* parseToProgram( ParsingContext& parsectx, RegurgeIo& stream, bool bDump, const Ast::CloseValue* upvalchain )
+    {
+        StreamMark mark(stream);
+
+        try
+        {
+            Parser parser( parsectx, mark, upvalchain );
+
+            Ast::Program* p = new Ast::Program( nullptr /* parent */, parser.programAst() );
+            
+            if (bDump)
+                p->dump( 0, std::cerr );
+
+            return p;
+        }
+        catch (const ErrorEof& )
+        {
+            std::cerr << "Found EOF without valid program!" << std::endl;
+        }
+        catch (const std::runtime_error& e )
+        {
+            std::cerr << "Runtime parse error b01: " << e.what() << std::endl;
+            throw e;
+        }
+
+        return nullptr;
+    }
+
+    
+    Ast::Program* parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump )
+    {
+        return parseToProgram( ctx, stream, bDump, nullptr );
+
+        // fun->setAst( *pProgram );
+
+        // return pProgram;
+    }
+
+    //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
+    // parse to Ast::Program and go with that?
+    std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump )
+    {
+        Ast::Program* fun;
+
+        if (stdin_)
+        {
+            RegurgeStdinRepl strmStdin;
+            fun = this->parseNoUpvals( ctx, strmStdin, bDump );
+        }
+        else
+        {
+            RegurgeFile strmFile( fileName_ );
+            try
+            {
+                fun = this->parseNoUpvals( ctx, strmFile, bDump );
+            }
+            catch( const ParseFail& e )
+            {
+                std::cerr << "Error parsing program: " << e.what();
+                throw e;
+            }
+        }
+
+        // BANGCLOSURE noParentClosure(nullptr);
+        SHAREDUPVALUE noUpvals;
+        const auto& boundprog = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
+
+        return boundprog;
+    }
+    
+    void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
+    {
+        const auto& closure = parseToBoundProgramNoUpvals( ctx, bDump );
+
+//        std::cerr << "got bound prog, prog=" << closure->program_ << "\n";
+        
+        try
+        {
+            RunProgram( &thread, closure->program_, closure->upvalues_ );
+            // closure->apply( stack ); // , closure );
+        }
+        catch( AstExecFail ast )
+        {
+            gFailedAst = ast.pStep;
+//            closure->dump( std::cerr );
+            std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
+        }
+        catch( const std::exception& e )
+        {
+            std::cerr << "Runtime exec Error: " << e.what() << std::endl;
+        }
+    }
+}; // end, class RequireKeyword
 
 
 Parser::Program::Program
@@ -2561,7 +2709,7 @@ Parser::Program::Program
     ParsingRecursiveFunStack* pRecParsing
 )
 {
-//    std::cerr << "enter Program fun=" << pCurrentFun << "\n";
+//    std::cerr << "enter Program parent=" << parent << " uvchain=" << upvalueChain << "\n";
     try
     {
         bool bHasOpenBracket = false;
@@ -2819,6 +2967,30 @@ Parser::Program::Program
                     ast_.push_back( new Ast::Require() );
                     continue;
                 }
+
+                if (ident.name() == "import")
+                {
+                    mark.accept();
+                    Ast::Base* prev = ast_.back();
+                    ast_.pop_back();
+                    Ast::PushLiteral* who = dynamic_cast<Ast::PushLiteral*>(prev);
+                    if (!who || !who->v_.isstr())
+                        throw std::runtime_error("import requires a preceding string");
+                    ImportParsingContext importContext
+                    (   parsecontext, stream,
+                        parent, upvalueChain,
+                        pRecParsing
+                    );
+                    RequireKeyword requireImport( who->v_.tostr().c_str() );
+                    delete prev;
+                    // bah, really need to pass in parent's upvalue chain here
+                    const auto& bprog = requireImport.parseToBoundProgramNoUpvals( importContext, gDumpMode ); // DUMP
+                    //~~~ bah, a mess
+                    auto importAst = bprog->program_->getAst();
+                    std::copy( importAst->begin(), importAst->end(), std::back_inserter(ast_));
+                    // ast_.push_back( new Ast::Apply() );
+                    continue;
+                }
                 
                 auto rwPrimitive = [&] ( const std::string& kw, tfn_primitive prim ) -> bool {
                     if (ident.name() == kw)
@@ -2889,116 +3061,12 @@ Parser::Program::Program
     catch (const ErrorEof&)
     {
         stream.accept();
-        if (parsecontext.insertEof())
-            ast_.push_back( new Ast::EofMarker(parsecontext) );
-        else
-            ast_.push_back( new Ast::BreakProg() );
+        ast_.push_back( parsecontext.hitEof( upvalueChain ) );
         OptimizeAst( ast_ );
     }
 }
 
 
-class RequireKeyword
-{
-    const std::string fileName_;
-    bool stdin_;
-public:
-    RequireKeyword( const char* fname )
-    :  fileName_( fname ? fname : "" ),
-       stdin_( !fname )
-    {
-    }
-
-
-    Ast::Program* parseToProgram( ParsingContext& parsectx, RegurgeIo& stream, bool bDump, const Ast::CloseValue* upvalchain )
-    {
-        StreamMark mark(stream);
-
-        try
-        {
-            Parser parser( parsectx, mark, upvalchain );
-
-            Ast::Program* p = new Ast::Program( nullptr /* parent */, parser.programAst() );
-            
-            if (bDump)
-                p->dump( 0, std::cerr );
-
-            return p;
-        }
-        catch (const ErrorEof& )
-        {
-            std::cerr << "Found EOF without valid program!" << std::endl;
-        }
-        catch (const std::runtime_error& e )
-        {
-            std::cerr << "Runtime parse error b01: " << e.what() << std::endl;
-            throw e;
-        }
-
-        return nullptr;
-    }
-
-    
-    Ast::Program* parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump )
-    {
-        return parseToProgram( ctx, stream, bDump, nullptr );
-
-        // fun->setAst( *pProgram );
-
-        // return pProgram;
-    }
-
-    std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, Stack& stack, bool bDump )
-    {
-        Ast::Program* fun;
-
-        if (stdin_)
-        {
-            RegurgeStdinRepl strmStdin;
-            fun = this->parseNoUpvals( ctx, strmStdin, bDump );
-        }
-        else
-        {
-            RegurgeFile strmFile( fileName_ );
-            try
-            {
-                fun = this->parseNoUpvals( ctx, strmFile, bDump );
-            }
-            catch( const ParseFail& e )
-            {
-                std::cerr << "Error parsing program: " << e.what();
-                throw e;
-            }
-        }
-
-        // BANGCLOSURE noParentClosure(nullptr);
-        SHAREDUPVALUE noUpvals;
-        const auto& boundprog = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
-
-        return boundprog;
-    }
-    
-    void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
-    {
-        const auto& closure = parseToBoundProgramNoUpvals( ctx, thread.stack, bDump );
-            
-        try
-        {
-            RunProgram( &thread, closure->program_, closure->upvalues_ );
-            // closure->apply( stack ); // , closure );
-        }
-        catch( AstExecFail ast )
-        {
-            gFailedAst = ast.pStep;
-//            closure->dump( std::cerr );
-            std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
-        }
-        catch( const std::exception& e )
-        {
-            std::cerr << "Runtime exec Error: " << e.what() << std::endl;
-        }
-    }
-}; // end, class RequireKeyword
 
 
 
@@ -3011,7 +3079,7 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
 
     RequireKeyword me( v.tostr().c_str() );
     ParsingContext parsectx_;
-    const auto& closure = me.parseToBoundProgramNoUpvals( parsectx_, stack, gDumpMode );
+    const auto& closure = me.parseToBoundProgramNoUpvals( parsectx_, gDumpMode );
 
     stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
