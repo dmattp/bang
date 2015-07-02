@@ -1,0 +1,12 @@
+def :range last = { swap! as do-me
+   def! :inner current = {
+      current last > not! ?
+         current do-me!
+         current 1 + inner!
+   }
+}
+
+fun=; 1 3 range!
+
+
+fun=; 1 0 range!
