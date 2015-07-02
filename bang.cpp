@@ -1090,7 +1090,7 @@ struct SimpleAllocator
         FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
         --hdr;
         static char freeOne;
-        if ((++freeOne & 0x1F) == 0)
+        if ((++freeOne & 0xF) == 0)
         {
 //            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
 //            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;

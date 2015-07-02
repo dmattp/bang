@@ -21,7 +21,7 @@ libbang$(EXT_SO): bang.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) $(LDFLAGS_DL) -shared -o $@
 
 bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
-	$(CXX) $(CPPFLAGS)  $< -L$(PWD) -lbang -o $@
+	$(CXX) $(CPPFLAGS)  $< -L . -lbang -o $@
 
 mathlib$(EXT_SO): mathlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
