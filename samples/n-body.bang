@@ -1,0 +1,207 @@
+-- The Computer Language Benchmarks Game
+-- http://benchmarksgame.alioth.debian.org/
+-- contributed by Mike Pall
+-- modified by Geoff Leyland
+-- modified by Mario Pernici
+-- Translated to Bang! by David Placek
+
+# 1 < ? 9000; as N -- tonumber(arg and arg[1]) or 9000 -- lua=9k runs in ~100ms
+
+
+3.141592653589793 as PI           
+365.24            as DAYS_PER_YEAR
+4 PI * PI *       as SOLAR_MASS
+
+'arraylib' crequire! as array
+
+--def :make-Body = { -- as vz as vy as vx as z as y as x
+--  array.from-stack! as me
+--  0 as x 1 as y 2 as z 3 as vx 4 as vy 5 as vz 6 as mass
+--  fun = lookup me!
+--}
+
+
+'mathlib' crequire! .sqrt as sqrt
+'lib/hof.bang' require! .map as map
+'lib/iterate.bang' require! as Iter
+
+Iter.range as range
+Iter.times as times
+
+
+def :make-Body mass = { as vz as vy as vx as z as y as x
+  fun = lookup
+}
+
+def :advance dt = { as nbody as bodies
+  nbody 1 - as maxbodyndx
+  def :each-body i = {
+    i bodies! as bi
+    bi.x bi.y bi.z bi.mass as bimass as biz as biy as bix
+
+    bi.vx bi.vy bi.vz
+    i 1 + 
+    def! :innerloop j = { as bivz as bivy as bivx
+      j nbody <
+      ? j bodies! as bj
+        bix bj.x - biy bj.y - biz bj.z - as dz as dy as dx
+        
+        dx dx * dy dy * + dz dz * + as dist2
+        dt dist2 sqrt! dist2 * / as mag
+        
+--            i j bmj mag bimass bix biy biz bivx bivy bivz dx dy dz 'i=%s j=%s bmj=%s mag=%s bimass=%s bix=%s biy=%s biz=%s bivx=%s bivy=%s bivz=%s dx=%s dy=%s dz=%s\n' print!
+        bimass mag * as bmi
+        
+          bj.x bj.y bj.z 
+          bj.vx dx bmi * + 
+          bj.vy dy bmi * + 
+          bj.vz dz bmi * +
+          bj.mass
+        make-Body! j bodies.set -- update bj
+
+        bj.mass mag * as bmj
+
+          bivx dx bmj * -
+          bivy dy bmj * -
+          bivz dz bmj * -
+          j 1 + innerloop!
+          
+      : bix bivx dt * +
+        biy bivy dt * +
+        biz bivz dt * +
+        bivx bivy bivz bi.mass
+        make-Body! i bodies.set
+    } -- end, innerloop; should leave new "i" body 
+  } -- end, each-body loop
+  each-body 0 maxbodyndx range!
+}
+
+
+def :energy nbody = { as bodies
+--  0 as e
+  nbody 1 - as maxarrayndx
+  def :each-body i = { as energySum
+--    i energySum 'each-body i=%@ energySum=%@\n' print!
+    i bodies! as bi
+    
+    bi.vx as vx
+    -- bi vx i energySum 'bi=%@ vx=%@ each-body i=%@ energySum=%@\n' print!
+    bi.vy as vy
+    bi.vz as vz
+    bi.mass as bim
+    
+    vx vx * vy vy * + vz vz * + bim * 0.5 * energySum + 
+
+    def :other-body j = { as eBefore
+      -- i j eBefore 'other-body i=%@ j=%@ eBefore=%@\n' print!
+      j bodies! as bj
+      bi.x bj.x - as dx bi.y bj.y - as dy bi.z bj.z - as dz
+      dx dx * dy dy * + dz dz * + sqrt! as distance
+      eBefore
+         bim bj.mass * distance /
+      -   
+    }
+    other-body i 1 + maxarrayndx range!
+  }
+  0 -- beginning energy
+  each-body 0 maxarrayndx range!
+}
+
+
+def :offsetMomentum nbody = { as bodies
+  0 0 0 0
+  def! :inner i = { 
+    as pz as py as px
+    i nbody < 
+    ? -- nbody i pz py px 'offsetMomentum nbody=%@ i=%@ pz=%@ py=%@ px=%@\n' print!
+      i bodies! as bi
+      bi.mass as bim
+      px bi.vx bim * +
+      py bi.vy bim * + 
+      pz bi.vz bim * +
+      i 1 + inner!
+      
+    : 0 bodies! as sun
+      sun.x sun.y sun.z
+      px -1 * SOLAR_MASS / 
+      py -1 * SOLAR_MASS / 
+      pz -1 * SOLAR_MASS /
+      sun.mass make-Body!
+      
+--      0 bodies! 
+--      rebind.vz! rebind.vy! rebind.vx!
+  }
+}
+
+
+
+
+0 0 0 0 0 0 SOLAR_MASS make-Body! as Sun
+
+4.84143144246472090e+00
+-1.16032004402742839e+00
+-1.03622044471123109e-01
+1.66007664274403694e-03 DAYS_PER_YEAR * 
+7.69901118419740425e-03 DAYS_PER_YEAR *
+-6.90460016972063023e-05 DAYS_PER_YEAR *
+9.54791938424326609e-04  SOLAR_MASS *
+make-Body! as Jupiter
+
+8.34336671824457987e+00
+4.12479856412430479e+00
+-4.03523417114321381e-01
+-2.76742510726862411e-03 DAYS_PER_YEAR *
+4.99852801234917238e-03  DAYS_PER_YEAR *
+2.30417297573763929e-05  DAYS_PER_YEAR *
+2.85885980666130812e-04  SOLAR_MASS *
+make-Body! as Saturn
+
+
+1.28943695621391310e+01
+-1.51111514016986312e+01
+-2.23307578892655734e-01
+2.96460137564761618e-03  DAYS_PER_YEAR *
+2.37847173959480950e-03  DAYS_PER_YEAR *
+-2.96589568540237556e-05 DAYS_PER_YEAR *
+4.36624404335156298e-05  SOLAR_MASS    *
+make-Body! as Uranus
+
+1.53796971148509165e+01
+-2.59193146099879641e+01
+1.79258772950371181e-01
+2.68067772490389322e-03  DAYS_PER_YEAR *
+1.62824170038242295e-03  DAYS_PER_YEAR *
+-9.51592254519715870e-05 DAYS_PER_YEAR *
+5.15138902046611451e-05  SOLAR_MASS    * 
+make-Body! as Neptune
+
+
+
+
+Sun Jupiter Saturn Uranus Neptune array.from-stack! as bodies
+'#' bodies! as nbody
+bodies nbody offsetMomentum! 0 bodies.set
+bodies nbody energy! 'energy=%@\n' print!
+
+--io.write( string.format("%0.9f",energy(bodies, nbody)), "\n")
+
+fun =
+bodies nbody 0.01 advance!
+; N times!    
+
+bodies nbody energy! 'energy=%@\n' print!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

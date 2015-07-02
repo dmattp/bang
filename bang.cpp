@@ -12,7 +12,6 @@
 #endif 
 #endif
 #define HAVE_DOT_OPERATOR 1
-#define HAVE_APPLY_2_OPT 0
 #define DOT_OPERATOR_INLINE 1
 
 /*
@@ -770,28 +769,6 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
-    class Apply2Primitives : public Base
-    {
-        tfn_primitive primitive1_;
-        tfn_primitive primitive2_;
-    public:
-        Apply2Primitives( tfn_primitive p1, tfn_primitive p2 )
-        : primitive1_( p1 ), primitive2_( p2 )
-        {}
-
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "Apply2Primitives op=??\n";
-        }
-
-        virtual void run( Stack& stack, const RunContext& rc ) const
-        {
-            primitive1_( stack, rc );
-            primitive2_( stack, rc );
-        }
-    };
-    
     class MakeCoroutine : public Base
     {
     public:
@@ -2486,23 +2463,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
     delNoops();
 
-#if HAVE_APPLY_2_OPT    
-    for (int i = 0; i < ast.size() - 1; ++i)
-    {
-        const Ast::ApplyPrimitive* aprim1 = dynamic_cast<const Ast::ApplyPrimitive*>(ast[i]);
-        if (aprim1)
-        {
-            Ast::ApplyPrimitive* aprim2 = dynamic_cast<Ast::ApplyPrimitive*>(ast[i+1]);
-            if (aprim2)
-            {
-                ast[i] = new Ast::Apply2Primitives( aprim1->primitive_, aprim2->primitive_ );
-                ast[i+1] = &noop;
-                ++i;
-            }
-        }
-    }
-    delNoops();
-#endif 
     
     const int astLen = ast.size();
     if (astLen > 1) // last instr should always be "kBreakProg"
