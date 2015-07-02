@@ -18,7 +18,7 @@ ifeq (1,$(USE_GC))
 endif
 
 libbang$(EXT_SO): bang.cpp bang.h Makefile
-	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) -shared -o $@
+	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) $(LDFLAGS_DL) -shared -o $@
 
 bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
 	$(CXX) $(CPPFLAGS)  $< -L$(PWD) -lbang -o $@
