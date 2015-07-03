@@ -19,3 +19,5 @@ thoughts
 Debug
 Release
 bang.sln
+*.manifest.res
+*_manifest.rc

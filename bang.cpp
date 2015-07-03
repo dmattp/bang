@@ -49,11 +49,8 @@ And there are primitives, until a better library / module system is in place.
 */
 
 #include <iostream>
-#include <list>
-#include <string>
 #include <algorithm>
 #include <iterator>
-#include <functional>
 
 #include <stdio.h>
 #include <ctype.h>
@@ -609,30 +606,6 @@ struct ParseFail : public std::runtime_error
 };
 
 
-class InteractiveEnvironment
-{
-    static void norepl_prompt() {}
-public:
-    bool bEof;
-    std::function<void(void)> repl_prompt;
-    InteractiveEnvironment()
-    : repl_prompt( &InteractiveEnvironment::norepl_prompt ),
-      bEof(false)
-    {
-    }
-};
-
-    class ParsingContext
-    {
-    public:
-        InteractiveEnvironment interact;
-        ParsingContext( InteractiveEnvironment& env )
-        : interact( env )
-        {}
-        ParsingContext() 
-        {}
-        virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain );
-    };
 
     class StreamMark;
 
@@ -691,8 +664,17 @@ namespace Ast
 
         Ast::Program* getNextProgram( const Ast::CloseValue* closeValueChain ) const
         {
-//            std::cerr << "EofMarker::getNextProgram\n";
-            return parseStdinToProgram( parsectx_, closeValueChain );
+            // std::cerr << "EofMarker::getNextProgram\n";
+            while (true)
+            {
+                try {
+                    auto rc = parseStdinToProgram( parsectx_, closeValueChain );
+                    return rc;
+                } catch (std::exception&e) {
+                    std::cout << "a08 Error: " << e.what() << "\n";
+                    parsectx_.interact.repl_prompt();
+                }
+            }
         }
         
         
@@ -1368,17 +1350,30 @@ restartTco:
                     stack.dump( std::cout );
                     auto pEof = reinterpret_cast<const Ast::EofMarker*>(pInstr);
                     pEof->repl_prompt();
-    
-                    try
+
+                    while (true)
                     {
-                        SHAREDUPVALUE_CREF uv = frame.upvalues_;
-                        Ast::Program *pProgram = pEof->getNextProgram( uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr) );
-                        frame.rebind( TMPFACT_PROG_TO_RUNPROG(pProgram) ); 
-                        goto restartTco;
-                    }
-                    catch (const std::exception& e )
-                    {
-                        std::cerr << "Error: " << e.what() << std::endl;
+                        try
+                        {
+                            SHAREDUPVALUE_CREF uv = frame.upvalues_;
+                            Ast::Program *pProgram = pEof->getNextProgram( uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr) );
+                            frame.rebind( TMPFACT_PROG_TO_RUNPROG(pProgram) );
+                            //~~~ okay this is tricky, because if there's an execute error on a REPL, I'd
+                            // really like to go back to the same context (preserve upvalues) but I sort
+                            // of lose that information if I'm doing TCO, which I'd like to do because don't
+                            // burn stack frames in the REPL.  I almost have to add the upvalue chain to the
+                            // exception or something.  Or preserve the upvalue prior to reading the
+                            // next line, ie, if I close values in the line, and then it crashes, do I have
+                            // those values in the chain?  I guess I probably should, since the stack is modified.
+                            // so whatever the uv chain is at the time of the crash should be preserved for the
+                            // next statement
+                            goto restartTco;
+                        }
+                        catch (const std::exception& e ) // parse error
+                        {
+                            std::cerr << "a09 Error: " << e.what() << std::endl;
+                            pEof->repl_prompt();
+                        }
                     }
                 }
                 break;
@@ -1704,26 +1699,24 @@ bool iseof(int c)
     return c == EOF;
 }
 
-struct ErrorEof
-{
-    ErrorEof() {}
-};
-
 struct ErrorNoMatch
 {
     ErrorNoMatch() {}
 };
 
-class RegurgeStream
-{
-public:
-    RegurgeStream() {}
-    virtual char getc() = 0;
-    virtual void accept() = 0;
-    virtual void regurg( char ) = 0;
-    virtual std::string sayWhere() { return "(unsure where)"; }
-    virtual ~RegurgeStream() {}
-};
+    int RegurgeIo::getcud()
+    {
+        char rv;
+        
+        if (regurg_.empty())
+            return EOF;
+
+        rv = regurg_.back();
+        regurg_.pop_back();
+
+        return rv;
+    }
+    
 
 class StreamMark : public RegurgeStream
 {
@@ -1774,32 +1767,8 @@ public:
         std::for_each( consumned_.rbegin(), consumned_.rend(),
             [&]( char c ) { stream_.regurg(c); } );
     }
-};
+}; // end, class StreamMark
 
-class RegurgeIo  : public RegurgeStream
-{
-    std::list<char> regurg_;
-protected:
-    int getcud()
-    {
-        char rv;
-        
-        if (regurg_.empty())
-            return EOF;
-
-        rv = regurg_.back();
-        regurg_.pop_back();
-
-        return rv;
-    }
-public:
-    virtual void regurg( char c )
-    {
-        regurg_.push_back(c);
-    }
-
-    void accept() {}
-};
 
 class RegurgeStdinRepl : public RegurgeIo
 {
@@ -2095,7 +2064,10 @@ class Parser
                             case '\'': cstr = '\''; break;
                             case '\\': cstr = '\\'; break;
                             case 'r':  cstr = '\r'; break;
-                            default: cstr = '?'; break;
+                            default:
+                                //*bi++ = '\\';
+                                cstr = c;
+                                break;
                         }
                     }
                     *bi++ = cstr;
@@ -2145,7 +2117,7 @@ class Parser
             {
                 name_.push_back(c);
                 mark.accept();
-
+
                 for (c = mark.getc(); isalpha(c) || isdigit(c) || (c=='_'); c = mark.getc())
                 {
                     name_.push_back(c);
@@ -2593,20 +2565,13 @@ namespace Primitives {
 }
 
 
-    
-class RequireKeyword
-{
-    const std::string fileName_;
-    bool stdin_;
-public:
-    RequireKeyword( const char* fname )
-    :  fileName_( fname ? fname : "" ),
-       stdin_( !fname )
-    {
-    }
-
-
-    Ast::Program* parseToProgram( ParsingContext& parsectx, RegurgeIo& stream, bool bDump, const Ast::CloseValue* upvalchain )
+    DLLEXPORT
+    Ast::Program* ParseToProgram
+    (   ParsingContext& parsectx,
+        RegurgeStream& stream,
+        bool bDump,
+        const Ast::CloseValue* upvalchain
+    )
     {
         StreamMark mark(stream);
 
@@ -2633,20 +2598,33 @@ public:
 
         return nullptr;
     }
-
     
-    Ast::Program* parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump )
+    DLLEXPORT void RequireKeyword::parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
     {
-        return parseToProgram( ctx, stream, bDump, nullptr );
+        const auto& closure = parseToBoundProgramNoUpvals( ctx, bDump );
 
-        // fun->setAst( *pProgram );
-
-        // return pProgram;
+//        std::cerr << "got bound prog, prog=" << closure->program_ << "\n";
+        
+        try
+        {
+            RunProgram( &thread, closure->program_, closure->upvalues_ );
+            // closure->apply( stack ); // , closure );
+        }
+        catch( AstExecFail ast )
+        {
+            gFailedAst = ast.pStep;
+//            closure->dump( std::cerr );
+            std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
+        }
+        catch( const std::exception& e )
+        {
+            std::cerr << "Runtime exec Error: " << e.what() << std::endl;
+        }
     }
 
     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
     // parse to Ast::Program and go with that?
-    std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump )
+    std::shared_ptr<BoundProgram> RequireKeyword::parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump )
     {
         Ast::Program* fun;
 
@@ -2675,31 +2653,17 @@ public:
 
         return boundprog;
     }
-    
-    void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
+
+    Ast::Program* RequireKeyword::parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump )
     {
-        const auto& closure = parseToBoundProgramNoUpvals( ctx, bDump );
+        return ParseToProgram( ctx, stream, bDump, nullptr );
 
-//        std::cerr << "got bound prog, prog=" << closure->program_ << "\n";
-        
-        try
-        {
-            RunProgram( &thread, closure->program_, closure->upvalues_ );
-            // closure->apply( stack ); // , closure );
-        }
-        catch( AstExecFail ast )
-        {
-            gFailedAst = ast.pStep;
-//            closure->dump( std::cerr );
-            std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
-        }
-        catch( const std::exception& e )
-        {
-            std::cerr << "Runtime exec Error: " << e.what() << std::endl;
-        }
+        // fun->setAst( *pProgram );
+
+        // return pProgram;
     }
-}; // end, class RequireKeyword
 
+    
 
 Parser::Program::Program
 (   ParsingContext& parsecontext,
@@ -3090,7 +3054,7 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
         RequireKeyword req(nullptr);
         RegurgeStdinRepl strmStdin;
         return
-        req.parseToProgram
+        ParseToProgram
         (   ctx,
             strmStdin,
             gDumpMode,

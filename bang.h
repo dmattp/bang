@@ -2,7 +2,10 @@
 #include <memory>
 #include <vector>
 #include <iterator>
+#include <functional>
 #include <ostream>
+#include <list>
+#include <string>
 
 
 #if defined(WIN32)
@@ -435,25 +438,25 @@ DLLEXPORT void RunProgram
         int toint() const { return nth_; } // use judiciously, please
     };
 
-class RunContext
-{
-public:
-    Thread* thread;
-    RunContext* prev;
-    const Ast::Base* const *ppInstr;
-    SHAREDUPVALUE    upvalues_;
-public:    
-    SHAREDUPVALUE_CREF upvalues() const;
-    SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
-    const Value& getUpValue( NthParent up ) const;
-    const Value& getUpValue( const std::string& uvName ) const;
+    class RunContext
+    {
+    public:
+        Thread* thread;
+        RunContext* prev;
+        const Ast::Base* const *ppInstr;
+        SHAREDUPVALUE    upvalues_;
+    public:    
+        SHAREDUPVALUE_CREF upvalues() const;
+        SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
+        const Value& getUpValue( NthParent up ) const;
+        const Value& getUpValue( const std::string& uvName ) const;
 
 
-    RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv );
-    RunContext();
-    void rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv );
-    void rebind( const Ast::Base* const * inppInstr );
-};
+        RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv );
+        RunContext();
+        void rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv );
+        void rebind( const Ast::Base* const * inppInstr );
+    };
     
     class BoundProgram : public Function
     {
@@ -467,29 +470,101 @@ public:
     };
 
 
-class Thread
+    class Thread
+    {
+    public:
+        Bang::Stack stack;
+        RunContext* callframe;
+        Thread* pCaller;
+        BANGFUNPTR boundProg_; // probably should have distinct type, BANGBOUNDPROGPTR or something
+        Thread()
+        : // pInteract( nullptr ),
+        callframe( nullptr ),
+        pCaller( nullptr )
+        {}
+        Thread( BANGFUNPTR boundProg )
+        : callframe( nullptr ),
+          pCaller( nullptr ),
+          boundProg_( boundProg  )
+        {}
+        static DLLEXPORT Thread* nullthread();
+
+        void setcallin(Thread*caller);
+    };
+
+    class InteractiveEnvironment
+    {
+        static void norepl_prompt() {}
+    public:
+        bool bEof;
+        std::function<void(void)> repl_prompt;
+        InteractiveEnvironment()
+        : repl_prompt( &InteractiveEnvironment::norepl_prompt ),
+          bEof(false)
+        {
+        }
+    };
+
+    class ParsingContext
+    {
+    public:
+        InteractiveEnvironment interact;
+        ParsingContext( InteractiveEnvironment& env )
+        : interact( env )
+        {}
+        ParsingContext() 
+        {}
+        DLLEXPORT virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain );
+    };
+
+class RegurgeStream
 {
 public:
-    Bang::Stack stack;
-    RunContext* callframe;
-    Thread* pCaller;
-    BANGFUNPTR boundProg_; // probably should have distinct type, BANGBOUNDPROGPTR or something
-    Thread()
-    : // pInteract( nullptr ),
-      callframe( nullptr ),
-      pCaller( nullptr )
-    {}
-    Thread( BANGFUNPTR boundProg )
-    : callframe( nullptr ),
-      pCaller( nullptr ),
-      boundProg_( boundProg  )
-    {}
-    static DLLEXPORT Thread* nullthread();
-
-    void setcallin(Thread*caller);
+    RegurgeStream() {}
+    virtual char getc() = 0;
+    virtual void accept() = 0;
+    virtual void regurg( char ) = 0;
+    virtual std::string sayWhere() { return "(unsure where)"; }
+    virtual ~RegurgeStream() {}
 };
+
+    struct ErrorEof
+    {
+        ErrorEof() {}
+    };
+
+    class RegurgeIo  : public RegurgeStream
+    {
+        std::list<char> regurg_;
+    protected:
+        DLLEXPORT int getcud();
+    public:
+        virtual void regurg( char c )
+        {
+            regurg_.push_back(c);
+        }
+
+        void accept() {}
+    };
     
-// extern Thread* pNullThread;
+    DLLEXPORT Ast::Program* ParseToProgram( ParsingContext& parsectx, RegurgeStream& stream, bool bDump, const Ast::CloseValue* upvalchain );
+
+    class RequireKeyword
+    {
+        const std::string fileName_;
+        bool stdin_;
+    public:
+        RequireKeyword( const char* fname )
+        :  fileName_( fname ? fname : "" ),
+           stdin_( !fname )
+        {
+        }
+
+        Ast::Program* parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump );
+        std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump );
+        DLLEXPORT void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump);
+    }; // end, class RequireKeyword
+    
     
 } // end, namespace Bang
 
