@@ -7,6 +7,7 @@
 #include <list>
 #include <string>
 
+static const char* const BANG_VERSION = "0.004";
 
 #if defined(WIN32)
 # define DLLEXPORT _declspec(dllexport)
@@ -396,7 +397,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             return bound_ ? totsz - bound_->mark : totsz;
         }
 
-        void dump( std::ostream& o ) const;
+        DLLEXPORT void dump( std::ostream& o ) const;
     }; // end, class Stack
 
     class Function
