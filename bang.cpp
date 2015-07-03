@@ -2601,13 +2601,12 @@ namespace Primitives {
     
     DLLEXPORT void RequireKeyword::parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
     {
-        const auto& closure = parseToBoundProgramNoUpvals( ctx, bDump );
+        auto prog = parseToProgramNoUpvals( ctx, bDump );
 
-//        std::cerr << "got bound prog, prog=" << closure->program_ << "\n";
-        
         try
         {
-            RunProgram( &thread, closure->program_, closure->upvalues_ );
+            SHAREDUPVALUE noUpvals;
+            RunProgram( &thread, prog, noUpvals );
             // closure->apply( stack ); // , closure );
         }
         catch( AstExecFail ast )
@@ -2622,23 +2621,24 @@ namespace Primitives {
         }
     }
 
+
     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
     // parse to Ast::Program and go with that?
-    std::shared_ptr<BoundProgram> RequireKeyword::parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump )
+    Ast::Program* RequireKeyword::parseToProgramNoUpvals( ParsingContext& ctx, bool bDump )
     {
         Ast::Program* fun;
 
         if (stdin_)
         {
             RegurgeStdinRepl strmStdin;
-            fun = this->parseNoUpvals( ctx, strmStdin, bDump );
+            fun = ParseToProgram( ctx, strmStdin, bDump, nullptr );
         }
         else
         {
             RegurgeFile strmFile( fileName_ );
             try
             {
-                fun = this->parseNoUpvals( ctx, strmFile, bDump );
+                fun = ParseToProgram( ctx, strmFile, bDump, nullptr );
             }
             catch( const ParseFail& e )
             {
@@ -2647,21 +2647,22 @@ namespace Primitives {
             }
         }
 
-        // BANGCLOSURE noParentClosure(nullptr);
-        SHAREDUPVALUE noUpvals;
-        const auto& boundprog = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
-
-        return boundprog;
+        return fun;
     }
+    
 
-    Ast::Program* RequireKeyword::parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump )
-    {
-        return ParseToProgram( ctx, stream, bDump, nullptr );
+//     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
+//     // parse to Ast::Program and go with that?
+//     std::shared_ptr<BoundProgram> RequireKeyword::parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump )
+//     {
+//         Ast::Program* fun = this->parseToProgramNoUpvals( ctx, bDump );
 
-        // fun->setAst( *pProgram );
+//         // BANGCLOSURE noParentClosure(nullptr);
+//         SHAREDUPVALUE noUpvals;
+//         const auto& boundprog = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
 
-        // return pProgram;
-    }
+//         return boundprog;
+//     }
 
     
 
@@ -2948,9 +2949,9 @@ Parser::Program::Program
                     RequireKeyword requireImport( who->v_.tostr().c_str() );
                     delete prev;
                     // bah, really need to pass in parent's upvalue chain here
-                    const auto& bprog = requireImport.parseToBoundProgramNoUpvals( importContext, gDumpMode ); // DUMP
+                    auto prog = requireImport.parseToProgramNoUpvals( importContext, gDumpMode ); // DUMP
                     //~~~ bah, a mess
-                    auto importAst = bprog->program_->getAst();
+                    auto importAst = prog->getAst();
                     std::copy( importAst->begin(), importAst->end(), std::back_inserter(ast_));
                     // ast_.push_back( new Ast::Apply() );
                     continue;
@@ -3043,7 +3044,10 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
 
     RequireKeyword me( v.tostr().c_str() );
     ParsingContext parsectx_;
-    const auto& closure = me.parseToBoundProgramNoUpvals( parsectx_, gDumpMode );
+    
+    auto fun = me.parseToProgramNoUpvals( parsectx_, gDumpMode );
+    SHAREDUPVALUE noUpvals;
+    const auto& closure = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
 
     stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );

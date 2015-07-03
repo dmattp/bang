@@ -560,8 +560,8 @@ public:
         {
         }
 
-        Ast::Program* parseNoUpvals( ParsingContext& ctx, RegurgeIo& stream, bool bDump );
-        std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump );
+        Ast::Program* parseToProgramNoUpvals( ParsingContext& ctx, bool bDump );
+//        std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump );
         DLLEXPORT void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump);
     }; // end, class RequireKeyword
     
