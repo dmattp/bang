@@ -41,7 +41,7 @@ def :advance dt = { as nbody as bodies
 
     bi.vx bi.vy bi.vz
     i 1 + 
-    def! :innerloop j = { as bivz as bivy as bivx
+    def! :innerloop bivx bivy bivz j = { 
       j nbody <
       ? j bodies! as bj
         bix bj.x - biy bj.y - biz bj.z - as dz as dy as dx
@@ -110,26 +110,18 @@ def :energy bodies nbody = {
 
 def :offsetMomentum bodies nbody = { 
   0 0 0 0
-  def! :inner i = { 
-    as pz as py as px
+  def! :inner px py pz i = { 
     i nbody < 
     ? -- nbody i pz py px 'offsetMomentum nbody=%@ i=%@ pz=%@ py=%@ px=%@\n' print!
       i bodies! as bi
       bi.mass as bim
-      px bi.vx bim * +
-      py bi.vy bim * + 
-      pz bi.vz bim * +
+      px bi.vx bim * + py bi.vy bim * + pz bi.vz bim * +
       i 1 + inner!
       
     : 0 bodies! as sun
       sun.x sun.y sun.z
-      px -1 * SOLAR_MASS / 
-      py -1 * SOLAR_MASS / 
-      pz -1 * SOLAR_MASS /
+      px -1 * SOLAR_MASS / py -1 * SOLAR_MASS / pz -1 * SOLAR_MASS /
       sun.mass make-Body!
-      
---      0 bodies! 
---      rebind.vz! rebind.vy! rebind.vx!
   }
 }
 

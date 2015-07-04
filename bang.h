@@ -26,6 +26,7 @@ namespace Bang
     class Function;
     class BoundProgram;
     class RunContext;
+    class ParsingContext;
    
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
 
@@ -278,10 +279,61 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         void dump( std::ostream& o ) const;
     }; // end, class Value
 
+    class NthParent {
+        int nth_;
+    public:
+        explicit NthParent( int n ) : nth_(n) {}
+        NthParent operator++() const { return NthParent(nth_+1); }
+        NthParent operator--() const { return NthParent(nth_-1); }
+        bool operator==( NthParent other ) const { return nth_ == other.nth_; }
+        bool operator!=( NthParent other ) const { return nth_ != other.nth_; }
+        int toint() const { return nth_; } // use judiciously, please
+    };
 
     class Upvalue;
     typedef std::shared_ptr<Upvalue> SHAREDUPVALUE;
     typedef const std::shared_ptr<Upvalue>& SHAREDUPVALUE_CREF;
+
+    class Upvalue
+    {
+    private:
+        const Ast::CloseValue* closer_; // contains the symbolic name to which the upvalue is bound
+        SHAREDUPVALUE parent_;  // the upvalue chain
+        Value v_; // the value itself
+    public:
+        Upvalue( const Ast::CloseValue* closer, SHAREDUPVALUE_CREF parent, const Value& v )
+        : closer_( closer ), parent_( parent ), v_( v )
+        {
+        }
+
+        bool binds( const std::string& name );
+
+        const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
+
+        const Value& getUpValue( NthParent uvnumber )
+        {
+#if 1
+            Upvalue* uv = this;
+            while ( uvnumber != NthParent(0) )
+            {
+                uv = uv->parent_.get();
+                uvnumber = --uvnumber;
+            }
+            return uv->v_;
+#else
+            return (uvnumber == NthParent(0)) ? v_ : parent_->getUpValue( --uvnumber );
+#endif 
+        }
+
+        // lookup by string / name is expensive; used for experimental object
+        // system.  obviously if it's "a hit" you can optimize out much of this cost
+        const Value& getUpValue( const std::string& uvName );
+
+        SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber )
+        {
+            return (uvnumber == NthParent(1)) ? parent_ : parent_->nthParent( --uvnumber );
+        }
+    }; // end, Upvalue class
 
     class Stack
     {
@@ -465,7 +517,17 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             }
         private:
         };
-    }
+
+        class EofMarker : public Base
+        {
+        public:
+            ParsingContext& parsectx_;
+            DLLEXPORT EofMarker( ParsingContext& ctx );
+            virtual void repl_prompt( Stack& ) const;
+            DLLEXPORT virtual Ast::Program* getNextProgram( SHAREDUPVALUE uv ) const;
+            virtual void dump( int level, std::ostream& o ) const;
+        };
+    } // end, Ast namespace
 
     
     
@@ -480,16 +542,6 @@ DLLEXPORT void RunProgram
 
     DLLEXPORT void CallIntoSuspendedCoroutine( Bang::Thread *bthread, const BoundProgram* bprog );
     
-    class NthParent {
-        int nth_;
-    public:
-        explicit NthParent( int n ) : nth_(n) {}
-        NthParent operator++() const { return NthParent(nth_+1); }
-        NthParent operator--() const { return NthParent(nth_-1); }
-        bool operator==( NthParent other ) const { return nth_ == other.nth_; }
-        bool operator!=( NthParent other ) const { return nth_ != other.nth_; }
-        int toint() const { return nth_; } // use judiciously, please
-    };
 
     class RunContext
     {

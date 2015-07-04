@@ -87,48 +87,7 @@ namespace Bang {
 
 
     namespace Ast { class CloseValue; }
-    class Upvalue
-    {
-    private:
-        const Ast::CloseValue* closer_; // contains the symbolic name to which the upvalue is bound
-        SHAREDUPVALUE parent_;  // the upvalue chain
-        Value v_; // the value itself
-    public:
-        Upvalue( const Ast::CloseValue* closer, SHAREDUPVALUE_CREF parent, const Value& v )
-        : closer_( closer ), parent_( parent ), v_( v )
-        {
-        }
 
-        bool binds( const std::string& name );
-
-        const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
-
-        const Value& getUpValue( NthParent uvnumber )
-        {
-#if 1
-            Upvalue* uv = this;
-            while ( uvnumber != NthParent(0) )
-            {
-                uv = uv->parent_.get();
-                uvnumber = --uvnumber;
-            }
-            return uv->v_;
-#else
-            return (uvnumber == NthParent(0)) ? v_ : parent_->getUpValue( --uvnumber );
-#endif 
-        }
-
-        // lookup by string / name is expensive; used for experimental object
-        // system.  obviously if it's "a hit" you can optimize out much of this cost
-        const Value& getUpValue( const std::string& uvName );
-
-        SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber )
-        {
-            return (uvnumber == NthParent(1)) ? parent_ : parent_->nthParent( --uvnumber );
-        }
-    };
-
-    
 
 
 namespace {
@@ -597,43 +556,36 @@ namespace Ast
             o << "---\n";
         }
     };
-    class EofMarker : public Base
+    void EofMarker::repl_prompt( Stack& stack ) const
     {
-    public:
-        ParsingContext& parsectx_;
-        EofMarker( ParsingContext& ctx )
-        : Base( kEofMarker ),
-          parsectx_(ctx)
-        {}
-
-        void repl_prompt() const
+        stack.dump( std::cout );
+        parsectx_.interact.repl_prompt();
+    }
+    DLLEXPORT Ast::Program* EofMarker::getNextProgram( SHAREDUPVALUE uv ) const
+    {
+        const Ast::CloseValue* closeValueChain = uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr);
+        // std::cerr << "EofMarker::getNextProgram\n";
+        while (true)
         {
-            parsectx_.interact.repl_prompt();
-        }
-
-        Ast::Program* getNextProgram( const Ast::CloseValue* closeValueChain ) const
-        {
-            // std::cerr << "EofMarker::getNextProgram\n";
-            while (true)
-            {
-                try {
-                    auto rc = parseStdinToProgram( parsectx_, closeValueChain );
-                    return rc;
-                } catch (std::exception&e) {
-                    std::cout << "a08 Error: " << e.what() << "\n";
-                    parsectx_.interact.repl_prompt();
-                }
+            try {
+                auto rc = parseStdinToProgram( parsectx_, closeValueChain );
+                return rc;
+            } catch (std::exception&e) {
+                std::cout << "a08 Error: " << e.what() << "\n";
+                parsectx_.interact.repl_prompt();
             }
         }
-        
-        
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "<<< EOF >>>\n";
-        }
-    };
-
+    }
+    
+    DLLEXPORT EofMarker::EofMarker( ParsingContext& ctx )
+    : Base( kEofMarker ),
+      parsectx_(ctx)
+    {}
+    void EofMarker::dump( int level, std::ostream& o ) const
+    {
+        indentlevel(level, o);
+        o << "<<< EOF >>>\n";
+    }
     class PushLiteral : public Base
     {
     public:
@@ -1260,6 +1212,7 @@ restartTco:
                     pInstr->run( stack, frame );
                     break;
 
+                dobreakprog:
                 case Ast::Base::kBreakProg:
                 {
                     RunContext* prev = frame.prev;
@@ -1296,32 +1249,43 @@ restartTco:
 
                 case Ast::Base::kEofMarker:
                 {
-                    stack.dump( std::cout );
                     auto pEof = reinterpret_cast<const Ast::EofMarker*>(pInstr);
-                    pEof->repl_prompt();
+                    pEof->repl_prompt(stack);
 
                     while (true)
                     {
                         try
                         {
                             SHAREDUPVALUE_CREF uv = frame.upvalues_;
-                            Ast::Program *pProgram = pEof->getNextProgram( uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr) );
-                            frame.rebind( TMPFACT_PROG_TO_RUNPROG(pProgram) );
-                            //~~~ okay this is tricky, because if there's an execute error on a REPL, I'd
-                            // really like to go back to the same context (preserve upvalues) but I sort
-                            // of lose that information if I'm doing TCO, which I'd like to do because don't
-                            // burn stack frames in the REPL.  I almost have to add the upvalue chain to the
-                            // exception or something.  Or preserve the upvalue prior to reading the
-                            // next line, ie, if I close values in the line, and then it crashes, do I have
-                            // those values in the chain?  I guess I probably should, since the stack is modified.
-                            // so whatever the uv chain is at the time of the crash should be preserved for the
-                            // next statement
-                            goto restartTco;
+                            Ast::Program *pProgram = pEof->getNextProgram( uv ); //
+                            if (pProgram)
+                            {
+                                frame.rebind( TMPFACT_PROG_TO_RUNPROG(pProgram) );
+                                //~~~ okay this is tricky, because if there's an execute error on a REPL, I'd
+                                // really like to go back to the same context (preserve upvalues) but I sort
+                                // of lose that information if I'm doing TCO, which I'd like to do because don't
+                                // burn stack frames in the REPL.  I almost have to add the upvalue chain to the
+                                // exception or something.  Or preserve the upvalue prior to reading the
+                                // next line, ie, if I close values in the line, and then it crashes, do I have
+                                // those values in the chain?  I guess I probably should, since the stack is modified.
+                                // so whatever the uv chain is at the time of the crash should be preserved for the
+                                // next statement
+                                goto restartTco;
+                            }
+                            else
+                            {
+                                // std::cerr << "doing break prog\n";
+                                // should i just return here, like yield does?  Does it matter?
+                                // goto dobreakprog;
+                                // return seems to work better, not sure i understand it 100% yay.
+                                // hitting ; to break scope blows up hmm
+                                return;
+                            }
                         }
                         catch (const std::exception& e ) // parse error
                         {
                             std::cerr << "a09 Error: " << e.what() << std::endl;
-                            pEof->repl_prompt();
+                            pEof->repl_prompt(stack);
                         }
                     }
                 }
