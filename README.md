@@ -61,15 +61,18 @@ Function values can be bound to symbalic names similarly, allowing named functio
 
 When the program's end of file is reached, any open function bodies are closed.
 
-At this early stage in Bang!'s evolution, the syntax parser only supports one or zero arguments in the function declaration, though this will likely change soon.  But if we need a function with more than one single parameter, arguments can simply be bound to local variables using the 'as' keyword at the top of the function body - there is no distinction between an value bound with 'as' or with a function argument; the syntax parser merely translates either form to the same operation internally.
+Functions can be declared with zero to any number of arguments.  Arguments are popped off the stack in the reverse order of declaration in the argument list so that arguments are declared in the same order they would be pushed to the stack before calling the function.   Arguments could simply be bound to local variables using the 'as' keyword at the top of the function body - there is no distinction between an value bound with 'as' or with a function argument; the syntax parser merely translates either form to the same operation internally.  These two functions are equivalent:
 
-Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we do with "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The two following "plus" definitions are equivalent:
+    fun x y z = { ... }
+    fun = { as z as y as x ... }
 
-      fun x = { as y
+Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we might do using "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The tywo following "plus" definitions are equivalent:
+
+      fun x y = { 
           x y +
       } as plus
       
-      def :plus x = { as y
+      def :plus x y = { 
          x y +
       }
 

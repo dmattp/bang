@@ -2131,6 +2131,48 @@ class Parser
            progname_( progname )
         {}
     };
+
+    static const Ast::CloseValue* getParamBindings
+    (   StreamMark& mark,
+        Ast::Program::astList_t& functionAst,
+        const Ast::CloseValue* upvalueChain
+    )
+    {
+        std::vector< std::string > params;
+        while (true)
+        {
+            try
+            {
+                Identifier param(mark);
+                eatwhitespace(mark);
+                params.push_back( param.name() );
+                mark.accept();
+            }
+            catch ( const ErrorNoMatch& ) // identifier is optional
+            {
+                break; 
+            }
+        }
+
+        while (params.size() > 0)
+        {
+            auto cv = new Ast::CloseValue( upvalueChain, params.back() );
+            functionAst.push_back( cv );
+            upvalueChain = cv;
+            params.pop_back();
+        }
+            
+
+        char c = mark.getc();
+        if (c != '=') // this seems unneccesary sometimes. therefore "as"
+        {
+            std::cerr << "got '" << c << "', expecting '='\n";
+            throw ParseFail( mark.sayWhere(), "function def / param list must be followed by '='"); 
+        }
+
+        return upvalueChain;            
+    }
+    
     
     class Fundef
     {
@@ -2173,24 +2215,7 @@ class Parser
             // pNewFun_ =  new Ast::PushFun( pParentFun );
 
             Ast::Program::astList_t functionAst;
-            try
-            {
-                Identifier param(mark);
-                eatwhitespace(mark);
-                Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, param.name() );
-                upvalueChain = cv;
-                functionAst.push_back( cv );
-            }
-            catch ( const ErrorNoMatch& ) // identifier is optional
-            {
-            }
-
-            char c = mark.getc();
-            if (c != '=') // this seems unneccesary sometimes. therefore "as"
-            {
-                std::cerr << "got '" << c << "', expecting '='\n";
-                throw ParseFail( mark.sayWhere(), "function def must be followed by '='"); 
-            }
+            upvalueChain = getParamBindings( mark, functionAst, upvalueChain );
 
             //~~~ programParent??
             Program program( parsectx, mark, nullptr, upvalueChain, pRecParsing );
@@ -2202,7 +2227,7 @@ class Parser
         }
         bool hasPostApply() const { return postApply_; }
         Ast::Program* stealProgram() { auto rc = pNewProgram_; pNewProgram_ = nullptr; return rc; }
-    }; // end, class Fundef
+    }; // end, Fundef class
 
     class Defdef
     {
@@ -2249,23 +2274,7 @@ class Parser
             }
 
             Ast::Program::astList_t functionAst;
-            try
-            {
-                Identifier param(mark);
-                eatwhitespace(mark);
-                Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, param.name() );
-                upvalueChain = cv;
-                functionAst.push_back( cv );
-            }
-            catch ( const ErrorNoMatch& )
-            {
-            }
-
-            if (mark.getc() != '=') // this seems unneccesary
-            {
-                std::cerr << "got '" << c << "', expecting '='\n";
-                throw ParseFail( mark.sayWhere(), "function def must be followed by '='"); // throw ErrorNoMatch();
-            }
+            upvalueChain = getParamBindings( mark, functionAst, upvalueChain );
 
             // std::string defFunName = pWithDefFun_->getParamName();
             pDefProg_ = new Ast::Program(nullptr);
@@ -2280,7 +2289,7 @@ class Parser
         bool hasPostApply() const { return postApply_; }
         Ast::Program* stealDefProg() { auto rc = pDefProg_; pDefProg_ = nullptr; return rc; }
         const std::string& getDefName() { return *defname_; }
-    }; // end, class Defdef
+    }; // end, Defdef class
     
     Program* program_;
 public:

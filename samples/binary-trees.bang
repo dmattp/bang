@@ -31,7 +31,7 @@ def :range last = { swap! as do-me
    -- first inner!
 }
 
-def :BottomUpTree = { as depth as item
+def :BottomUpTree item depth = {
 --  'BottomUpTree depth=' depth tostring! + @
   depth 0 >
 ? {

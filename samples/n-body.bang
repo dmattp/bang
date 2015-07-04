@@ -77,10 +77,10 @@ def :advance dt = { as nbody as bodies
 }
 
 
-def :energy nbody = { as bodies
+def :energy bodies nbody = { 
 --  0 as e
   nbody 1 - as maxarrayndx
-  def :each-body i = { as energySum
+  def :each-body energySum i = { 
 --    i energySum 'each-body i=%@ energySum=%@\n' print!
     i bodies! as bi
     
@@ -92,7 +92,7 @@ def :energy nbody = { as bodies
     
     vx vx * vy vy * + vz vz * + bim * 0.5 * energySum + 
 
-    def :other-body j = { as eBefore
+    def :other-body eBefore j = { 
       -- i j eBefore 'other-body i=%@ j=%@ eBefore=%@\n' print!
       j bodies! as bj
       bi.x bj.x - as dx bi.y bj.y - as dy bi.z bj.z - as dz
@@ -108,7 +108,7 @@ def :energy nbody = { as bodies
 }
 
 
-def :offsetMomentum nbody = { as bodies
+def :offsetMomentum bodies nbody = { 
   0 0 0 0
   def! :inner i = { 
     as pz as py as px
