@@ -15,13 +15,13 @@ Or they can be as complicated as you wish to make them, with all the abstractive
 
 # Status
 
-Bang! is barely a month old and many features are incomplete and specifications are tentative.  The current implementation is naive but usable.  Performance is reasonable, but not quite competitive with more mature interpreted languages such as Lua or Ruby.  There are probably issues that make it unsuitable for use in long-lived production environments.  But it does demonstrate the concepts and runs small scripts quite ably.
+Bang! is barely a month old and many features are incomplete and specifications are tentative.  The current implementation is naive but usable.  Performance is reasonable, but not quite at par with more mature languages like Lua/Ruby/Python.  There are probably issues that make it unsuitable for use in long-lived production environments.  But it does demonstrate the concepts and runs short-lived scripts quite ably.
 
 # Introduction
 
 ## Functional Foundation
 
-The central construct in Bang! is the function. First class functions are arguably the single most malleable single language facility, so Bang! attempts to keep this concept simple and close to the surface.
+The central construct in Bang! is the function. First class functions are arguably the most malleable single language facility, so Bang! attempts to keep this concept simple and close to the surface.
 
 All functions have access to a working stack.  Literals (numbers, strings, booleans, or functions) are pushed to the stack when encountered in the program. When functions are applied they pop their arguments off the working stack and can push results back onto the stack.  Values from the stack can be bound to symbolic names either as a function parameter or local variable.
 
@@ -29,7 +29,7 @@ A function to square a number is written like this:
 
      fun number = number number *
 
-A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator, expecting to find a function value at top of the stack, pops off the top value and applies it.  If the function accepts a parameter, the next value from the stack is popped off and bound to the symbolic name given to the parameter- in this example, the parameter is called 'number'.  In this case the function body pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  Multiply operates as you might expect, popping two values off the stack, multiplying, and pushing the result back to the stack.
+A function written this way is known as a function literal.  It is pushed onto the working stack like any other literal.  Functions are invoked, or "applied" using the '!' operator.  The '!' operator, expecting to find a function value at top of the stack, pops off the top value and applies it.  If the function accepts a parameter, the next value from the stack is popped off and bound to the symbolic name given to the parameter- in this example, the parameter is called 'number'.  Here the function body pushes the value bound to 'number' to the stack twice and invokes the multiply operator.  Multiply operates as you might expect, popping two values off the stack, multiplying, and pushing the result back to the stack.
 
 So a Bang! program simply consists of pushing values onto the program stack then applying those values to functions.  This resembles the common "reverse polish notation" style calculators.
 
@@ -61,108 +61,33 @@ Function values can be bound to symbalic names similarly, allowing named functio
 
 When the program's end of file is reached, any open function bodies are closed.
 
-What if we need a function more than a single parameter? Here's where the inherent power of first class functions and lexical closures come into play.  Without defining any additional language syntax, we can construct functions that take as many variables as we like.
+At this early stage in Bang!'s evolution, the syntax parser only supports one or zero arguments in the function declaration, though this will likely change soon.  But if we need a function with more than one single parameter, arguments can simply be bound to local variables using the 'as' keyword at the top of the function body - there is no distinction between an value bound with 'as' or with a function argument; the syntax parser merely translates either form to the same operation internally.
 
-A function to add two values could be written like this:
+Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we do with "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The two following "plus" definitions are equivalent:
 
-    fun x =
-       fun y = x y +; !
- 
-Think about what happens when we place two arguments on the stack and apply the function.
-
-      3  4
-      fun x =
-         fun y =
-            x y +; !
-      !
-
-First we push 3 and 4 on the working stack.  Then we encounter the first function which takes the argument x. When this function is applied, it pops 4 off of the stack and binds it to variable "x".  Then, it evaluates the function body.  The function body applies the function which accepts a parameter "y".  When this function is applied, it pops the remaining "3" off the stack and binds it to parameter "y".  Then it pushes "x" and "y" onto the stack and adds them.
-
-So we have in effect defined a function that takes two arguments, even though our language only gave us a function that takes one!  Standard fare if you're familiar with functional languages, but still a neat trick.
-
-If we want to name the function "plus", we can bind it using "as":
-
-          fun x =
-             fun y = x y +; ! ;
-          as plus
-    
-and apply it:
-    
-      3 4 plus!
-
-But this is not really "pretty" compared to languages which give you syntax like
-
-      function plus( x, y )
-        x + y
-      end
-
-and the stacking of semicolons and exclamations can get ugly. But we're not too far off from a traditional feeling syntax, and we've got a small bag of syntax tricks to throw at it yet.
-
-First, we can get move the inner '!' up to the front to clean up some of the backend noise:
-
-      fun x =
-         fun! y = x y +; ;
-      as plus
-
-Better, but we can still end up with a list of semicolons that you have to count out.  To help with this, Bang! provides a "curly brace" syntax which closes out any open functions created within the open brace. Unlike many traditional languages, the braces are just a programmer aid and not a syntax requirement, so they can be used sparingly.
-
-So now we've got:
-
-      fun x = {
-         fun! y = x y +
-      } as plus
-
-That's starting to look a bit better.  One more syntax trick and we're almost there. Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we do with "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The two following "plus" definitions are equivalent:
-
-      fun x = {
-          fun! y = x y +
+      fun x = { as y
+          x y +
       } as plus
       
-      def :plus x = {
-         fun! y = x y +
-      }
-
-The ":" distinguishes the identifier following the colon as the function's bound name (as opposed to being a parameter to the function).  So the "def" keyword provides a more conventional "function name up front" syntax.
-
-Note that the four keywords - fun, fun!, as, and def- are all just _syntactic variants_ on the same underlying construct - a first class function that takes a single parameter.
-
-I'm sympathetic to moving the second function's parameter up to the first line so that all function arguments go on the first line, like so:
-
-      def :plus x = { fun! y=
+      def :plus x = { as y
          x y +
       }
 
-Or if you prefer, we can bind the variables with the "as" keyword:
+which also allows the function to reference itself recursively.
 
-       def :plus = { as x as y
-         x y +
-       }
-      
-       3 4 plus!
-    > 7
+      def :loopForever nthTime = { 
+         nthTime 'This is iteration number %s\n' print!
+         nthTime 1 + loopForever!
+      }
 
-Now that is pretty close to a "traditional" function syntax, and yet we haven't created a large set of syntax rules that make for complicated parsers and which can lead to annoying inconsistency. We've defined only four keywords: "fun", "fun!", "as", and "def"- all of which are just minor syntactic variants on the core function construct; and the key apply operator "!" which runs behind the scenes as we bind values to function closures, but generally remains hidden except where we want to call attention to the fact that we're applying a function.
+## Conditionals
 
-I think it's a nice result when contrasted with traditional infix languages which tend to build in a lot of arbitrary syntactic conventions, e.g., re-using parentheses for function definitions as well as forcing order of evaluation, commas to separate arguments, etc. - and prefix languages like lisp that require mind-numbing explicitness in parenthesizing the bounds of expression groups.
-
-And because postfix doesn't ever require the use of parens to specify the order of evaluation we've still got those in our back pocket for... something.  Is it perfect? Certainly not; but given the very minimal syntax and requirements on the language implementation, it's a pretty good "Bang! for the buck".
-
-
-## If-else?
-
-The first thing every programmer wants to do is conditionally execute same statement or select some expression based on the results of a test.  This is frequently presented as an "if (test) { statement } else { statement }" syntax.
-
-For the sake of simplicity, Bang! provides an analog to the Apply operator "!", the Conditional Apply, represented by a question mark "?".   So to conditionally execute a block of code, write:
-
-    fun = ...; booleanValue?
-
-When "?" is encountered the first value popped off the stack is treated as the condition variable.  A function value is then popped off of the stack, and if the condition is true the function value is applied.
+The '?' operator provides a mechanism to conditionally branch.  When a '?' is encountered, the stack top will be popped and if the value is true, the statements following the ? will be executed.  A ':' following the '?' introduces an 'else' clause which will be executed instead if the boolean test value is false.  If or else clauses terminate under the same termination conditions as function blocks, either at the first ; delimiter, closing brance, or termination of input.
 
 Here is a function that will either add 1 or subtract 1 from the provided value:
 
-      def :up-or-down goUp = { 
-         fun = 1 +; goUp?
-         fun = 1 -; goUp not!?
+      def :up-or-down goUp = {
+         goUp ? 1 + : 1 -
       }
     
        100 true up-or-down!

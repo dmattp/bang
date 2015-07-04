@@ -415,6 +415,58 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };
 
+    namespace Ast {
+        class Base
+        {
+        public:
+            virtual void dump( int, std::ostream& o ) const = 0;
+            virtual void run( Stack& stack, const RunContext& ) const
+            {
+                throw std::runtime_error("Ast::Base::run should never be called");
+            }
+            enum EAstInstr {
+                kUnk,
+                kBreakProg,
+                kCloseValue,
+                kApply,
+                kApplyUpval,
+                kApplyProgram,
+                kApplyFunRec,
+#if DOT_OPERATOR_INLINE            
+                kApplyDotOperator,
+#endif 
+                kIfElse,
+                kTCOApply,
+                kTCOApplyUpval,
+                kTCOApplyProgram,
+                kTCOApplyFunRec,
+                kTCOIfElse,
+                kMakeCoroutine,
+                kYieldCoroutine,
+                kEofMarker
+            };
+            Base() : instr_(kUnk) {}
+            Base( EAstInstr i ) : instr_( i ) {}
+            bool isTailable() const { return instr_ != kUnk && instr_ != kBreakProg; } //  && instr_ != kApplyFun; }
+            // return instr_ == kApply || instr_ == kConditionalApply || instr_ == kApplyUpval; }
+
+            EAstInstr instr_;
+
+            void convertToTailCall()
+            {
+                switch (instr_)
+                {
+                    case kApplyFunRec:  instr_ = kTCOApplyFunRec;  break;
+                    case kIfElse:       instr_ = kTCOIfElse;       break;
+                    case kApplyProgram: instr_ = kTCOApplyProgram; break;
+                    case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
+                    case kApply:        instr_ = kTCOApply;        break;
+                }
+            }
+        private:
+        };
+    }
+
     
     
     // if RunProgram is called outside of an active thread, use pNullThread;

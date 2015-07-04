@@ -10,7 +10,7 @@ def :coro = {
     1000 inner!
 }
 
-'lib/iterate.bang' require! .range as range 
+-- 'lib/iterate.bang' require! .range as range 
 
 coro coroutine! as co
 
