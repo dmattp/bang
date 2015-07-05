@@ -52,7 +52,7 @@ Bang! provides the "as" keyword to immediately bind the value at the top of the 
     3.14159 as Pi
     ...
 
-Function values can be bound to symbalic names similarly, allowing named functions.
+Function values can be bound to symbolic names similarly, allowing named functions.
 
       3.14 as PI
       fun radius = radius radius * PI *; as CalculateArea
@@ -101,24 +101,26 @@ Here is a function that will either add 1 or subtract 1 from the provided value:
 
 ## Iteration
 
-In the functional world, iteration is usually introduced as recursion.  One thing I didn't say earlier about the "def" keyword is that by sticking the function name up front, we have a way to identify ourself inside the function body, which allows the function to recurse.
+In the functional world, iteration is usually introduced as recursion.  The "def" keyword introduced earlier gives a function a way to identify itself within the function body, allowing for recursion.  The conditional operator, ?, can be used to specify the termination condition for recursion.  Also, because Bang! provieds first class functions we can write higher order functions to implement iterating new constructs in bang itself without the need for additional syntax in the core language.
 
-So with the magic of first class lexically scoped functions and the "Conditionally Apply" operator (?) we can implement a higher order function that does something N times, like so:
+Here is a higher order function that does something N times:
 
-       def :times remaining = { fun! doSomething =
-         doSomething!
-         fun= doSomething remaining 1 - times!; remaining 1 >?
-       }
-
-And it can be used like this:
+    def :times = { swap! as do-something
+        def! :innerLoop remain = {
+          do-something!
+          remain 1 > ? remain 1 - innerLoop!
+        }
+    }
+    
+Which can be used like this:
 
        def :say-hello "Hello World!" print!;
     
        say-hello 20 times!
 
-When the "times" function is called, it invokes the supplied "do something" function, then calls itself again with the number of repetitions decremented by 1.  It repeats this as long as the number of times remaining is greater than 1.
+When the "times" function is called, it invokes the supplied "do something" function, then calls itself again with the number of remaining iterations decremented by 1.  It repeats this as long as the number of times remaining is greater than 1.
 
-In the long run, bang will include libraries with some standard iteration functions like "times" and "range" that will iterate a number of times or over a range of values.  Much of the time that iteration is used in an imperative language, you probably should prefer a higher-order (like map or fold).  But if something like "times" or "range" doesn't cut it you can always buckle down and write a recursive function.
+Bang includes libraries with some standard iteration functions like "times" and "range" to iterate a number of times or over a range of values.  Much of the time that iteration would be used in an imperative language a higher order function such as map or fold ought to be preferred as more idiomatic.  And where neither that nor something like "times" or "range" fits well you can always buckle down and write a recursive function.
 
 In many imperative languages you have to worry about recursive functions overflowing the stack.  Bang! employs tail call optimization to prevent stack frames from accumulating when recursion is employed as long as there is no work that remains to be done after the recursive invocation.
 
@@ -138,7 +140,7 @@ I'm hestitant to add a firm list or array structure to Bang! because I think a l
 
 Each value on the stack is transformed by the provided function.  The 'innermap' function is called recursively as long as values remain on the stack.
 
-Given this map function, we can write a "filter" function that leaves only those functions on the stack which pass a certain predicate test:
+Given this map function, we can write a "filter" function that leaves only those values on the stack which pass a certain predicate test:
 
     def :filter predicate = {
         fun v = { v predicate! ? v }
@@ -147,15 +149,15 @@ Given this map function, we can write a "filter" function that leaves only those
 
 To help with the use of the working stack, a couple other niceties are provided.  "nth" pushes (duplicates) the nth value on the stack.  "save-stack" clears the stack contents, saving them into a function that will push them back onto the stack when applied.
 
-Additionally, parentheses may be used to set bounding markers on the size of the stack so that e.g, we can run these higher order functions on a certain point in the working stack and not operate on unrelated values which might be sitting on the stack.
+Additionally, parentheses may be used to set bounding markers on the size of the stack so that e.g, we can run these higher order functions on a certain point in the working stack and not operate on unrelated values which might be present deeper in the stack.
 
 Here is a short implementation of quicksort using higher order functions:
 
     def :quicksort = {
-      # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
-      save-stack! as theStack
+      # 2 / nth!  as pivotValue -- use the value midway on the stack as a pivot value
+      save-stack! as theStack   -- save/duplicate the stack, because we'll need to filter it several times
      
-       theStack! fun = pivotValue <; filter! quicksort # 1 >?
+       theStack! fun = pivotValue <; filter! quicksort # 1 >? 
       (theStack! fun = pivotValue =; filter!)
       (theStack! fun = pivotValue >; filter! quicksort # 1 >?)
     }
@@ -168,16 +170,16 @@ And that's, for an example, quicksort in six easy lines of Bang!.
 
 ## Records and Objects
 
-So now we've got first class lexically scope functions, conditionals, iteration, and higher order functions, great; but everybody wants objects right?
+So far we've introduced first class lexically scoped functions, conditionals, iteration, and higher order functions; but what about objects?  Does Bang! support object-oriented programming? 
 
-Once you have first class lexically scoped functions, it is possible to build a lightweight object/record system. It may not be everything your average Java programmer wants out of an object system, but with the goal of keeping Bang! simple, it's a fair starting point.
+It is possible to build a lightweight object/record system using just lexically scoped functions. It may not be everything the average Java programmer wants out of an object system, but with the goal of keeping Bang! simple, it's a fair starting point.
 
-The general way to do something like this is to write a "create-Thing" constructor method that binds the objects properties, and return an inner message handler function.  Messages can be sent to the object by calling the message handler handler returned by the constructor.  How that message handler works is entirely up to the implementer of the object system, but generally goes something like this:
+The typical way to do this is to write a "create-Thing" constructor method that binds the objects properties and returns an inner message handler function.  Messages can then be sent to the object by calling the message handler returned by the constructor.  How that message handler works is entirely up to the implementer of the object system, but generally goes something like this:
 
       def :create-Employee = { as age as name
           fun message = {
-              fun = age;  message 'age'  =?
-              fun = name; message 'name' =?
+              message 'age'  = ? age
+            : message 'name' = ? name
           }
       }
 
