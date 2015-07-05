@@ -99,7 +99,7 @@ namespace {
 
         void ebthrow()
         {
-            std::cerr << "EBTHROW: " << oss.str() << std::endl;
+//            std::cerr << "EBTHROW: " << oss.str() << std::endl;
             throw E( oss.str() );
         }
         
@@ -1284,7 +1284,6 @@ restartTco:
                         }
                         catch (const std::exception& e ) // parse error
                         {
-                            std::cerr << "a09 Error: " << e.what() << std::endl;
                             pEof->repl_prompt(stack);
                         }
                     }

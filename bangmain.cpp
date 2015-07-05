@@ -79,6 +79,11 @@ public:
     {}
 
 
+    virtual void report_error( const std::exception& e ) const
+    {
+        std::cerr << "REPL Error: " << e.what() << std::endl;
+    }
+    
     DLLEXPORT Ast::Program* getNextProgram( SHAREDUPVALUE uv ) const
     {
         const Ast::CloseValue* closeValueChain = uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr);

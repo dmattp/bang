@@ -530,6 +530,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             ParsingContext& parsectx_;
             DLLEXPORT EofMarker( ParsingContext& ctx );
             DLLEXPORT virtual void repl_prompt( Stack& ) const;
+            virtual void report_error( const std::exception& ) const {}
             DLLEXPORT virtual Ast::Program* getNextProgram( SHAREDUPVALUE uv ) const = 0;
             DLLEXPORT virtual void dump( int level, std::ostream& o ) const;
         };

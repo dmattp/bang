@@ -4,14 +4,14 @@ Bang! Copyright (c) 2015 David M. Placek (MIT License)
 
 Bang! is a simple functional language that provides first class functions, lexical scope, recursion, objects, and coroutines with a minimalist approach and lightweight syntax.
 
-Bang! was developed with the goal of offering language constructs with the most abstractive power and minimum complexity.  A stack-based program model and postfix syntax are employed for syntactic simplicity.  Recursion with tail call optimization is provided for iteration.  "Bang! for the buck" is the idea here.  Keep the language small and the feel light, but start with a solid foundation.
+Bang! was developed with the goal of offering language constructs with the most abstractive power and minimum complexity to provide a full featured and scalable language with a small footprint.  A working stack and postfix syntax are employed for syntactic simplicity.  Recursion and tail call optimization are provided for iteration.  "Bang! for the buck" is the key idea.  The small size and light feel make Bang! a good choice for embedding as an extension language with a solid foundation.
 
 Programs can be as simple as:
 
       1 1 +
     > 2
 
-Or they can be as complicated as you wish to make them, with all the abstractive power of functional programming.
+Or they can be as complicated as you wish to make them, with all the power of functional programming.
 
 # Status
 
@@ -61,7 +61,7 @@ Function values can be bound to symbolic names similarly, allowing named functio
 
 When the program's end of file is reached, any open function bodies are closed.
 
-Functions can be declared with zero to any number of arguments.  Arguments are popped off the stack in the reverse order of declaration in the argument list so that arguments are declared in the same order they would be pushed to the stack before calling the function.   Arguments could simply be bound to local variables using the 'as' keyword at the top of the function body - there is no distinction between an value bound with 'as' or with a function argument; the syntax parser merely translates either form to the same operation internally.  These two functions are equivalent:
+Functions can be declared with zero to any number of arguments.  Arguments are popped off the stack in the reverse order of declaration in the argument list so that arguments are declared in the same order they would be pushed to the stack before calling the function.   Arguments could simply be bound to local variables using the 'as' keyword at the top of the function body - there is no distinction between a value bound with 'as' or a function argument; the syntax parser translates both forms to the same operation internally.  These two functions are equivalent:
 
     fun x y z = { ... }
     fun = { as z as y as x ... }
@@ -262,7 +262,7 @@ These should also not be surprising
 
 # Libraries
 
-Library files or modules can be included with the "require" keyword.  Require loads a file as a closure which must be applied.  A typical pattern is to have the library file return a message handler style function which can be used with the object syntax to access methods.  E.g., the core higher-order-functions are included in a file called [lib/hof.bang], which looks like this:
+Library files or modules support code reuse with the "require" keyword.  Require loads a file as a closure which must be applied.  A typical pattern is to have the library file return a message handler style function which can be used with the object syntax to access methods.  E.g., the core higher-order-functions are included in a file called [lib/hof.bang], which looks like this:
 
 
     def :map xform = {
