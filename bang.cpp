@@ -78,6 +78,37 @@ And there are primitives, until a better library / module system is in place.
 
 namespace {
     bool gDumpMode(false);
+    template <class E = std::runtime_error>
+    class ebuild
+    {
+        std::ostringstream oss;
+    public:
+        template<class T> ebuild& operator <<( const T & t )
+        {
+            oss << t;
+            return *this;
+        }
+        ebuild()
+        {
+        }
+        
+//         template <class T>
+//         ebuild( T&& t ) : std::ostringstream( std::forward(t) )
+//         {
+//         }
+
+        void ebthrow()
+        {
+            std::cerr << "EBTHROW: " << oss.str() << std::endl;
+            throw E( oss.str() );
+        }
+        
+        ~ebuild()
+        {
+        }
+    };
+#define bangerr() for ( ebuild<> err; true; err.ebthrow() ) err
+    
 }
 
 namespace Bang {
@@ -484,8 +515,8 @@ namespace Ast
                 return parent_->getUpValue( uvName );
             else
             {
-                std::cerr << "Error Looking for dynamic upval=\"" << uvName << "\"\n";
-                throw std::runtime_error("Could not find dynamic upval");
+                bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
+                // throw std::runtime_error("Could not find dynamic upval");
             }
         }
     }
@@ -541,47 +572,24 @@ struct ParseFail : public std::runtime_error
     };
     
 
-    Ast::Program* parseStdinToProgram(ParsingContext& ctx, const Ast::CloseValue* closeValueChain );
-
     
 namespace Ast
 {
-    class BreakProg : public Base
+    DLLEXPORT void BreakProg::dump( int level, std::ostream& o ) const
     {
-    public:
-        BreakProg() : Base( kBreakProg ) {}
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "---\n";
-        }
-    };
-    void EofMarker::repl_prompt( Stack& stack ) const
+        indentlevel(level, o);
+        o << "---\n";
+    }
+    DLLEXPORT void EofMarker::repl_prompt( Stack& stack ) const
     {
         stack.dump( std::cout );
         parsectx_.interact.repl_prompt();
     }
-    DLLEXPORT Ast::Program* EofMarker::getNextProgram( SHAREDUPVALUE uv ) const
-    {
-        const Ast::CloseValue* closeValueChain = uv ? uv->upvalParseChain() : static_cast<const Ast::CloseValue*>(nullptr);
-        // std::cerr << "EofMarker::getNextProgram\n";
-        while (true)
-        {
-            try {
-                auto rc = parseStdinToProgram( parsectx_, closeValueChain );
-                return rc;
-            } catch (std::exception&e) {
-                std::cout << "a08 Error: " << e.what() << "\n";
-                parsectx_.interact.repl_prompt();
-            }
-        }
-    }
-    
     DLLEXPORT EofMarker::EofMarker( ParsingContext& ctx )
     : Base( kEofMarker ),
       parsectx_(ctx)
     {}
-    void EofMarker::dump( int level, std::ostream& o ) const
+    DLLEXPORT void EofMarker::dump( int level, std::ostream& o ) const
     {
         indentlevel(level, o);
         o << "<<< EOF >>>\n";
@@ -953,14 +961,6 @@ namespace Ast
     
 } // end, namespace Ast
 
-    Ast::Base* ParsingContext::hitEof( const Ast::CloseValue* uvchain )
-    {
-        if (interact.bEof)
-            return ( new Ast::EofMarker(*this) );
-        else
-            return ( new Ast::BreakProg() );
-    }
-
 
 #if !USE_GC
 template< class Tp >    
@@ -1212,7 +1212,7 @@ restartTco:
                     pInstr->run( stack, frame );
                     break;
 
-                dobreakprog:
+//                dobreakprog:
                 case Ast::Base::kBreakProg:
                 {
                     RunContext* prev = frame.prev;
@@ -1682,38 +1682,6 @@ public:
     }
 }; // end, class StreamMark
 
-
-class RegurgeStdinRepl : public RegurgeIo
-{
-    bool atEof_;
-public:
-    RegurgeStdinRepl()
-    : atEof_(false)
-    {}
-    
-
-    char getc()
-    {
-        int icud = RegurgeIo::getcud();
-
-        if (icud != EOF)
-            return icud;
-
-        if (atEof_)
-            throw ErrorEof();
-        
-        int istream = fgetc(stdin);
-        if (istream == EOF || istream == 0x0d || istream == 0x0a) // CR
-        {
-            atEof_ = true;
-            return 0x0a; // LF is close enough
-        }
-        else
-        {
-            return istream;
-        }
-    }
-};
 
 
 class RegurgeFile : public RegurgeIo
@@ -2438,14 +2406,12 @@ namespace Primitives {
         HMODULE hlib = LoadLibrary( llstr );
         if (!hlib)
         {
-            std::cerr << "Could not load library=" << libname << std::endl;
-            return;
+            bangerr() << "Could not load library=" << libname;
         }
         auto proc = GetProcAddress( hlib, "bang_open" );
         if (!proc)
         {
-            std::cerr << "Could not find 'bang_open()' in library=" << libname << std::endl;
-            return;
+            bangerr() << "Could not find 'bang_open()' in library=" << libname;
         }
 //         std::cerr << "Calling 'bang_open()' in library=" << libname 
 //                       << " stack=0x" << std::hex <<  (void*)&s << std::dec << std::endl;
@@ -2510,17 +2476,17 @@ namespace Primitives {
         }
         catch (const ErrorEof& )
         {
-            std::cerr << "Found EOF without valid program!" << std::endl;
+            bangerr() << "Found EOF without valid program!";
         }
         catch (const std::runtime_error& e )
         {
-            std::cerr << "Runtime parse error b01: " << e.what() << std::endl;
-            throw e;
+            bangerr() << "Parse error: " << e.what();
         }
 
         return nullptr;
     }
-    
+
+#if 0    
     DLLEXPORT void RequireKeyword::parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
     {
         auto prog = parseToProgramNoUpvals( ctx, bDump );
@@ -2529,9 +2495,8 @@ namespace Primitives {
         {
             SHAREDUPVALUE noUpvals;
             RunProgram( &thread, prog, noUpvals );
-            // closure->apply( stack ); // , closure );
         }
-        catch( AstExecFail ast )
+        catch( const AstExecFail& ast )
         {
             gFailedAst = ast.pStep;
 //            closure->dump( std::cerr );
@@ -2539,23 +2504,24 @@ namespace Primitives {
         }
         catch( const std::exception& e )
         {
-            std::cerr << "Runtime exec Error: " << e.what() << std::endl;
+            std::cerr << "Exec error: " << e.what() << std::endl;
         }
     }
+#endif 
 
 
     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
     // parse to Ast::Program and go with that?
-    Ast::Program* RequireKeyword::parseToProgramNoUpvals( ParsingContext& ctx, bool bDump )
+    DLLEXPORT Ast::Program* RequireKeyword::parseToProgramNoUpvals( ParsingContext& ctx, bool bDump )
     {
         Ast::Program* fun;
 
-        if (stdin_)
-        {
-            RegurgeStdinRepl strmStdin;
-            fun = ParseToProgram( ctx, strmStdin, bDump, nullptr );
-        }
-        else
+//         if (stdin_)
+//         {
+//             RegurgeStdinRepl strmStdin;
+//             fun = ParseToProgram( ctx, strmStdin, bDump, nullptr );
+//         }
+//         else
         {
             RegurgeFile strmFile( fileName_ );
             try
@@ -2955,7 +2921,17 @@ Parser::Program::Program
 
 
 
-
+    // Require keyword always reads full required file without returning control
+    // to repl/interactive environment, so when EOF is found, we insert BreakProg
+    class RequireParsingContext : public ParsingContext
+    {
+    public:
+        RequireParsingContext() {}
+        Ast::Base* hitEof( const Ast::CloseValue* uvchain )
+        {
+            return new Ast::BreakProg();
+        }
+    };
 
 
 void Ast::Require::run( Stack& stack, const RunContext& rc ) const
@@ -2965,7 +2941,7 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
         throw std::runtime_error("no filename found for require??");
 
     RequireKeyword me( v.tostr().c_str() );
-    ParsingContext parsectx_;
+    RequireParsingContext parsectx_;
     
     auto fun = me.parseToProgramNoUpvals( parsectx_, gDumpMode );
     SHAREDUPVALUE noUpvals;
@@ -2975,19 +2951,6 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
 }
 
-    Ast::Program* parseStdinToProgram( ParsingContext& ctx, const Ast::CloseValue* closeValueChain )
-    {
-        RequireKeyword req(nullptr);
-        RegurgeStdinRepl strmStdin;
-        return
-        ParseToProgram
-        (   ctx,
-            strmStdin,
-            gDumpMode,
-            closeValueChain
-        );
-    }
-    
 } // end namespace Bang
 
 

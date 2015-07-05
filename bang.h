@@ -518,14 +518,20 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         private:
         };
 
+        class BreakProg : public Base
+        {
+        public:
+            BreakProg() : Base( kBreakProg ) {}
+            DLLEXPORT virtual void dump( int level, std::ostream& o ) const;
+        };
         class EofMarker : public Base
         {
         public:
             ParsingContext& parsectx_;
             DLLEXPORT EofMarker( ParsingContext& ctx );
-            virtual void repl_prompt( Stack& ) const;
-            DLLEXPORT virtual Ast::Program* getNextProgram( SHAREDUPVALUE uv ) const;
-            virtual void dump( int level, std::ostream& o ) const;
+            DLLEXPORT virtual void repl_prompt( Stack& ) const;
+            DLLEXPORT virtual Ast::Program* getNextProgram( SHAREDUPVALUE uv ) const = 0;
+            DLLEXPORT virtual void dump( int level, std::ostream& o ) const;
         };
     } // end, Ast namespace
 
@@ -601,11 +607,11 @@ DLLEXPORT void RunProgram
     {
         static void norepl_prompt() {}
     public:
-        bool bEof;
+///        bool bEof;
         std::function<void(void)> repl_prompt;
         InteractiveEnvironment()
-        : repl_prompt( &InteractiveEnvironment::norepl_prompt ),
-          bEof(false)
+        : repl_prompt( &InteractiveEnvironment::norepl_prompt )
+          //       bEof(false)
         {
         }
     };
@@ -619,19 +625,19 @@ DLLEXPORT void RunProgram
         {}
         ParsingContext() 
         {}
-        DLLEXPORT virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain );
+        DLLEXPORT virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain ) = 0;
     };
 
-class RegurgeStream
-{
-public:
-    RegurgeStream() {}
-    virtual char getc() = 0;
-    virtual void accept() = 0;
-    virtual void regurg( char ) = 0;
-    virtual std::string sayWhere() { return "(unsure where)"; }
-    virtual ~RegurgeStream() {}
-};
+    class RegurgeStream
+    {
+    public:
+        RegurgeStream() {}
+        virtual char getc() = 0;
+        virtual void accept() = 0;
+        virtual void regurg( char ) = 0;
+        virtual std::string sayWhere() { return "(unsure where)"; }
+        virtual ~RegurgeStream() {}
+    };
 
     struct ErrorEof
     {
@@ -657,17 +663,18 @@ public:
     class RequireKeyword
     {
         const std::string fileName_;
-        bool stdin_;
+        // bool stdin_;
     public:
         RequireKeyword( const char* fname )
-        :  fileName_( fname ? fname : "" ),
-           stdin_( !fname )
+        :  fileName_( fname ) // ? fname : "" ),
+           // stdin_( !fname )
         {
+            // assert(fname);
         }
 
-        Ast::Program* parseToProgramNoUpvals( ParsingContext& ctx, bool bDump );
+        DLLEXPORT Ast::Program* parseToProgramNoUpvals( ParsingContext& ctx, bool bDump );
 //        std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump );
-        DLLEXPORT void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump);
+//        DLLEXPORT void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump);
     }; // end, class RequireKeyword
     
     
