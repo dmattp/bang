@@ -513,6 +513,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kApplyFunRec,
 #if DOT_OPERATOR_INLINE            
                 kApplyDotOperator,
+                kApplyDotOperatorUpval,
 #endif 
                 kIfElse,
                 kTCOApply,

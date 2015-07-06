@@ -587,8 +587,8 @@ namespace Ast
 
     class ApplyDotOperator : public Base
     {
-        std::string msgStr_; // method
     public:
+        std::string msgStr_; // method
         ApplyDotOperator( const std::string& msgStr )
         :
 #if DOT_OPERATOR_INLINE
@@ -609,6 +609,40 @@ namespace Ast
         ;
 #endif 
     };
+
+    class ApplyDotOperatorUpval : public Base
+    {
+    public:
+        std::string msgStr_; // method
+    private:
+        NthParent uvnumber_; // index into the active Upvalues
+    public:
+        ApplyDotOperatorUpval( const std::string& msgStr, NthParent uvnumber )
+        :
+#if DOT_OPERATOR_INLINE
+        Base( kApplyDotOperatorUpval ),
+#endif 
+        msgStr_( msgStr ),
+        uvnumber_( uvnumber )
+        {}
+        const std::string& getMsgStr() const { return msgStr_; }
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyDotOperatorUpval(" << uvnumber_.toint() << '/' << msgStr_ << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+#if DOT_OPERATOR_INLINE
+        { throw std::runtime_error("ApplyDotOperatorUpval::run should not be called"); }
+#else
+        ;
+#endif
+        const Value& getUpValue( const RunContext& rc ) const
+        {
+            return rc.getUpValue( uvnumber_ );
+        }
+    };
+    
     
     class PushPrimitive: public Base
     {
@@ -694,8 +728,8 @@ namespace Ast
     {
     protected:
         std::string name_;
-        NthParent uvnumber_; // index into the active Upvalues
     public:
+        NthParent uvnumber_; // index into the active Upvalues
         PushUpval( const std::string& name, NthParent uvnumber )
         : name_( name ),
           uvnumber_( uvnumber )
@@ -1391,6 +1425,24 @@ restartTco:
                     }
                 }
                 break;
+                case Ast::Base::kApplyDotOperatorUpval:
+                {
+                    auto adoup = reinterpret_cast<const Ast::ApplyDotOperatorUpval*>(pInstr);
+                    const Value& v = adoup->getUpValue( frame ); 
+                    stack.push( adoup->getMsgStr() );
+                    switch (v.type())
+                    {
+                        default: RunApplyValue( v, stack, frame ); break;
+                        KTHREAD_CASE
+                        case Value::kBoundFun:
+                            BoundProgram* pbound = v.toboundfun();
+                            inprog = pbound->program_;
+                            inupvalues = pbound->upvalues_;
+                            goto restartNonTail;
+                    }
+                }
+                break;
+
 #endif 
                 
                 case Ast::Base::kTCOApply:
@@ -2308,6 +2360,20 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     }
 
     delNoops();
+
+    for (int i = 0; i < ast.size() - 1; ++i)
+    {
+        const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
+        if (pup)
+        {
+            Ast::ApplyDotOperator* pdot = dynamic_cast<Ast::ApplyDotOperator*>(ast[i+1]);
+            if (pdot)
+            {
+                ast[i] = new Ast::ApplyDotOperatorUpval( pdot->msgStr_, pup->uvnumber_ );
+                ast[i+1] = &noop;
+            }
+        }
+    }
 
     for (int i = 0; i < ast.size() - 1; ++i)
     {
