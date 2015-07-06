@@ -7,6 +7,7 @@
 #include <ostream>
 #include <list>
 #include <string>
+#include <iostream>
 
 static const char* const BANG_VERSION = "0.004";
 
@@ -82,6 +83,72 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     };
 
 
+    class bangstring : public std::string
+    {
+        static unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
+        {
+            unsigned hash, i;
+            for(hash = i = 0; i < len; ++i)
+            {
+                hash += key[i];
+                hash += (hash << 10);
+                hash ^= (hash >> 6);
+            }
+            hash += (hash << 3);
+            hash ^= (hash >> 11);
+            hash += (hash << 15);
+            return hash;
+        }
+        unsigned hash_;
+        unsigned calchash()
+        {
+//            return 0;
+//            std::cerr << "d01.calchash for:" << *this << "\n";
+            const auto len = this->size();
+            return jenkins_one_at_a_time_hash( &this->front(), len > 32 ? 32 : len );
+        }
+    public:
+        unsigned gethash() const { return hash_; }
+        bangstring( const char* psz )
+        : std::string(psz),
+          hash_( calchash() )
+        {
+//            std::cerr << "a02.bangstring(" << psz << ")\n";
+        }
+        bangstring( const std::string& other )
+        : std::string(other),
+          hash_( calchash() )
+        {
+//            std::cerr << "a01.bangstring(" << other << ")\n";
+        }
+        bangstring( const bangstring& other )
+        : std::string(other),
+          hash_( other.hash_ )
+        {}
+        const bangstring& operator=( const bangstring& rhs )
+        {
+            static_cast<std::string&>(*this) = static_cast<const std::string&>(rhs);
+            hash_ = rhs.hash_;
+            return *this;
+        }
+        bool operator==( const bangstring& rhs ) const
+        {
+//            std::cerr << "b01.bangstring==(" << rhs << ")\n";
+            return (hash_ == rhs.hash_) && static_cast<const std::string&>(*this) == static_cast<const std::string&>(rhs);
+        }
+        bool operator==( const char* rhs ) const
+        {
+//            std::cerr << "b01.bangstring==(" << rhs << ")\n";
+            return static_cast<const std::string&>(*this) == rhs;
+        }
+        bool operator==( const std::string& rhs ) const
+        {
+//            std::cerr << "b01.bangstring==(" << rhs << ")\n";
+            return static_cast<const std::string&>(*this) == rhs;
+        }
+    };
+
+
     class Value
     {
         inline void copyme( const Value& rhs )
@@ -94,7 +161,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kBoundFun: // fall through
                 case kFun:  new (v_.cfun) std::shared_ptr<Function>( rhs.tofun() ); return;
 #endif
-                case kStr:  new (v_.cstr) std::string( rhs.tostr() ); return;
+                case kStr:  new (v_.cstr) bangstring( rhs.tostr() ); return;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
                 case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
@@ -114,7 +181,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kFun:
                     new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
 #endif
-                case kStr:  new (v_.cstr) std::string( std::move(rhs.tostr()) ); return;
+                case kStr:  new (v_.cstr) bangstring( std::move(rhs.tostr()) ); return;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
                 case kFunPrimitive: v_.funprim = rhs.v_.funprim; return;
@@ -151,7 +218,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         union Union {
             bool     b;
             double   num;
-            char     cstr[sizeof(std::string)];
+            char     cstr[sizeof(bangstring)];
 #if USE_GC
             bangfunptr_t funptr;
 #else
@@ -198,19 +265,20 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value( const char* str )
         : type_( kStr )
         {
-            new (v_.cstr) std::string(str);
+            new (v_.cstr) bangstring(str);
         }
         
-        Value( const std::string& str )
+        Value( const bangstring& str )
         : type_( kStr )
         {
-            new (v_.cstr) std::string(str);
+            new (v_.cstr) bangstring(str);
         }
 
-        Value( std::string&& str )
+        
+        Value( bangstring&& str )
         : type_( kStr )
         {
-            new (v_.cstr) std::string(std::move(str));
+            new (v_.cstr) bangstring(std::move(str));
         }
         
         Value( BANGFUN_CREF f )
@@ -296,7 +364,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         double tonum()  const { return v_.num; }
         bool   tobool() const { return v_.b; }
-        const std::string& tostr() const { return *reinterpret_cast<const std::string*>(v_.cstr); }
+        const bangstring& tostr() const { return *reinterpret_cast<const bangstring*>(v_.cstr); }
         tfn_primitive tofunprim() const { return v_.funprim; }
         BANGTHREAD_CREF tothread() const {
             return *reinterpret_cast<const std::shared_ptr<Thread>* >(v_.cthread);
@@ -333,7 +401,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
         }
 
-        bool binds( const std::string& name );
+        bool binds( const bangstring& name );
 
         const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
 
@@ -354,7 +422,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         // lookup by string / name is expensive; used for experimental object
         // system.  obviously if it's "a hit" you can optimize out much of this cost
-        const Value& getUpValue( const std::string& uvName );
+        const Value& getUpValue( const bangstring& uvName );
 
         SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber )
         {
@@ -437,16 +505,22 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 //     }
 
         void push( const Value& v ) { stack_.push_back( v ); }
-        void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
         void push( const std::shared_ptr<BoundProgram>& bp ) { stack_.emplace_back( bp ); }
 //        void push( BANGCLOSURE&& fun ) { stack_.emplace_back( fun ); }
         void push( double num ) { stack_.emplace_back(num); }
         void push( bool b ) { stack_.emplace_back(b); }
         void push( int i ) { stack_.emplace_back(double(i)); }
         void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
+        
         void push( const std::string& s ) { stack_.emplace_back(s); }
-        void push( const char* s ) { stack_.emplace_back(s); }
+        void push( const bangstring& s ) { stack_.emplace_back(s); }
         void push( std::string&& s ) { stack_.emplace_back(std::move(s)); }
+        void push( bangstring&& s ) { stack_.emplace_back(std::move(s)); }
+        void push( const char* s ) { stack_.emplace_back(s); }
+
+        void push_bs( const bangstring& s ) { stack_.push_back(s); }
+        
+        void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
         void push( BANGFUNPTR&& f ) { stack_.emplace_back(std::move(f)); }
 
         const Value& loc_top() const { return stack_.back(); }
@@ -589,7 +663,7 @@ DLLEXPORT void RunProgram
         SHAREDUPVALUE_CREF upvalues() const;
         SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
         const Value& getUpValue( NthParent up ) const;
-        const Value& getUpValue( const std::string& uvName ) const;
+        const Value& getUpValue( const bangstring& uvName ) const;
 
 
         RunContext( Thread* inthread, const Ast::Base* const *inppInstr, SHAREDUPVALUE_CREF uv );

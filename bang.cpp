@@ -125,7 +125,9 @@ namespace {
         else if (type_ == kBool)
             o << (v_.b ? "true" : "false");
         else if (type_ == kStr)
-            o << this->tostr();
+        {
+            o << this->tostr() << " :" << std::hex << this->tostr().gethash() << std::dec;
+        }
         else if (type_ == kFun)
         {
             auto f = this->tofun().get();
@@ -436,21 +438,21 @@ namespace Ast
     class CloseValue : public Base
     {
         const CloseValue* pUpvalParent_;
-        std::string paramName_;
+        bangstring paramName_;
     public:
         CloseValue( const CloseValue* parent, const std::string& name )
         : Base( kCloseValue ),
           pUpvalParent_( parent ),
           paramName_( name )
         {}
-        const std::string& valueName() const { return paramName_; }
+        const bangstring& valueName() const { return paramName_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "CloseValue(" << paramName_ << ") " << std::hex << PtrToHash(this) << std::dec << "\n";
         }
         
-        const NthParent FindBinding( const std::string& varName ) const
+        const NthParent FindBinding( const bangstring& varName ) const
         {
             if (this->paramName_ == varName)
             {
@@ -487,12 +489,12 @@ namespace Ast
     };
 }
 
-        bool Upvalue::binds( const std::string& name )
+        bool Upvalue::binds( const bangstring& name )
         {
             return closer_->valueName() == name;
         }
     
-    const Value& Upvalue::getUpValue( const std::string& uvName )
+    const Value& Upvalue::getUpValue( const bangstring& uvName )
     {
         if (uvName == closer_->valueName())
         {
@@ -588,7 +590,7 @@ namespace Ast
     class ApplyDotOperator : public Base
     {
     public:
-        std::string msgStr_; // method
+        Value msgStr_; // method
         ApplyDotOperator( const std::string& msgStr )
         :
 #if DOT_OPERATOR_INLINE
@@ -596,11 +598,11 @@ namespace Ast
 #endif 
         msgStr_( msgStr )
         {}
-        const std::string& getMsgStr() const { return msgStr_; }
+        const Value& getMsgVal() const { return msgStr_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyDotOperator(" << msgStr_ << ")\n";
+            o << "ApplyDotOperator(" << msgStr_.tostr() << ")\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
 #if DOT_OPERATOR_INLINE
@@ -613,7 +615,7 @@ namespace Ast
     class ApplyDotOperatorUpval : public Base
     {
     public:
-        std::string msgStr_; // method
+        Value msgStr_; // method
     private:
         NthParent uvnumber_; // index into the active Upvalues
     public:
@@ -625,11 +627,11 @@ namespace Ast
         msgStr_( msgStr ),
         uvnumber_( uvnumber )
         {}
-        const std::string& getMsgStr() const { return msgStr_; }
+        const Value& getMsgVal() const { return msgStr_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyDotOperatorUpval(" << uvnumber_.toint() << '/' << msgStr_ << ")\n";
+            o << "ApplyDotOperatorUpval(" << uvnumber_.toint() << '/' << msgStr_.tostr() << ")\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
 #if DOT_OPERATOR_INLINE
@@ -1412,7 +1414,7 @@ restartTco:
                 case Ast::Base::kApplyDotOperator:
                 {
                     const Value& v = stack.pop(); // the function to apply
-                    stack.push( reinterpret_cast<const Ast::ApplyDotOperator*>(pInstr)->getMsgStr() );
+                    stack.push( reinterpret_cast<const Ast::ApplyDotOperator*>(pInstr)->getMsgVal() );
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
@@ -1429,7 +1431,7 @@ restartTco:
                 {
                     auto adoup = reinterpret_cast<const Ast::ApplyDotOperatorUpval*>(pInstr);
                     const Value& v = adoup->getUpValue( frame ); 
-                    stack.push( adoup->getMsgStr() );
+                    stack.push( adoup->getMsgVal() );
                     switch (v.type())
                     {
                         default: RunApplyValue( v, stack, frame ); break;
@@ -1558,7 +1560,7 @@ const Value& RunContext::getUpValue( NthParent uvnumber ) const
     return upvalues_->getUpValue( uvnumber );
 }
 
-const Value& RunContext::getUpValue( const std::string& uvName ) const
+const Value& RunContext::getUpValue( const bangstring& uvName ) const
 {
     return upvalues_->getUpValue( uvName );
 }
@@ -2369,7 +2371,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             Ast::ApplyDotOperator* pdot = dynamic_cast<Ast::ApplyDotOperator*>(ast[i+1]);
             if (pdot)
             {
-                ast[i] = new Ast::ApplyDotOperatorUpval( pdot->msgStr_, pup->uvnumber_ );
+                ast[i] = new Ast::ApplyDotOperatorUpval( pdot->msgStr_.tostr(), pup->uvnumber_ );
                 ast[i+1] = &noop;
             }
         }
