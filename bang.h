@@ -3,6 +3,7 @@
 #include <vector>
 #include <iterator>
 #include <functional>
+#include <stdexcept>
 #include <ostream>
 #include <list>
 #include <string>
@@ -53,6 +54,32 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #define NEW_BANGTHREAD  std::make_shared<Thread>
 #define BANGTHREAD_CREF const Bang::bangthreadptr_t&
 #define BANGTHREADPTR   bangthreadptr_t
+
+
+    class Except : public std::runtime_error
+    {
+    public:
+        Except( const std::string& m )
+        : std::runtime_error(m)
+        {}
+    };
+
+    
+    struct ParseFail : public Except
+    {
+        ParseFail( const std::string& msg )
+        : Except( msg )
+        {}
+    };
+
+    struct AstExecFail : public Except
+    {
+        const Ast::Base* pStep;
+        AstExecFail( const Ast::Base* step, const std::string& msg ) //, const std::runtime_error& e )
+        : Except(msg),
+          pStep(step)
+        {}
+    };
 
 
     class Value
@@ -461,7 +488,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Function& operator=(const Function&);
     private:
     public:
-        std::weak_ptr<Function> self_;
+//        std::weak_ptr<Function> self_;
         Function() {} // : isClosure_(false) {}
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;

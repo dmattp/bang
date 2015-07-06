@@ -88,26 +88,15 @@ namespace {
             oss << t;
             return *this;
         }
-        ebuild()
-        {
-        }
+        ebuild() { }
+        // template <class T> ebuild( T&& t ) : E( std::forward(t) ) {}
         
-//         template <class T>
-//         ebuild( T&& t ) : std::ostringstream( std::forward(t) )
-//         {
-//         }
-
-        void ebthrow()
+        void throw_()
         {
-//            std::cerr << "EBTHROW: " << oss.str() << std::endl;
             throw E( oss.str() );
         }
-        
-        ~ebuild()
-        {
-        }
     };
-#define bangerr() for ( ebuild<> err; true; err.ebthrow() ) err
+#define bangerr(...) for ( ebuild<__VA_ARGS__> err; true; err.throw_() ) err
     
 }
 
@@ -523,27 +512,6 @@ namespace Ast
     
 
 const Ast::Base* gFailedAst = nullptr;
-struct AstExecFail {
-    const Ast::Base* pStep;
-    std::runtime_error e;
-    AstExecFail( const Ast::Base* step, const std::runtime_error& e )
-    : pStep(step), e(e)
-    {}
-};
-
-struct ParseFail : public std::runtime_error
-{
-    std::string mywhat( const std::string& where, const std::string& emsg ) const
-    {
-        std::ostringstream oss;
-        oss << " in " << where << ": " << emsg;
-        return oss.str();
-    }
-    ParseFail( const std::string& where, const std::string& emsg )
-    : std::runtime_error( mywhat( where, emsg ) )
-    {}
-};
-
 
 
     class StreamMark;
@@ -1462,7 +1430,7 @@ restartTco:
     }
     catch (const std::runtime_error& e)
     {
-        throw AstExecFail( *(frame.ppInstr), e );
+        throw AstExecFail( *(frame.ppInstr), e.what() );
     }
 }
 
@@ -2097,8 +2065,8 @@ class Parser
         char c = mark.getc();
         if (c != '=') // this seems unneccesary sometimes. therefore "as"
         {
-            std::cerr << "got '" << c << "', expecting '='\n";
-            throw ParseFail( mark.sayWhere(), "function def / param list must be followed by '='"); 
+            bangerr(ParseFail) << "got '" << c << "', expecting '=' in "
+                               << mark.sayWhere() << ": function def / param list must be followed by '='"; 
         }
 
         return upvalueChain;            
@@ -2189,8 +2157,8 @@ class Parser
             c = mark.getc();
             if (c != ':')
             {
-                std::cerr << "got '" << c << "' expecting ':'" << std::endl;
-                throw ParseFail( mark.sayWhere(), "def name must start with ':'");
+                bangerr(ParseFail) << "got '" << c << "' expecting ':' in "
+                                   << mark.sayWhere() << " - def name must start with ':'";
             }
 
             try
@@ -2201,7 +2169,7 @@ class Parser
             }
             catch ( const ErrorNoMatch& )
             {
-                throw ParseFail( mark.sayWhere(), "identifier must follow \"def :\"");
+                bangerr(ParseFail) << "in " << mark.sayWhere() << "identifier must follow \"def :\"";
             }
 
             Ast::Program::astList_t functionAst;
@@ -2479,35 +2447,11 @@ namespace Primitives {
         }
         catch (const std::runtime_error& e )
         {
-            bangerr() << "Parse error: " << e.what();
+            bangerr() << "Parsing: " << e.what();
         }
 
         return nullptr;
     }
-
-#if 0    
-    DLLEXPORT void RequireKeyword::parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump)
-    {
-        auto prog = parseToProgramNoUpvals( ctx, bDump );
-
-        try
-        {
-            SHAREDUPVALUE noUpvals;
-            RunProgram( &thread, prog, noUpvals );
-        }
-        catch( const AstExecFail& ast )
-        {
-            gFailedAst = ast.pStep;
-//            closure->dump( std::cerr );
-            std::cerr << "Runtime AST exec Error" << gFailedAst << ": " << ast.e.what() << std::endl;
-        }
-        catch( const std::exception& e )
-        {
-            std::cerr << "Exec error: " << e.what() << std::endl;
-        }
-    }
-#endif 
-
 
     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
     // parse to Ast::Program and go with that?
@@ -2529,8 +2473,7 @@ namespace Primitives {
             }
             catch( const ParseFail& e )
             {
-                std::cerr << "Error parsing program: " << e.what();
-                throw e;
+                bangerr(ParseFail) << "e01a Parsing: " <<  e.what();
             }
         }
 
@@ -2890,8 +2833,8 @@ Parser::Program::Program
                 
                     if (upvalNumber == kNoParent)
                     {
-                        std::cerr << "Could not find binding for var=" << ident.name() << " uvchain=" << (void*)upvalueChain << std::endl;
-                        throw ParseFail( mark.sayWhere(), "Unbound variable" );
+                        bangerr(ParseFail) << "Could not find binding for var=" << ident.name() << " uvchain=" << (void*)upvalueChain 
+                                           << " in " << mark.sayWhere();
                     }
 
                     ast_.push_back( new Ast::PushUpval(ident.name(), upvalNumber) );
@@ -2901,8 +2844,7 @@ Parser::Program::Program
             }
             catch( const ErrorNoMatch& )
             {
-                std::cerr << "Cannot parse at '" << c << "'" << std::endl;
-                throw ParseFail( mark.sayWhere(), "unparseable token");
+                bangerr(ParseFail) << " in " << mark.sayWhere() << "unparseable token [" << c << "]";
             }
         } // end, while true
 

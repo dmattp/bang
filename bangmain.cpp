@@ -94,7 +94,7 @@ public:
                 auto rc = parseStdinToProgram( parsectx_, closeValueChain );
                 return rc;
             } catch (std::exception&e) {
-                std::cout << "a08 Error: " << e.what() << "\n";
+                std::cout << "a08 Error: " << e.what() << std::endl;
                 parsectx_.interact.repl_prompt();
             }
         }

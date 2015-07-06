@@ -8,6 +8,7 @@ all:: bang$(EXT_EXE) #-- mathlib.dll
 all:: mathlib$(EXT_SO)
 all:: arraylib$(EXT_SO)
 all:: stringlib$(EXT_SO)
+all:: hashlib$(EXT_SO)
 
 CPPOPTLEVEL ?= -O2
 CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
@@ -30,6 +31,9 @@ arraylib$(EXT_SO): arraylib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
 
 stringlib$(EXT_SO): stringlib.cpp bang.h
+	$(CXX) $(CPPFLAGS) -shared -o $@ $<
+
+hashlib$(EXT_SO): hashlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -o $@ $<
 
 #  -Wl,--out-implib,$(@:.dll=.a)
