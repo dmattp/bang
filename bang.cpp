@@ -126,7 +126,7 @@ namespace {
             o << (v_.b ? "true" : "false");
         else if (type_ == kStr)
         {
-            o << this->tostr() << " :" << std::hex << this->tostr().gethash() << std::dec;
+            o << this->tostr(); //  << " :" << std::hex << this->tostr().gethash() << std::dec;
         }
         else if (type_ == kFun)
         {
@@ -330,7 +330,7 @@ namespace Primitives
     void format2ostream(  Stack& s, std::ostream& strout )
     {
         const Value& vfmt = s.pop();
-        const auto& fmt = vfmt.tostr();
+        const std::string fmt = vfmt.tostr();
         const int fmtlen = fmt.size();
 
         std::function<void(size_t)> subpar;

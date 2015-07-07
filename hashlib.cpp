@@ -182,7 +182,7 @@ namespace
         if (p)
             s.push( p );
         else
-            throw std::runtime_error("Hash library does not implement: " + str);
+            throw std::runtime_error("Hash library does not implement: " + std::string(str));
     }
     
 } // end namespace Math

@@ -8,6 +8,7 @@
 #include <list>
 #include <string>
 #include <iostream>
+#include <string.h>
 
 static const char* const BANG_VERSION = "0.004";
 
@@ -82,8 +83,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {}
     };
 
-
-    class bangstring : public std::string
+    class bangstring
     {
         static unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
         {
@@ -99,52 +99,121 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             hash += (hash << 15);
             return hash;
         }
-        unsigned hash_;
-        unsigned calchash()
+        static unsigned calchash( const char* str, int len )
         {
-//            return 0;
-//            std::cerr << "d01.calchash for:" << *this << "\n";
-            const auto len = this->size();
-            return jenkins_one_at_a_time_hash( &this->front(), len > 32 ? 32 : len );
+            return jenkins_one_at_a_time_hash( str, len > 32 ? 32 : len );
         }
+        struct bangstringstore
+        {
+            int refcount;
+            int len;
+            unsigned hash;
+            char* str;
+            bangstringstore( const std::string& stdstr )
+            :  refcount(1),
+               len( stdstr.size() ),
+               hash( calchash( &stdstr.front(), len ) )
+            {
+                str = new char[len+1];
+                std::copy( stdstr.begin(), stdstr.end(), str );
+                str[len] = 0;
+            }
+            ~bangstringstore()
+            {
+                delete[] str;
+            }
+            void unref()
+            {
+                if (refcount > 1)
+                    --refcount;
+                else
+                {
+//                    std::cerr << "delete bangstring, v=" << str << std::endl;
+                    delete this;
+                }
+            }
+            void ref()
+            {
+                ++refcount;
+            }
+            bool operator==( const bangstringstore& rhs ) const
+            {
+                return (hash == rhs.hash) && (len == rhs.len) && !memcmp(str, rhs.str, len);
+            }
+            bool operator==( const std::string& rhs ) const
+            {
+                return (len == rhs.size()) && (rhs == str);
+            }
+            bool operator==( const char* psz ) const
+            {
+                return !strcmp( str, psz );
+            }
+        }; // end, bangstringstore class
+
+        bangstringstore* store_;
+        
     public:
-        unsigned gethash() const { return hash_; }
-        bangstring( const char* psz )
-        : std::string(psz),
-          hash_( calchash() )
+        ~bangstring()
         {
-//            std::cerr << "a02.bangstring(" << psz << ")\n";
+            if (store_)
+                store_->unref();
         }
+        unsigned gethash() const { return store_->hash; }
         bangstring( const std::string& other )
-        : std::string(other),
-          hash_( calchash() )
+        : store_( new bangstringstore(other) )
         {
-//            std::cerr << "a01.bangstring(" << other << ")\n";
         }
         bangstring( const bangstring& other )
-        : std::string(other),
-          hash_( other.hash_ )
-        {}
+        : store_( other.store_ )
+        {
+            store_->ref();
+        }
+        bangstring( bangstring&& other )
+        : store_( other.store_ )
+        {
+            other.store_ = nullptr;
+        }
         const bangstring& operator=( const bangstring& rhs )
         {
-            static_cast<std::string&>(*this) = static_cast<const std::string&>(rhs);
-            hash_ = rhs.hash_;
+            store_ = rhs.store_;
+            store_->ref();
+            return *this;
+        }
+        const bangstring& operator=( bangstring&& rhs )
+        {
+            store_ = rhs.store_;
+            rhs.store_ = nullptr;
             return *this;
         }
         bool operator==( const bangstring& rhs ) const
         {
-//            std::cerr << "b01.bangstring==(" << rhs << ")\n";
-            return (hash_ == rhs.hash_) && static_cast<const std::string&>(*this) == static_cast<const std::string&>(rhs);
+            return *store_ == *(rhs.store_);
         }
         bool operator==( const char* rhs ) const
         {
-//            std::cerr << "b01.bangstring==(" << rhs << ")\n";
-            return static_cast<const std::string&>(*this) == rhs;
+            return *store_ == rhs;
         }
         bool operator==( const std::string& rhs ) const
         {
-//            std::cerr << "b01.bangstring==(" << rhs << ")\n";
-            return static_cast<const std::string&>(*this) == rhs;
+            return *store_ == rhs; // static_cast<const std::string&>(*this) == rhs;
+        }
+
+        operator std::string() const {
+            //std::cerr << "casting to str" << store_->str << std::endl;
+            return std::string( store_->str, store_->len );
+        }
+
+        size_t size() const { return store_->len; }
+
+        const char* c_str() const { return store_->str; }
+
+        bangstring operator+( const bangstring& rhs ) const
+        {
+            return static_cast<std::string>(*this) + static_cast<std::string>(rhs);
+        }
+        char operator[]( size_t ndx ) const
+        {
+            return store_->str[ndx];
         }
     };
 
@@ -194,7 +263,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
             using namespace std;
             if (type_ == kStr)
-                reinterpret_cast<string*>(v_.cstr)->~string();
+                reinterpret_cast<bangstring*>(v_.cstr)->~bangstring();
 #if !USE_GC            
             else if (type_ == kBoundFun || type_ == kFun)
                 reinterpret_cast<shared_ptr<Function>*>(v_.cfun)->~shared_ptr<Function>();
@@ -782,6 +851,12 @@ DLLEXPORT void RunProgram
     
     
 } // end, namespace Bang
+
+std::ostream& operator<<( std::ostream& o, const Bang::bangstring& bs )
+{
+    o << static_cast<const std::string&>(bs);
+    return o ;
+}
 
 
 // template <class T>

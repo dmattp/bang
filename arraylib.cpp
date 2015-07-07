@@ -137,7 +137,7 @@ namespace Array
         if (p)
             s.push( p );
         else
-            throw std::runtime_error("Array library does not implement: " + str);
+            throw std::runtime_error("Array library does not implement: " + std::string(str));
     }
     
 } // end namespace Math
