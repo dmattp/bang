@@ -204,6 +204,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         }
 
         size_t size() const { return store_->len; }
+        size_t length() const { return store_->len; }
 
         const char* c_str() const { return store_->str; }
 
@@ -215,7 +216,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
             return store_->str[ndx];
         }
-    };
+        char& front() { return store_->str[0]; }
+        const char& front() const { return store_->str[0]; }
+    }; // end, bangstring class
 
 
     class Value
@@ -856,6 +859,11 @@ std::ostream& operator<<( std::ostream& o, const Bang::bangstring& bs )
 {
     o << static_cast<const std::string&>(bs);
     return o ;
+}
+
+Bang::bangstring operator+( const char* s, const Bang::bangstring& bs )
+{
+    return Bang::bangstring( std::string(s) + static_cast<std::string>(bs) );
 }
 
 
