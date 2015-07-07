@@ -125,7 +125,9 @@ namespace {
         else if (type_ == kBool)
             o << (v_.b ? "true" : "false");
         else if (type_ == kStr)
-            o << this->tostr();
+        {
+            o << this->tostr(); //  << " :" << std::hex << this->tostr().gethash() << std::dec;
+        }
         else if (type_ == kFun)
         {
             auto f = this->tofun().get();
@@ -328,7 +330,7 @@ namespace Primitives
     void format2ostream(  Stack& s, std::ostream& strout )
     {
         const Value& vfmt = s.pop();
-        const auto& fmt = vfmt.tostr();
+        const std::string fmt = vfmt.tostr();
         const int fmtlen = fmt.size();
 
         std::function<void(size_t)> subpar;
@@ -436,21 +438,21 @@ namespace Ast
     class CloseValue : public Base
     {
         const CloseValue* pUpvalParent_;
-        std::string paramName_;
+        bangstring paramName_;
     public:
         CloseValue( const CloseValue* parent, const std::string& name )
         : Base( kCloseValue ),
           pUpvalParent_( parent ),
           paramName_( name )
         {}
-        const std::string& valueName() const { return paramName_; }
+        const bangstring& valueName() const { return paramName_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "CloseValue(" << paramName_ << ") " << std::hex << PtrToHash(this) << std::dec << "\n";
         }
         
-        const NthParent FindBinding( const std::string& varName ) const
+        const NthParent FindBinding( const bangstring& varName ) const
         {
             if (this->paramName_ == varName)
             {
@@ -487,12 +489,12 @@ namespace Ast
     };
 }
 
-        bool Upvalue::binds( const std::string& name )
+        bool Upvalue::binds( const bangstring& name )
         {
             return closer_->valueName() == name;
         }
     
-    const Value& Upvalue::getUpValue( const std::string& uvName )
+    const Value& Upvalue::getUpValue( const bangstring& uvName )
     {
         if (uvName == closer_->valueName())
         {
@@ -1558,7 +1560,7 @@ const Value& RunContext::getUpValue( NthParent uvnumber ) const
     return upvalues_->getUpValue( uvnumber );
 }
 
-const Value& RunContext::getUpValue( const std::string& uvName ) const
+const Value& RunContext::getUpValue( const bangstring& uvName ) const
 {
     return upvalues_->getUpValue( uvName );
 }

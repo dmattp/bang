@@ -33,7 +33,7 @@ namespace String
             throw std::runtime_error("String lib incompatible type");
         const Value& vStr = s.pop();
         checkstrtype( vStr );
-        s.push( vStr.tostr().substr( sBeg.tonum(), sEnd.tonum()-sBeg.tonum()+1 ) );
+        s.push( std::string(vStr.tostr()).substr( sBeg.tonum(), sEnd.tonum()-sBeg.tonum()+1 ) );
     }
 
     void lt( Bang::Stack& s, const Bang::RunContext& ctx)
@@ -42,7 +42,7 @@ namespace String
         const Value& sLt = s.pop();
         checkstrtype( sLt );
         checkstrtype( sRt );
-        s.push( sLt.tostr() < sRt.tostr() );
+        s.push( std::string(sLt.tostr()) < std::string(sRt.tostr()) );
     }
 
     void eq( Bang::Stack& s, const Bang::RunContext& ctx)
@@ -67,7 +67,7 @@ namespace String
     {
         checkstrtype(s.loc_top());
         const Value& v = s.pop();
-        const auto& str = v.tostr();
+        std::string str = v.tostr();
         std::for_each( str.begin(), str.end(),
             [&]( char c ) { s.push( double((unsigned char)c) ); } );
     }
@@ -107,7 +107,7 @@ namespace String
         if (p)
             s.push( p );
         else
-            throw std::runtime_error("String library does not implement" + str);
+            throw std::runtime_error("String library does not implement" + std::string(str));
     }
     
 } // end namespace Math

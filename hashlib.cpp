@@ -12,21 +12,26 @@ namespace
 {
     using namespace Bang;
 
-    unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
-    {
-        unsigned hash, i;
-        for(hash = i = 0; i < len; ++i)
-        {
-            hash += key[i];
-            hash += (hash << 10);
-            hash ^= (hash >> 6);
-        }
-        hash += (hash << 3);
-        hash ^= (hash >> 11);
-        hash += (hash << 15);
-        return hash;
-    }
+//     unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
+//     {
+//         unsigned hash, i;
+//         for(hash = i = 0; i < len; ++i)
+//         {
+//             hash += key[i];
+//             hash += (hash << 10);
+//             hash ^= (hash >> 6);
+//         }
+//         hash += (hash << 3);
+//         hash ^= (hash >> 11);
+//         hash += (hash << 15);
+//         return hash;
+//     }
 
+//     unsigned jenkins_one_at_a_time_hash(const std::string& s )
+//     {
+//         return jenkins_one_at_a_time_hash( &s.front(), s.length() );
+//     }
+    
 //     unsigned int luaS_hash (const char *str, size_t l ) { // , unsigned int seed) {
 //         unsigned int h = 0xdeadbeef ^ ((unsigned int)(l));
 //         size_t l1;
@@ -36,15 +41,15 @@ namespace
 //         return h;
 //     }
 
-    class StringHashFunction {
-    public:
-        ::std::size_t operator ()(const ::std::string& str) const
-        {
-            const int len = str.length();
-            return jenkins_one_at_a_time_hash( &str.front(), len );
-//            return luaS_hash( &str.front(), len );
-        }
-    };
+//     class StringHashFunction {
+//     public:
+//         ::std::size_t operator ()(const ::std::string& str) const
+//         {
+//             const int len = str.length();
+//             return jenkins_one_at_a_time_hash( &str.front(), len );
+// //            return luaS_hash( &str.front(), len );
+//         }
+//     };
 
     class BangHash;
 
@@ -61,7 +66,8 @@ namespace
     
     class BangHash : public Function
     {
-        std::unordered_map<const std::string,Value,StringHashFunction> hash_;
+        std::vector< std::pair<unsigned, Value> >hash_;
+        
     public:
         std::weak_ptr<BangHash> myself_;
 
@@ -69,18 +75,29 @@ namespace
         {
         }
 
-        void set( const std::string& key, const Value& v )
+        void set( unsigned hash, const Value& v )
         {
-            hash_[key] = v;
+//            auto hash = jenkins_one_at_a_time_hash(key);
+            
+            for (int i = 0; i < hash_.size(); ++i )
+            {
+                if (hash_[i].first == hash)
+                {
+                    hash_[i] =  std::pair<unsigned,Value>( hash, v );
+                    return;
+                }
+            }
+            hash_.emplace_back( hash, v );
         }
 
+        
         virtual void apply( Stack& s ) // , CLOSURE_CREF running )
         {
             const Value& msg = s.pop();
             
             if (msg.isstr())
             {
-                const auto& str = msg.tostr();
+                const auto& key = msg.tostr();
                 
 #if HAVE_HASH_MUTATION
                 // I'm a little more willing to accept mutating arrays (vs upvals) just
@@ -88,7 +105,7 @@ namespace
                 // are even more tentative and easier to replace than the core language, does not
                 // imply new syntax, and can always be retained as a deprecated library alongside
                 // mutation free alternatives or something.
-                if (str == "set")
+                if (key == "set")
                 {
                     const auto& sethash = NEW_BANGFUN(SetBangHash)(myself_.lock());
                     s.push( STATIC_CAST_TO_BANGFUN(sethash) );
@@ -96,8 +113,16 @@ namespace
 #endif 
                 else
                 {
-                    const Value& v = hash_[ str ];
-                    s.push( v );
+                    auto hash = key.gethash();
+                    
+                    for (int i = 0; i < hash_.size(); ++i )
+                    {
+                        if (hash_[i].first == hash)
+                        {
+                            s.push( hash_[i].second );
+                            return;
+                        }
+                    }
                 }
             }
         }
@@ -111,7 +136,7 @@ namespace
         {
             const auto& str = msg.tostr();
             const Value& v = s.pop();
-            hash_->set( str, v );
+            hash_->set( str.gethash(), v );
         }
     }
     
@@ -130,7 +155,17 @@ namespace
         s.push( STATIC_CAST_TO_BANGFUN(hash) );
     }
     
-
+    void hashOfString( Stack& s, const RunContext& rc )
+    {
+        const Value& msg = s.pop();
+            
+        if (msg.isstr())
+        {
+            const auto& key = msg.tostr();
+            s.push( (double)0 ); // ( StringHashFunction()( key ) ) );
+        }
+    }
+    
     void banghash_lookup( Bang::Stack& s, const Bang::RunContext& ctx)
     {
         const Bang::Value& v = s.pop();
@@ -139,15 +174,15 @@ namespace
         const auto& str = v.tostr();
         
         const Bang::tfn_primitive p =
-            (  // str == "from-stack" ? &stackToArray
-               str == "new"        ? &hashNew // test
+            (  str == "of-string" ? &hashOfString
+            :  str == "new"      ? &hashNew // test
             :  nullptr
             );
 
         if (p)
             s.push( p );
         else
-            throw std::runtime_error("Hash library does not implement: " + str);
+            throw std::runtime_error("Hash library does not implement: " + std::string(str));
     }
     
 } // end namespace Math

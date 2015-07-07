@@ -78,7 +78,7 @@ namespace Math
         if (p)
             s.push( p );
         else
-            throw std::runtime_error("Math library does not implement" + str);
+            throw std::runtime_error("Math library does not implement" + std::string(str));
     }
     
 } // end namespace Math
