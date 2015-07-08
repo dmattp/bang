@@ -1991,6 +1991,8 @@ class Parser
             try
             {
                 value_ = Value(ParseString(mark).content());
+//                std::cerr << "ParseLiteral string:"; value_.tostring(std::cerr); std::cerr << "\n";
+                
                 return;
             } catch ( const ErrorNoMatch& ) {}
 
@@ -2123,7 +2125,7 @@ class Parser
                                << mark.sayWhere() << ": function def / param list must be followed by '='"; 
         }
 
-        return upvalueChain;            
+        return upvalueChain;            
     }
     
     
@@ -2593,6 +2595,7 @@ Parser::Program::Program
             try
             {
                 ParseLiteral aLiteral(stream);
+//                std::cerr << "got literal:"; aLiteral.value().tostring(std::cerr); std::cerr << "\n";
                 ast_.push_back( new Ast::PushLiteral(aLiteral.value()) );
                 continue;
             } catch ( const ErrorNoMatch& ) {}

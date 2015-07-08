@@ -10,13 +10,15 @@
 #include <iostream>
 #include <string.h>
 
+#define LCFG_STD_STRING 0
+
 static const char* const BANG_VERSION = "0.004";
 
 #if defined(WIN32)
 # define DLLEXPORT _declspec(dllexport)
 #else
 # define DLLEXPORT
-#endif 
+#endif
 
 #if USE_GC
 # include "gc_cpp.h"
@@ -83,6 +85,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {}
     };
 
+#if LCFG_STD_STRING
+    typedef std::string bangstring;
+#else
     class bangstring
     {
         static unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
@@ -175,12 +180,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         }
         const bangstring& operator=( const bangstring& rhs )
         {
+            store_->unref();
             store_ = rhs.store_;
             store_->ref();
             return *this;
         }
         const bangstring& operator=( bangstring&& rhs )
         {
+            store_->unref();
             store_ = rhs.store_;
             rhs.store_ = nullptr;
             return *this;
@@ -219,6 +226,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         char& front() { return store_->str[0]; }
         const char& front() const { return store_->str[0]; }
     }; // end, bangstring class
+#endif 
 
 
     class Value
@@ -309,13 +317,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value( Value&& rhs )
         : type_( rhs.type_ )
         {
-            // std::cerr << "got move cons\n";
+            //std::cerr << "got move cons\n";
             moveme( std::move(rhs) );
         }
         
 
         const Value& operator=( const Value& rhs )
         {
+//            std::cerr << "const& operator="; rhs.tostring(std::cerr); std::cerr << "\n";
             free_manual_storage();
             type_ = rhs.type_;
             copyme( rhs );
@@ -324,6 +333,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         const Value& operator=( Value&& rhs )
         {
+//            std::cerr << "&& operator="; rhs.tostring(std::cerr); std::cerr << "\n";
             free_manual_storage();
             type_ = rhs.type_;
             moveme( std::move(rhs) );
@@ -337,20 +347,28 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value( const char* str )
         : type_( kStr )
         {
-            new (v_.cstr) bangstring(str);
+            bangstring* pstr = reinterpret_cast<bangstring*>(v_.cstr);
+            new (pstr) bangstring(str);
         }
         
         Value( const bangstring& str )
         : type_( kStr )
         {
-            new (v_.cstr) bangstring(str);
+//            std::cerr << "Value(const&) str=" << str << "\n";
+            // new (v_.cstr) bangstring(str);
+            bangstring* pstr = reinterpret_cast<bangstring*>(v_.cstr);
+            new (pstr) bangstring(str);
+//             std::cerr << "VALUE=[" << *pstr << "]\n";
+//             std::cerr << "VALUE2=[" << this->tostr() << "]\n";
         }
 
         
         Value( bangstring&& str )
         : type_( kStr )
         {
-            new (v_.cstr) bangstring(std::move(str));
+//            std::cerr << "Value(&&) str=" << str << "\n";
+            bangstring* pstr = reinterpret_cast<bangstring*>(v_.cstr);
+            new (pstr) bangstring(std::move(str));
         }
         
         Value( BANGFUN_CREF f )
@@ -585,12 +603,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         void push( tfn_primitive fn ) { stack_.emplace_back(fn); }
         
         void push( const std::string& s ) { stack_.emplace_back(s); }
-        void push( const bangstring& s ) { stack_.emplace_back(s); }
         void push( std::string&& s ) { stack_.emplace_back(std::move(s)); }
-        void push( bangstring&& s ) { stack_.emplace_back(std::move(s)); }
         void push( const char* s ) { stack_.emplace_back(s); }
 
+#if !LCFG_STD_STRING
+        void push( const bangstring& s ) { stack_.emplace_back(s); }
+        void push( bangstring&& s ) { stack_.emplace_back(std::move(s)); }
         void push_bs( const bangstring& s ) { stack_.push_back(s); }
+#endif 
         
         void push( BANGFUN_CREF fun ) { stack_.emplace_back( fun ); }
         void push( BANGFUNPTR&& f ) { stack_.emplace_back(std::move(f)); }
@@ -855,16 +875,23 @@ DLLEXPORT void RunProgram
     
 } // end, namespace Bang
 
-std::ostream& operator<<( std::ostream& o, const Bang::bangstring& bs )
+#if !LCFG_STD_STRING
+inline std::ostream& operator<<( std::ostream& o, const Bang::bangstring& bs )
 {
     o << static_cast<const std::string&>(bs);
     return o ;
 }
 
-Bang::bangstring operator+( const char* s, const Bang::bangstring& bs )
+inline Bang::bangstring operator+( const char* s, const Bang::bangstring& bs )
 {
     return Bang::bangstring( std::string(s) + static_cast<std::string>(bs) );
 }
+
+inline Bang::bangstring operator+( const std::string& s, const Bang::bangstring& bs )
+{
+    return Bang::bangstring( s + static_cast<std::string>(bs) );
+}
+#endif
 
 
 // template <class T>
