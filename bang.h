@@ -143,7 +143,17 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             }
             bool operator==( const bangstringstore& rhs ) const
             {
-                return (hash == rhs.hash) && (len == rhs.len) && !memcmp(str, rhs.str, len);
+//                 if (this == &rhs)
+//                 {
+//                     std::cerr << "Got matching bangstringstore, str=" <<  str << "\n";
+//                 }
+                return
+                (  (this == &rhs) ||
+                   (  (hash == rhs.hash)
+                   && (len == rhs.len)
+                   && !memcmp(str, rhs.str, len)
+                   )
+                );
             }
             bool operator==( const std::string& rhs ) const
             {
@@ -491,6 +501,11 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
         }
 
+        Upvalue( const Ast::CloseValue* closer, SHAREDUPVALUE_CREF parent, Value&& v )
+        : closer_( closer ), parent_( parent ), v_( v )
+        {
+        }
+        
         bool binds( const bangstring& name );
 
         const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
@@ -630,6 +645,12 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             return v;
         }
         void pop_back() { stack_.pop_back(); };
+
+        bangstring poptostr() {
+            bangstring b( std::move(stack_.back().tostr()) );
+            stack_.pop_back();
+            return b;
+        }
     
         const Value& nth( int ndx ) const
         {

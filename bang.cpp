@@ -51,6 +51,7 @@ And there are primitives, until a better library / module system is in place.
 #include <iostream>
 #include <algorithm>
 #include <iterator>
+#include <map>
 
 #include <stdio.h>
 #include <ctype.h>
@@ -77,6 +78,7 @@ And there are primitives, until a better library / module system is in place.
 #include "bang.h"
 
 namespace {
+    
     bool gDumpMode(false);
     template <class E = std::runtime_error>
     class ebuild
@@ -101,6 +103,28 @@ namespace {
 }
 
 namespace Bang {
+
+    std::map<std::string,bangstring> gProgStrings;
+    typedef std::pair<std::string,bangstring> itsval_t;
+    bangstring internstring( const std::string& s )
+    {
+        if (s.length() > 32)
+            return bangstring(s);
+        
+        auto it_interned = gProgStrings.find(s);
+        if (it_interned == gProgStrings.end())
+        {
+            bangstring newbs( s );
+            itsval_t pair( s, newbs );
+            gProgStrings.insert( pair );
+            return newbs;
+        }
+        else
+        {
+            return it_interned->second;
+        }
+    }
+
 
 
     static const NthParent kNoParent=NthParent(INT_MAX);
@@ -440,7 +464,7 @@ namespace Ast
         const CloseValue* pUpvalParent_;
         bangstring paramName_;
     public:
-        CloseValue( const CloseValue* parent, const std::string& name )
+        CloseValue( const CloseValue* parent, const bangstring& name )
         : Base( kCloseValue ),
           pUpvalParent_( parent ),
           paramName_( name )
@@ -591,7 +615,7 @@ namespace Ast
     {
     public:
         Value msgStr_; // method
-        ApplyDotOperator( const std::string& msgStr )
+        ApplyDotOperator( const bangstring& msgStr )
         :
 #if DOT_OPERATOR_INLINE
         Base( kApplyDotOperator ),
@@ -619,7 +643,7 @@ namespace Ast
     private:
         NthParent uvnumber_; // index into the active Upvalues
     public:
-        ApplyDotOperatorUpval( const std::string& msgStr, NthParent uvnumber )
+        ApplyDotOperatorUpval( const bangstring& msgStr, NthParent uvnumber )
         :
 #if DOT_OPERATOR_INLINE
         Base( kApplyDotOperatorUpval ),
@@ -1616,14 +1640,13 @@ void Ast::SetUpval::run( Stack& stack, const RunContext& rc) const
 // immutable record sort of thing
 void Ast::PushUpvalByName::run( Stack& stack, const RunContext& rc) const
 {
-    const Value& vName = stack.pop();
-    
-    if (!vName.isstr())
+    if (!stack.loc_top().isstr())
     {
         throw std::runtime_error("PushUpvalByName (lookup) name is not string" );
     }
-    
-    stack.push( rc.getUpValue( vName.tostr() ) );
+
+    bangstring uvname = stack.poptostr();
+    stack.push( rc.getUpValue( uvname ) );
 }
 
 
@@ -2111,7 +2134,7 @@ class Parser
 
         while (params.size() > 0)
         {
-            auto cv = new Ast::CloseValue( upvalueChain, params.back() );
+            auto cv = new Ast::CloseValue( upvalueChain, internstring(params.back()) );
             functionAst.push_back( cv );
             upvalueChain = cv;
             params.pop_back();
@@ -2610,7 +2633,7 @@ Parser::Program::Program
                     {
                         Identifier valueName( mark );
                         mark.accept();
-                        Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, valueName.name() );
+                        Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, internstring(valueName.name()) );
                         upvalueChain = cv;
                         ast_.push_back( cv );
                         continue;
@@ -2643,7 +2666,7 @@ Parser::Program::Program
                     ast_.push_back( new Ast::Apply() );
                 else
                 {
-                    Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, fun.getDefName() );
+                    Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, internstring(fun.getDefName()) );
                     upvalueChain = cv;
                     ast_.push_back( cv );
                 }
@@ -2751,7 +2774,7 @@ Parser::Program::Program
                     mark.accept();
 
 #if HAVE_DOT_OPERATOR
-                    ast_.push_back( new Ast::ApplyDotOperator( (methodName.name())) );
+                    ast_.push_back( new Ast::ApplyDotOperator( internstring(methodName.name())) );
 #else
                     ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
                     ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
