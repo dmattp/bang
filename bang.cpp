@@ -223,13 +223,13 @@ namespace Primitives
     template <class T>
     void infix2to1( Stack& s, T operation )
     {
-        const Value& v2 = s.loc_top();
-        Value& v1 = s.loc_topMinus1Mutate();
+        double v2 = s.loc_top().tonum();
+        s.pop_back();
+        Value& v1 = s.loc_topMutate();
 
 //        if (v1.isnum() && v2.isnum())
         {
-            v1.mutateNoType( operation( v1.tonum(), v2.tonum() ) );
-            s.pop_back();
+            v1.mutateNoType( operation( v1.tonum(), v2 ) );
         }
 //         else
 //             throw std::runtime_error("Binary operator incompatible types");
@@ -238,13 +238,13 @@ namespace Primitives
     template <class T>
     void infix2to1bool( Stack& s, T operation )
     {
-        const Value& v2 = s.loc_top();
-        Value& v1 = s.loc_topMinus1Mutate();
+        double v2 = s.loc_top().tonum();
+        s.pop_back();
+        Value& v1 = s.loc_topMutate();
 
 //        if (v1.isnum() && v2.isnum())
         {
-            v1.mutatePrimitiveToBool( operation( v1.tonum(), v2.tonum() ) );
-            s.pop_back();
+            v1.mutatePrimitiveToBool( operation( v1.tonum(), v2 ) );
         }
 //         else
 //             throw std::runtime_error("Binary operator.b incompatible types");
@@ -255,9 +255,10 @@ namespace Primitives
 //        if (s.loc_top().isnum())
         if (s.loc_top().isstr())
         {
-            const auto& v2 = s.pop();
-            const auto& v1 = s.pop();
-            s.push( v1.tostr() + v2.tostr() );
+            bangstring v2 = s.loc_top().tostr();
+            s.pop_back();
+            bangstring v1 = s.pop().tostr();
+            s.push( v1 + v2 );
         }
         else
             infix2to1( s, [](double v1, double v2) { return v1 + v2; } );
