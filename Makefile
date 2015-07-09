@@ -25,16 +25,16 @@ bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
 	$(CXX) $(CPPFLAGS)  $< -L . -lbang -o $@
 
 mathlib$(EXT_SO): mathlib.cpp bang.h
-	$(CXX) $(CPPFLAGS) -shared -o $@ $<
+	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
 
 arraylib$(EXT_SO): arraylib.cpp bang.h
-	$(CXX) $(CPPFLAGS) -shared -o $@ $<
+	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
 
 stringlib$(EXT_SO): stringlib.cpp bang.h
-	$(CXX) $(CPPFLAGS) -shared -o $@ $<
+	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 
 hashlib$(EXT_SO): hashlib.cpp bang.h
-	$(CXX) $(CPPFLAGS) -shared -o $@ $<
+	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 
 #  -Wl,--out-implib,$(@:.dll=.a)
 

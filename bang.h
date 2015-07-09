@@ -58,11 +58,30 @@ namespace Bang
     public:
         static DLLEXPORT void freemem(Upvalue*thingmem);
     };
+
+    template <class T>
+    class GCDeleter
+    {
+    public:
+        static void deleter( T* thing )
+        {
+            delete thing;
+        }
+    };
+
+    template<>
+    class GCDeleter<Upvalue>
+    {
+    public:
+        static void deleter( Upvalue* thing );
+    };
+    
     
     template <class T>
     class gcbase : private Uncopyable
     {
         int refcount_;
+        void (*deleter_)( T* );
         //~~~ wait, what?  I don't know that this makes sense either, unless the other guy's
         // refcount is 1 (and is about to be decremented); otherwise people are hanging on to a
         // a moved object, and nobody is necessarily referencing the new object, so what should
@@ -75,7 +94,9 @@ namespace Bang
 //             refcount_ = other.refcount_;
 //         }
     public:
-        gcbase() : refcount_(0)
+        gcbase()
+        : refcount_(0),
+          deleter_( &GCDeleter<T>::deleter )
         {}
         void ref()
         {
@@ -86,11 +107,7 @@ namespace Bang
             if (refcount_ > 1)
                 --refcount_;
             else
-            {
-                T* thing = reinterpret_cast<T*>(this);
-                thing->~T();
-                GCDellocator<T>::freemem(thing);
-            }
+                deleter_(reinterpret_cast<T*>(this));
         }
     };
 
@@ -651,6 +668,13 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         }
     }; // end, Upvalue class
 
+        
+    inline void GCDeleter<Upvalue>::deleter( Upvalue* thing )
+    {
+        thing->~Upvalue();
+        GCDellocator<Upvalue>::freemem(thing);
+    }
+    
     class Stack
     {
         Stack( const Stack& ); // uncopyable
