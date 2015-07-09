@@ -29,6 +29,7 @@ namespace Bang
 {
     class Stack;
     class Function;
+    class Upvalue;
     class BoundProgram;
     class RunContext;
     class ParsingContext;
@@ -39,6 +40,7 @@ namespace Bang
 
     class Thread;
 
+
     struct Uncopyable
     {
     private:
@@ -48,6 +50,15 @@ namespace Bang
         Uncopyable() {}
     };
 
+    template <class T>
+    class GCDellocator;
+    template<>
+    class GCDellocator<Upvalue>
+    {
+    public:
+        static void freemem(Upvalue*thingmem);
+    };
+    
     template <class T>
     class gcbase : private Uncopyable
     {
@@ -75,7 +86,11 @@ namespace Bang
             if (refcount_ > 1)
                 --refcount_;
             else
-                delete reinterpret_cast<T*>(this);
+            {
+                T* thing = reinterpret_cast<T*>(this);
+                thing->~T();
+                GCDellocator<T>::freemem(thing);
+            }
         }
     };
 

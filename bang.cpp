@@ -99,10 +99,103 @@ namespace {
         }
     };
 #define bangerr(...) for ( ebuild<__VA_ARGS__> err; true; err.throw_() ) err
+
+
+
+    
+    
     
 }
 
 namespace Bang {
+
+#if !USE_GC
+template< class Tp >    
+struct FcStack
+{
+    FcStack<Tp>* prev;
+    static FcStack<Tp>* head;
+};
+
+template <class Tp>
+FcStack<Tp>* FcStack<Tp>::head(nullptr);
+
+//    static int gAllocated;
+
+template <class Tp>
+struct SimpleAllocator
+{
+    typedef Tp value_type;
+    SimpleAllocator(/*ctor args*/) {}
+    template <class T> SimpleAllocator(const SimpleAllocator<T>& other){}
+    template <class U> struct rebind { typedef SimpleAllocator<U> other; };
+    
+    Tp* allocate(std::size_t n)
+    {
+        FcStack<Tp>* hdr;
+        if (FcStack<Tp>::head)
+        {
+            hdr = FcStack<Tp>::head;
+            FcStack<Tp>::head = hdr->prev;
+        }
+        else
+        {
+            hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
+//            ++gAllocated;
+        }
+        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
+//        std::cerr << "ALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << mem << " size=" << n << " sizeof<shptr>=" << sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
+        return mem;
+    }
+    void deallocate(Tp* p, std::size_t n)
+    {
+        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
+        --hdr;
+        static char freeOne;
+        if ((++freeOne & 0xF) == 0)
+        {
+//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
+//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
+//            --gAllocated;
+            free( hdr );
+        }
+        else
+        {
+            hdr->prev = FcStack<Tp>::head;
+            FcStack<Tp>::head = hdr;
+        }
+    }
+    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
+    void destroy(Tp* p) { p->~Tp(); }
+};
+template <class T, class U>
+bool operator==(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
+{
+    return &a == &b;
+}
+template <class T, class U>
+bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
+{
+    return &a != &b;
+}
+
+#endif
+
+#if !USE_GC    
+SimpleAllocator< Upvalue > gUpvalAlloc;
+#endif 
+
+ void GCDellocator<Upvalue>::freemem(Upvalue* p)
+ {
+     gUpvalAlloc.deallocate(p, sizeof(Upvalue));
+ }
+    
+        
+#if !USE_GC    
+#define NEW_UPVAL(c,p,v) gcptr<Upvalue>( new (gUpvalAlloc.allocate(sizeof(Upvalue))) Upvalue( c, p, v ) )
+#endif
+
+    
 
     std::map<std::string,bangstring> gProgStrings;
     typedef std::pair<std::string,bangstring> itsval_t;
@@ -990,84 +1083,6 @@ namespace Ast
     
 } // end, namespace Ast
 
-
-#if !USE_GC
-template< class Tp >    
-struct FcStack
-{
-    FcStack<Tp>* prev;
-    static FcStack<Tp>* head;
-};
-
-template <class Tp>
-FcStack<Tp>* FcStack<Tp>::head(nullptr);
-
-//    static int gAllocated;
-
-template <class Tp>
-struct SimpleAllocator
-{
-    typedef Tp value_type;
-    SimpleAllocator(/*ctor args*/) {}
-    template <class T> SimpleAllocator(const SimpleAllocator<T>& other){}
-    template <class U> struct rebind { typedef SimpleAllocator<U> other; };
-    
-    Tp* allocate(std::size_t n)
-    {
-        FcStack<Tp>* hdr;
-        if (FcStack<Tp>::head)
-        {
-            hdr = FcStack<Tp>::head;
-            FcStack<Tp>::head = hdr->prev;
-        }
-        else
-        {
-            hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
-//            ++gAllocated;
-        }
-        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
-//        std::cerr << "ALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << mem << " size=" << n << " sizeof<shptr>=" << sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
-        return mem;
-    }
-    void deallocate(Tp* p, std::size_t n)
-    {
-        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
-        --hdr;
-        static char freeOne;
-        if ((++freeOne & 0xF) == 0)
-        {
-//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
-//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
-//            --gAllocated;
-            free( hdr );
-        }
-        else
-        {
-            hdr->prev = FcStack<Tp>::head;
-            FcStack<Tp>::head = hdr;
-        }
-    }
-    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
-    void destroy(Tp* p) { p->~Tp(); }
-};
-template <class T, class U>
-bool operator==(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
-{
-    return &a == &b;
-}
-template <class T, class U>
-bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
-{
-    return &a != &b;
-}
-
-#endif
-
-    
-#if !USE_GC    
-SimpleAllocator< std::shared_ptr<Upvalue> > gUpvalAlloc;
-#define NEW_UPVAL(c,p,v) gcptr<Upvalue>( new Upvalue( c, p, v ) )
-#endif
 
 
 class FunctionRestoreStack : public Function
