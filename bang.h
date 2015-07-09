@@ -56,7 +56,7 @@ namespace Bang
     class GCDellocator<Upvalue>
     {
     public:
-        static void freemem(Upvalue*thingmem);
+        static DLLEXPORT void freemem(Upvalue*thingmem);
     };
     
     template <class T>
@@ -111,6 +111,7 @@ namespace Bang
         }
         const gcptr& operator=( const gcptr& other )
         {
+            if (ptr_ == other.ptr_) return *this; 
             if (ptr_) ptr_->unref();
             ptr_ = other.ptr_;
             if (ptr_) ptr_->ref();
@@ -560,6 +561,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             );
         }
 
+        std::shared_ptr<BoundProgram> toboundfunhold() const
+        {
+            return
+                //reinterpret_cast<BoundProgram*>
+            (   *reinterpret_cast<const std::shared_ptr<BoundProgram>* >(v_.cfun)
+            );
+        }
+        
         bool isnum()  const { return type_ == kNum; }
         bool isbool() const { return type_ == kBool; }
         bool isfun()  const { return type_ == kFun; }

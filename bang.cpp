@@ -4,7 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define HAVE_MUTATION 0  // enable '|>' operator; boo
+#define HAVE_MUTATION 1  // enable '|>' operator; boo
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -185,10 +185,10 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
 SimpleAllocator< Upvalue > gUpvalAlloc;
 #endif 
 
- void GCDellocator<Upvalue>::freemem(Upvalue* p)
- {
-     gUpvalAlloc.deallocate(p, sizeof(Upvalue));
- }
+DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
+{
+    gUpvalAlloc.deallocate(p, sizeof(Upvalue));
+}
     
         
 #if !USE_GC    
@@ -1426,9 +1426,11 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            BoundProgram* pbound = v.toboundfun();
+                        {
+                            auto pbound = v.toboundfunhold();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
+                        }
                 
                     }
                 }
@@ -1443,7 +1445,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            BoundProgram* pbound = v.toboundfun();
+                            auto pbound = v.toboundfunhold();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1497,7 +1499,7 @@ restartTco:
                         //~~~ should this setcallin? as with KTHREAD_CASE? or is it intentionally different
                         case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
-                            BoundProgram* pbound = v.toboundfun();
+                            auto pbound = v.toboundfunhold();
                             frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
                             goto restartTco;
                     }
