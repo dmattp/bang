@@ -38,6 +38,99 @@ namespace Bang
     namespace Ast { class CloseValue; class Program; class Base; }
 
     class Thread;
+
+    struct Uncopyable
+    {
+    private:
+        Uncopyable( const Uncopyable& );
+    public:
+        Uncopyable( Uncopyable&& other ) {}
+        Uncopyable() {}
+    };
+
+    template <class T>
+    class gcbase : private Uncopyable
+    {
+        int refcount_;
+        //~~~ wait, what?  I don't know that this makes sense either, unless the other guy's
+        // refcount is 1 (and is about to be decremented); otherwise people are hanging on to a
+        // a moved object, and nobody is necessarily referencing the new object, so what should
+        // his refcount be?? .  Maybe it makes sense to allow the rest of the objects content to 
+        // be moved while just assuming a 'first initialization' refcount of 1 here.
+        // But Let's start with it disabled and see how that goes.
+        gcbase( gcbase&& other )
+            ;
+//         {
+//             refcount_ = other.refcount_;
+//         }
+    public:
+        gcbase() : refcount_(0)
+        {}
+        void ref()
+        {
+            ++refcount_;
+        }
+        void unref()
+        {
+            if (refcount_ > 1)
+                --refcount_;
+            else
+                delete reinterpret_cast<T*>(this);
+        }
+    };
+
+    // I don't like that this has to check for null all the time.
+    // I should try to delete the default constructor and deny
+    // thing.  like bangstring, only construct from an object.
+    template <class T> // T must derive from gcbase
+    class gcptr
+    {
+    private:
+        T* ptr_;
+    public:
+        gcptr() : ptr_(nullptr) {}
+        gcptr( T* ptr ) : ptr_( ptr )
+        {
+            if (ptr_)
+                ptr_->ref();
+        }
+        const gcptr& operator=( const gcptr& other )
+        {
+            if (ptr_) ptr_->unref();
+            ptr_ = other.ptr_;
+            if (ptr_) ptr_->ref();
+            return *this;
+        }
+        const gcptr& operator=( gcptr&& other )
+        {
+            if (ptr_) ptr_->unref();
+            ptr_ = other.ptr_;
+            other.ptr_ = nullptr;
+            return *this;
+        }
+        gcptr( gcptr&& other )
+        {
+            ptr_ = other.ptr_;
+            other.ptr_ = nullptr;
+        }
+        gcptr( const gcptr& other )
+        : ptr_( other.ptr_ )
+        {
+            if (ptr_) ptr_->ref();
+        }
+        ~gcptr()
+        {
+            if (ptr_) ptr_->unref();
+        }
+
+        T* get() { return ptr_; }
+        const T* get() const { return ptr_; }
+        T* operator->() { return ptr_; }
+        const T* operator->() const { return ptr_; }
+        
+        operator bool () const { return ptr_ ? true : false; }
+    };
+        
     
 #if USE_GC
 typedef Function* bangfunptr_t;
@@ -268,8 +361,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
                 case kBoundFun: // fall through
-                case kFun:
-                    new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
+                case kFun: new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
 #endif
                 case kStr:  new (v_.cstr) bangstring( std::move(rhs.tostr()) ); return;
                 case kBool: v_.b = rhs.v_.b; return;
@@ -486,10 +578,10 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     };
 
     class Upvalue;
-    typedef std::shared_ptr<Upvalue> SHAREDUPVALUE;
-    typedef const std::shared_ptr<Upvalue>& SHAREDUPVALUE_CREF;
+    typedef Bang::gcptr<Upvalue> SHAREDUPVALUE;
+    typedef const Bang::gcptr<Upvalue>& SHAREDUPVALUE_CREF; // avoids ref/unref
 
-    class Upvalue
+    class Upvalue : public gcbase<Upvalue>
     {
     private:
         const Ast::CloseValue* closer_; // contains the symbolic name to which the upvalue is bound
@@ -506,14 +598,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
         }
         
-        bool binds( const bangstring& name );
+        bool binds( const bangstring& name ) const;
 
-        const Ast::CloseValue* upvalParseChain() { return closer_; } // needed for REPL/EofMarker::run()
+        const Ast::CloseValue* upvalParseChain() const { return closer_; } // needed for REPL/EofMarker::run()
 
-        const Value& getUpValue( NthParent uvnumber )
+        const Value& getUpValue( NthParent uvnumber ) const
         {
 #if 1
-            Upvalue* uv = this;
+            const Upvalue* uv = this;
             while ( uvnumber != NthParent(0) )
             {
                 uv = uv->parent_.get();
@@ -527,9 +619,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         // lookup by string / name is expensive; used for experimental object
         // system.  obviously if it's "a hit" you can optimize out much of this cost
-        const Value& getUpValue( const bangstring& uvName );
+        const Value& getUpValue( const bangstring& uvName ) const;
 
-        SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber )
+        SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber ) const
         {
             return (uvnumber == NthParent(1)) ? parent_ : parent_->nthParent( --uvnumber );
         }

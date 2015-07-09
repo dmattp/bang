@@ -4,7 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define HAVE_MUTATION 1  // boo
+#define HAVE_MUTATION 0  // enable '|>' operator; boo
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -514,12 +514,12 @@ namespace Ast
     };
 }
 
-        bool Upvalue::binds( const bangstring& name )
+        bool Upvalue::binds( const bangstring& name ) const
         {
             return closer_->valueName() == name;
         }
     
-    const Value& Upvalue::getUpValue( const bangstring& uvName )
+    const Value& Upvalue::getUpValue( const bangstring& uvName ) const
     {
         if (uvName == closer_->valueName())
         {
@@ -1066,7 +1066,7 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
     
 #if !USE_GC    
 SimpleAllocator< std::shared_ptr<Upvalue> > gUpvalAlloc;
-#define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
+#define NEW_UPVAL(c,p,v) gcptr<Upvalue>( new Upvalue( c, p, v ) )
 #endif
 
 
@@ -1313,6 +1313,7 @@ restartTco:
                         }
                         catch (const std::exception& e ) // parse error
                         {
+                            //~~~ @todo: shouldn't I dump this here?  reportError or something?
                             pEof->repl_prompt(stack);
                         }
                     }

@@ -15,7 +15,7 @@ Or they can be as complicated as you wish to make them, with all the power of fu
 
 # Status
 
-Bang! is barely a month old and many features are incomplete and specifications are tentative.  The current implementation is naive but usable.  Performance is reasonable, but not quite at par with more mature languages like Lua/Ruby/Python.  There are probably issues that make it unsuitable for use in long-lived production environments.  But it does demonstrate the concepts and runs short-lived scripts quite ably.
+Bang! is barely a month old and many features are incomplete and specifications are tentative.  The current implementation is rough around the edges but usable.  There are probably issues that make it unsuitable for use in long-lived production environments.  But it does demonstrate the concepts and runs short-lived scripts quite ably.  Performance is reasonable, but not quite at par with more mature languages like Lua/Ruby/Python.
 
 # Introduction
 
@@ -291,6 +291,10 @@ which saves the returned function as "hof".  Functions can then be accessed as s
 Or rebound to local upvalues as
 
     hof.map as map
+
+# Thoughts on Performance
+
+There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy, and Bang! typically runs somewhere between 2-5x slower than Lua.  Which isn't stellar compared to native compiled and JIT'ed languages, but it's close at times to being competitive with ruby or python, and that's not bad for a language as young as Bang!; there is still plenty of room for optimization and performance improvements.
 
 # Roadmap
 
