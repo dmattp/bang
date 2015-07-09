@@ -111,6 +111,7 @@ namespace Bang
         }
     };
 
+    
     // I don't like that this has to check for null all the time.
     // I should try to delete the default constructor and deny
     // thing.  like bangstring, only construct from an object.
@@ -157,7 +158,7 @@ namespace Bang
         }
 
         T* get() { return ptr_; }
-        const T* get() const { return ptr_; }
+        T* get() const { return ptr_; }
         T* operator->() { return ptr_; }
         const T* operator->() const { return ptr_; }
         
@@ -171,12 +172,12 @@ typedef Function* bangfunptr_t;
   #define STATIC_CAST_TO_BANGFUN(f)  static_cast<Bang::Function*>( f )
   #define NEW_BANGFUN(A)             new A
 #else
-typedef std::shared_ptr<Function> bangfunptr_t;
 typedef std::shared_ptr<Thread> bangthreadptr_t;
+typedef gcptr<Function> bangfunptr_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
-  #define STATIC_CAST_TO_BANGFUN(f)  std::static_pointer_cast<Bang::Function>(f)
+  #define STATIC_CAST_TO_BANGFUN(f) std::static_pointer_cast<Bang::Function>(f)
 //#define NEW_BANGFUN(A) false ^ std::make_shared<A>
- #define NEW_BANGFUN(A)  std::make_shared<A>
+  #define NEW_BANGFUN(A,...)  gcptr<A>( new A( __VA_ARGS__ ) )
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
@@ -375,7 +376,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
                 case kBoundFun: // fall through
-                case kFun:  new (v_.cfun) std::shared_ptr<Function>( rhs.tofun() ); return;
+                case kFun:  new (v_.cfun) gcptr<Function>( rhs.tofun() ); return;
 #endif
                 case kStr:  new (v_.cstr) bangstring( rhs.tostr() ); return;
                 case kBool: v_.b = rhs.v_.b; return;
@@ -394,7 +395,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
                 case kBoundFun: // fall through
-                case kFun: new (v_.cfun) std::shared_ptr<Function>( std::move(rhs.tofun()) ); return;
+                case kFun: new (v_.cfun) gcptr<Function>( std::move(rhs.tofun()) ); return;
 #endif
                 case kStr:  new (v_.cstr) bangstring( std::move(rhs.tostr()) ); return;
                 case kBool: v_.b = rhs.v_.b; return;
@@ -437,7 +438,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if USE_GC
             bangfunptr_t funptr;
 #else
-            char     cfun[sizeof(std::shared_ptr<Function>)];
+            char     cfun[sizeof(gcptr<Function>)];
 #endif
             char cthread[sizeof(BANGTHREADPTR)];
             tfn_primitive funprim;
@@ -512,14 +513,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if USE_GC
             v_.funptr = f;
 #else
-            new (v_.cfun) std::shared_ptr<Function>(f);
+            new (v_.cfun) gcptr<Function>(f);
 #endif 
         }
 
-        Value( const std::shared_ptr<BoundProgram>& bp )
+        Value( const gcptr<BoundProgram>& bp )
         : type_( kBoundFun )
         {
-            new (v_.cfun) std::shared_ptr<BoundProgram>(bp);
+            new (v_.cfun) gcptr<BoundProgram>(bp);
         }
         
         // these really dont seem to help much, probably for reasons
@@ -530,7 +531,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if USE_GC
             v_.funptr = f;
 #else
-            new (v_.cfun) std::shared_ptr<Function>(std::move(f));
+            new (v_.cfun) gcptr<Function>(std::move(f));
 #endif 
         }
         
@@ -564,7 +565,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if USE_GC
             return v_.funptr;
 #else
-            return *reinterpret_cast<const std::shared_ptr<Function>* >(v_.cfun);
+            return *reinterpret_cast<const gcptr<Function>* >(v_.cfun);
 #endif 
         }
 
@@ -574,15 +575,15 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
             return
             reinterpret_cast<BoundProgram*>
-            (   reinterpret_cast<const std::shared_ptr<BoundProgram>* >(v_.cfun)->get()
+            (   reinterpret_cast<const gcptr<BoundProgram>* >(v_.cfun)->get()
             );
         }
 
-        std::shared_ptr<BoundProgram> toboundfunhold() const
+        gcptr<BoundProgram> toboundfunhold() const
         {
             return
                 //reinterpret_cast<BoundProgram*>
-            (   *reinterpret_cast<const std::shared_ptr<BoundProgram>* >(v_.cfun)
+            (   *reinterpret_cast<const gcptr<BoundProgram>* >(v_.cfun)
             );
         }
         
@@ -750,7 +751,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 //     }
 
         void push( const Value& v ) { stack_.push_back( v ); }
-        void push( const std::shared_ptr<BoundProgram>& bp ) { stack_.emplace_back( bp ); }
+        void push( const gcptr<BoundProgram>& bp ) { stack_.emplace_back( bp ); }
 //        void push( BANGCLOSURE&& fun ) { stack_.emplace_back( fun ); }
         void push( double num ) { stack_.emplace_back(num); }
         void push( bool b ) { stack_.emplace_back(b); }
@@ -806,9 +807,37 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         DLLEXPORT void dump( std::ostream& o ) const;
     }; // end, class Stack
 
+
+    template <>
+    class gcbase<Function> : private Uncopyable
+    {
+        int refcount_;
+        //~~~ wait, what?  I don't know that this makes sense either, unless the other guy's
+        // refcount is 1 (and is about to be decremented); otherwise people are hanging on to a
+        // a moved object, and nobody is necessarily referencing the new object, so what should
+        // his refcount be?? .  Maybe it makes sense to allow the rest of the objects content to 
+        // be moved while just assuming a 'first initialization' refcount of 1 here.
+        // But Let's start with it disabled and see how that goes.
+        gcbase( gcbase&& other )
+            ;
+//         {
+//             refcount_ = other.refcount_;
+//         }
+    public:
+        gcbase() : refcount_(0)
+        {}
+        void ref()
+        {
+            ++refcount_;
+        }
+        void unref();
+    };
+    
     class Function
 #if USE_GC
         : public gc
+#else
+        : public gcbase<Function>
 #endif
     {
         Function( const Function& ); // uncopyable
@@ -821,6 +850,19 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };
 
+    inline void gcbase<Function>::unref()
+    {
+        if (refcount_ > 1)
+            --refcount_;
+        else
+        {
+            Function* thing = reinterpret_cast<Function*>(this);
+            delete thing;
+        }
+    }
+    
+
+    
     namespace Ast {
         class Base
         {

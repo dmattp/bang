@@ -1129,8 +1129,10 @@ namespace {
 namespace Primitives {
     void savestack( Stack& s, const RunContext& rc )
     {
-        const auto& restoreFunction = NEW_BANGFUN(FunctionRestoreStack)( s );
+#if 0    
+        const auto& restoreFunction = NEW_BANGFUN(FunctionRestoreStack, s );
         s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
+#endif 
     }
     void rebindFunction( Stack& s, const RunContext& rc )
     {
@@ -1144,7 +1146,7 @@ namespace Primitives {
 
         SHAREDUPVALUE newchain = replace_upvalue( bprog->upvalues_, bindname, newval );
 
-        const auto& newfun = NEW_BANGFUN(BoundProgram)( bprog->program_, newchain );
+        const auto& newfun = NEW_BANGFUN(BoundProgram, bprog->program_, newchain );
         s.push( newfun );
     }
 }
@@ -1212,7 +1214,7 @@ void RunApplyValue( const Value& v, Stack& stack, const RunContext& frame )
 {
     switch (v.type())
     {
-        case Value::kFun: v.tofun()->apply(stack); break;
+        case Value::kFun: { auto f = v.tofun(); f->apply(stack); } break;
         case Value::kFunPrimitive: v.tofunprim()( stack, frame ); break;
         default: throwNoFunVal(v);
     }
@@ -1584,7 +1586,7 @@ restartTco:
     
     void Ast::Program::run( Stack& stack, const RunContext& rc ) const
     {
-        stack.push( NEW_BANGFUN(BoundProgram)( this, rc.upvalues() ) );
+        stack.push( NEW_BANGFUN(BoundProgram, this, rc.upvalues() ) );
     }
 
 
@@ -1612,7 +1614,7 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 {
     SHAREDUPVALUE uv =
         (this->nthparent_ == kNoParent) ? SHAREDUPVALUE() : rc.nthBindingParent( this->nthparent_ );
-    stack.push( NEW_BANGFUN(BoundProgram)( pRecFun_, uv ) ); //STATIC_CAST_TO_BANGFUN(newfun) );
+    stack.push( NEW_BANGFUN(BoundProgram, pRecFun_, uv ) ); //STATIC_CAST_TO_BANGFUN(newfun) );
 }
 
 void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
@@ -2999,7 +3001,7 @@ void Ast::Require::run( Stack& stack, const RunContext& rc ) const
     
     auto fun = me.parseToProgramNoUpvals( parsectx_, gDumpMode );
     SHAREDUPVALUE noUpvals;
-    const auto& closure = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
+    const auto& closure = NEW_BANGFUN(BoundProgram, fun, noUpvals );
 
     stack.push( closure ); // STATIC_CAST_TO_BANGFUN(closure) );
     // auto newfun = std::make_shared<FunctionRequire>( s.tostr() );
