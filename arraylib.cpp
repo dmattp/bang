@@ -98,7 +98,7 @@ namespace Array
 #endif 
                 else if (str == "push")
                 {
-                    auto pushit = NEW_BANGFUN(FunctionRestoreStack)( stack_ );
+                    auto pushit = NEW_BANGFUN(FunctionRestoreStack, stack_ );
                     s.push( STATIC_CAST_TO_BANGFUN(pushit) );
                 }
             }
@@ -109,14 +109,14 @@ namespace Array
 
     void stackToArray( Stack& s, const RunContext& rc )
     {
-        const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
+        auto toArrayFun = NEW_BANGFUN(FunctionStackToArray, s );
         toArrayFun->appendStack(s);
         s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
     }
 
     void stackNew( Stack& s, const RunContext& rc )
     {
-        const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
+        const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray, s );
         s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
     }
     

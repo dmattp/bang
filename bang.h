@@ -107,7 +107,7 @@ namespace Bang
             if (refcount_ > 1)
                 --refcount_;
             else
-                deleter_(reinterpret_cast<T*>(this));
+                deleter_(static_cast<T*>(this));
         }
     };
 
@@ -175,9 +175,9 @@ typedef Function* bangfunptr_t;
 typedef std::shared_ptr<Thread> bangthreadptr_t;
 typedef gcptr<Function> bangfunptr_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
-  #define STATIC_CAST_TO_BANGFUN(f) std::static_pointer_cast<Bang::Function>(f)
+  #define STATIC_CAST_TO_BANGFUN(f) Bang::gcptr<Bang::Function>( reinterpret_cast<const Bang::gcptr<Bang::Function>&>(f) )
 //#define NEW_BANGFUN(A) false ^ std::make_shared<A>
-  #define NEW_BANGFUN(A,...)  gcptr<A>( new A( __VA_ARGS__ ) )
+  #define NEW_BANGFUN(A,...)  Bang::gcptr<A>( new A( __VA_ARGS__ ) )
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
@@ -413,7 +413,7 @@ typedef gcptr<Function> bangfunptr_t;
                 reinterpret_cast<bangstring*>(v_.cstr)->~bangstring();
 #if !USE_GC            
             else if (type_ == kBoundFun || type_ == kFun)
-                reinterpret_cast<shared_ptr<Function>*>(v_.cfun)->~shared_ptr<Function>();
+                reinterpret_cast<gcptr<Function>*>(v_.cfun)->~gcptr<Function>();
 #endif 
             else if (type_ == kThread)
                 reinterpret_cast<BANGTHREADPTR*>(v_.cthread)->~shared_ptr<Thread>();
@@ -808,31 +808,6 @@ typedef gcptr<Function> bangfunptr_t;
     }; // end, class Stack
 
 
-    template <>
-    class gcbase<Function> : private Uncopyable
-    {
-        int refcount_;
-        //~~~ wait, what?  I don't know that this makes sense either, unless the other guy's
-        // refcount is 1 (and is about to be decremented); otherwise people are hanging on to a
-        // a moved object, and nobody is necessarily referencing the new object, so what should
-        // his refcount be?? .  Maybe it makes sense to allow the rest of the objects content to 
-        // be moved while just assuming a 'first initialization' refcount of 1 here.
-        // But Let's start with it disabled and see how that goes.
-        gcbase( gcbase&& other )
-            ;
-//         {
-//             refcount_ = other.refcount_;
-//         }
-    public:
-        gcbase() : refcount_(0)
-        {}
-        void ref()
-        {
-            ++refcount_;
-        }
-        void unref();
-    };
-    
     class Function
 #if USE_GC
         : public gc
@@ -849,18 +824,6 @@ typedef gcptr<Function> bangfunptr_t;
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };
-
-    inline void gcbase<Function>::unref()
-    {
-        if (refcount_ > 1)
-            --refcount_;
-        else
-        {
-            Function* thing = reinterpret_cast<Function*>(this);
-            delete thing;
-        }
-    }
-    
 
     
     namespace Ast {

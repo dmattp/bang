@@ -1129,7 +1129,7 @@ namespace {
 namespace Primitives {
     void savestack( Stack& s, const RunContext& rc )
     {
-#if 0    
+#if 1
         const auto& restoreFunction = NEW_BANGFUN(FunctionRestoreStack, s );
         s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
 #endif 
@@ -1140,7 +1140,7 @@ namespace Primitives {
         const Value& v = s.pop();
         if (!v.isboundfun())
             throw std::runtime_error("rebind-fun: not a bound function");
-        auto bprog = v.toboundfun();
+        auto bprog = v.toboundfunhold();
         const auto& bindname = vbindname.tostr();
         const Value& newval = s.pop();
 
@@ -1465,7 +1465,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            BoundProgram* pbound = v.toboundfun();
+                            auto pbound = v.toboundfunhold();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1482,7 +1482,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            BoundProgram* pbound = v.toboundfun();
+                            auto pbound = v.toboundfunhold();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1516,7 +1516,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE    
                         case Value::kBoundFun:
-                            BoundProgram* pbound = v.toboundfun();
+                            auto pbound = v.toboundfunhold();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1561,7 +1561,7 @@ restartTco:
                 case Value::kFunPrimitive: v.tofunprim()( stack, ctx ); break;
                 case Value::kBoundFun:
                 {
-                    BoundProgram* bprog = v.toboundfun();
+                    auto  bprog = v.toboundfunhold();
 //                    std::cerr << "dot operator calling boundfun upval1=" << bprog->upvalues_->upvalParseChain()->valueName() << "\n";
                     // RunProgram( ctx.thread, bprog->program_, bprog->upvalues_ );
                     CallIntoSuspendedCoroutine( ctx.thread, bprog );

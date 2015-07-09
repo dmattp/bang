@@ -107,11 +107,11 @@ namespace
                 // mutation free alternatives or something.
                 if (key == "set")
                 {
-                    const auto& sethash = NEW_BANGFUN(SetBangHash)(myself_.lock());
+                    const auto& sethash = NEW_BANGFUN(SetBangHash, myself_.lock());
                     s.push( STATIC_CAST_TO_BANGFUN(sethash) );
                 }
-#endif 
                 else
+#endif 
                 {
                     auto hash = key.gethash();
                     
@@ -150,8 +150,8 @@ namespace
 
     void hashNew( Stack& s, const RunContext& rc )
     {
-        const auto& hash = NEW_BANGFUN(BangHash)();
-        hash->myself_ = hash;
+        auto hash = NEW_BANGFUN(BangHash);
+//        hash->myself_ = hash;
         s.push( STATIC_CAST_TO_BANGFUN(hash) );
     }
     
