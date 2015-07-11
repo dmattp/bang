@@ -194,8 +194,10 @@ DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
 // do what?    
 #elif LCFG_GCPTR_STD    
 # define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
-#else 
-# define NEW_UPVAL(c,p,v) gcptrupval( new (gUpvalAlloc.allocate(sizeof(Upvalue))) Upvalue( c, p, v ) )
+#elif LCFG_UPVAL_SIMPLEALLOC
+ # define NEW_UPVAL(c,p,v) gcptrupval( new (gUpvalAlloc.allocate(sizeof(Upvalue))) Upvalue( c, p, v ) )
+#else    
+# define NEW_UPVAL(c,p,v) gcptrupval( new Upvalue( c, p, v ) )
 #endif
 
     

@@ -11,7 +11,8 @@
 #include <string.h>
 
 #define LCFG_STD_STRING 0
-#define LCFG_GCPTR_STD 0
+#define LCFG_GCPTR_STD 1
+#define LCFG_UPVAL_SIMPLEALLOC 1
 
 static const char* const BANG_VERSION = "0.004";
 
@@ -73,12 +74,14 @@ namespace Bang
         }
     };
 
+#if LCFG_UPVAL_SIMPLEALLOC
     template<>
     class GCDeleter<Upvalue>
     {
     public:
         static void deleter( Upvalue* thing );
     };
+#endif 
 
 #if LCFG_GCPTR_STD
     typedef std::shared_ptr<Function> gcptrfun;
@@ -98,8 +101,8 @@ namespace Bang
         // his refcount be?? .  Maybe it makes sense to allow the rest of the objects content to 
         // be moved while just assuming a 'first initialization' refcount of 1 here.
         // But Let's start with it disabled and see how that goes.
-        gcbase( gcbase&& other )
-            ;
+        gcbase( gcbase&& other );
+        gcbase& operator=( gcbase& other );
 //         {
 //             refcount_ = other.refcount_;
 //         }
@@ -142,37 +145,54 @@ namespace Bang
             if (ptr_) ptr_->ref();
         }
         
-        const gcptr& operator=( const gcptr& other )
-        {
-            if (ptr_ == other.ptr_) return *this; 
-            if (ptr_) ptr_->unref();
-            ptr_ = other.ptr_;
-            if (ptr_) ptr_->ref();
-            return *this;
-        }
-        const gcptr& operator=( gcptr&& other )
-        {
-            if (ptr_) ptr_->unref();
-            ptr_ = other.ptr_;
-            other.ptr_ = nullptr;
-            return *this;
-        }
-        gcptr( gcptr&& other )
-        {
-            ptr_ = other.ptr_;
-            other.ptr_ = nullptr;
-        }
         ~gcptr()
         {
             if (ptr_) ptr_->unref();
         }
 
-        T* get() { return ptr_; }
-        T* get() const { return ptr_; }
-        T* operator->() { return ptr_; }
-        const T* operator->() const { return ptr_; }
+#if 1
+        gcptr( gcptr&& other )
+        : ptr_( other.ptr_ )
+        {
+            other.ptr_ = nullptr;
+        }
+        
+        gcptr& operator=( gcptr&& other )
+        {
+            gcptr( static_cast<gcptr&&>( other ) ).swap(*this);
+            return *this;
+        }
+#endif
+        
+        gcptr& operator=( const gcptr& other )
+        {
+            gcptr(other).swap(*this);
+            return *this;
+        }
+        
+        gcptr& operator=( T* other )
+        {
+            gcptr(other).swap(*this);
+            return *this;
+        }
+
+        T* get() const       { return ptr_; }
+        T& operator*() const { return *ptr_; }
+        T* operator->() const { return ptr_; }
         
         operator bool () const { return ptr_ ? true : false; }
+
+        void reset()
+        {
+            gcptr().swap( *this );
+        }
+        
+        void swap(gcptr & other)
+        {
+            T * tmp = ptr_;
+            ptr_ = other.ptr_;
+            other.ptr_ = tmp;
+        }
     };
     typedef gcptr<Function> gcptrfun;
     typedef gcptr<Upvalue>  gcptrupval;
@@ -642,6 +662,10 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         SHAREDUPVALUE parent_;  // the upvalue chain
         Value v_; // the value itself
     public:
+//         ~Upvalue()
+//         {
+//             parent_.reset();
+//         }
         Upvalue( const Ast::CloseValue* closer, SHAREDUPVALUE_CREF parent, const Value& v )
         : closer_( closer ), parent_( parent ), v_( v )
         {
@@ -681,12 +705,15 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         }
     }; // end, Upvalue class
 
-        
+
+#if LCFG_UPVAL_SIMPLEALLOC
     inline void GCDeleter<Upvalue>::deleter( Upvalue* thing )
     {
+//        std::cerr << "delete upvalue\n";
         thing->~Upvalue();
         GCDellocator<Upvalue>::freemem(thing);
     }
+#endif 
     
     class Stack
     {
