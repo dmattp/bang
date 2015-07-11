@@ -1,7 +1,7 @@
 -- The Computer Language Benchmarks Game
 -- http://benchmarksgame.alioth.debian.org/
 -- translated from Lua by Matt Placek
-# 1 < ? 8; as N
+# 1 < ? 12; as N
 
 'lib/iterate.bang' require! .range as range
 'arraylib' crequire! .from-stack as stack-to-array

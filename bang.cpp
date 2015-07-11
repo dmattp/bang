@@ -178,26 +178,68 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
     return &a != &b;
 }
 
+template <class Tp>
+struct SimplestAllocator
+{
+    typedef Tp value_type;
+    SimplestAllocator(/*ctor args*/) {}
+    template <class T> SimplestAllocator(const SimplestAllocator<T>& other){}
+    template <class U> struct rebind { typedef SimplestAllocator<U> other; };
+    
+    Tp* allocate(std::size_t n)
+    {
+        Tp* mem = reinterpret_cast<Tp*>( ::operator new(n*sizeof(Tp)) );
+        return mem;
+    }
+    void deallocate(Tp* p, std::size_t n)
+    {
+        ::operator delete(p);
+    }
+    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
+    void destroy(Tp* p) { p->~Tp(); }
+};
+template <class T, class U>
+bool operator==(const SimplestAllocator<T>& a, const SimplestAllocator<U>& b)
+{
+    return &a == &b;
+}
+template <class T, class U>
+bool operator!=(const SimplestAllocator<T>& a, const SimplestAllocator<U>& b)
+{
+    return &a != &b;
+}
+
 #endif
 
 #if !USE_GC    
 SimpleAllocator< Upvalue > gUpvalAlloc;
 #endif 
 
-DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
-{
-    gUpvalAlloc.deallocate(p, sizeof(Upvalue));
-}
     
         
 #if USE_GC
-// do what?    
+# define NEW_UPVAL new Upvalue
 #elif LCFG_GCPTR_STD    
 # define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
 #elif LCFG_UPVAL_SIMPLEALLOC
- # define NEW_UPVAL(c,p,v) gcptrupval( new (gUpvalAlloc.allocate(sizeof(Upvalue))) Upvalue( c, p, v ) )
+    
+# if 1
+    # define NEW_UPVAL(c,p,v) gcptrupval( new (gUpvalAlloc.allocate(1)) Upvalue( c, p, v ) )
+    DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
+    {
+    //    ::operator delete(p);
+        gUpvalAlloc.deallocate(p, 1);
+    }
+#endif
+
 #else    
-# define NEW_UPVAL(c,p,v) gcptrupval( new Upvalue( c, p, v ) )
+// # define NEW_UPVAL(c,p,v) gcptrupval( new Upvalue( c, p, v ) )
+# define NEW_UPVAL(c,p,v) gcptrupval( new (::operator new (sizeof(Upvalue))) Upvalue( c, p, v ) )
+DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
+{
+    ::operator delete(p);
+//    gUpvalAlloc.deallocate(p, sizeof(Upvalue));
+}
 #endif
 
     
