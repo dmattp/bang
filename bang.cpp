@@ -144,7 +144,6 @@ struct SimpleAllocator
 //            ++gAllocated;
         }
         Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
-//        std::cerr << "ALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << mem << " size=" << n << " sizeof<shptr>=" << sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
         return mem;
     }
     void deallocate(Tp* p, std::size_t n)
@@ -191,8 +190,12 @@ DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
 }
     
         
-#if !USE_GC    
-#define NEW_UPVAL(c,p,v) gcptr<Upvalue>( new (gUpvalAlloc.allocate(sizeof(Upvalue))) Upvalue( c, p, v ) )
+#if USE_GC
+// do what?    
+#elif LCFG_GCPTR_STD    
+# define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
+#else 
+# define NEW_UPVAL(c,p,v) gcptrupval( new (gUpvalAlloc.allocate(sizeof(Upvalue))) Upvalue( c, p, v ) )
 #endif
 
     
@@ -1447,7 +1450,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            auto pbound = v.toboundfunhold();
+                            auto pbound = v.toboundfun();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1465,7 +1468,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            auto pbound = v.toboundfunhold();
+                            auto pbound = v.toboundfun();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1482,7 +1485,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
-                            auto pbound = v.toboundfunhold();
+                            auto pbound = v.toboundfun();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -1516,7 +1519,7 @@ restartTco:
                         default: RunApplyValue( v, stack, frame ); break;
                         KTHREAD_CASE    
                         case Value::kBoundFun:
-                            auto pbound = v.toboundfunhold();
+                            auto pbound = v.toboundfun();
                             inprog = pbound->program_;
                             inupvalues = pbound->upvalues_;
                             goto restartNonTail;
@@ -2594,20 +2597,6 @@ namespace Primitives {
         return fun;
     }
     
-
-//     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
-//     // parse to Ast::Program and go with that?
-//     std::shared_ptr<BoundProgram> RequireKeyword::parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump )
-//     {
-//         Ast::Program* fun = this->parseToProgramNoUpvals( ctx, bDump );
-
-//         // BANGCLOSURE noParentClosure(nullptr);
-//         SHAREDUPVALUE noUpvals;
-//         const auto& boundprog = NEW_BANGFUN(BoundProgram)( fun, noUpvals );
-
-//         return boundprog;
-//     }
-
     
 
 Parser::Program::Program

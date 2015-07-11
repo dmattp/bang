@@ -11,6 +11,7 @@
 #include <string.h>
 
 #define LCFG_STD_STRING 0
+#define LCFG_GCPTR_STD 0
 
 static const char* const BANG_VERSION = "0.004";
 
@@ -25,6 +26,7 @@ static const char* const BANG_VERSION = "0.004";
 # include "gc_allocator.h"
 #endif
 
+
 namespace Bang
 {
     class Stack;
@@ -37,6 +39,8 @@ namespace Bang
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
 
     namespace Ast { class CloseValue; class Program; class Base; }
+
+    struct Empty {};
 
     class Thread;
 
@@ -75,8 +79,14 @@ namespace Bang
     public:
         static void deleter( Upvalue* thing );
     };
-    
-    
+
+#if LCFG_GCPTR_STD
+    typedef std::shared_ptr<Function> gcptrfun;
+    typedef std::shared_ptr<Upvalue>  gcptrupval;
+# define gcptr std::shared_ptr
+    template <class T>
+    struct gcbase {};
+#else
     template <class T>
     class gcbase : private Uncopyable
     {
@@ -112,9 +122,6 @@ namespace Bang
     };
 
     
-    // I don't like that this has to check for null all the time.
-    // I should try to delete the default constructor and deny
-    // thing.  like bangstring, only construct from an object.
     template <class T> // T must derive from gcbase
     class gcptr
     {
@@ -122,11 +129,19 @@ namespace Bang
         T* ptr_;
     public:
         gcptr() : ptr_(nullptr) {}
-        gcptr( T* ptr ) : ptr_( ptr )
+        
+        gcptr( T* ptr )
+        : ptr_( ptr )
         {
-            if (ptr_)
-                ptr_->ref();
+            if (ptr_) ptr_->ref();
         }
+        
+        gcptr( const gcptr& other )
+        : ptr_( other.ptr_ )
+        {
+            if (ptr_) ptr_->ref();
+        }
+        
         const gcptr& operator=( const gcptr& other )
         {
             if (ptr_ == other.ptr_) return *this; 
@@ -147,11 +162,6 @@ namespace Bang
             ptr_ = other.ptr_;
             other.ptr_ = nullptr;
         }
-        gcptr( const gcptr& other )
-        : ptr_( other.ptr_ )
-        {
-            if (ptr_) ptr_->ref();
-        }
         ~gcptr()
         {
             if (ptr_) ptr_->unref();
@@ -164,20 +174,22 @@ namespace Bang
         
         operator bool () const { return ptr_ ? true : false; }
     };
-        
+    typedef gcptr<Function> gcptrfun;
+    typedef gcptr<Upvalue>  gcptrupval;
+#endif 
+
+typedef std::shared_ptr<Thread> bangthreadptr_t;
     
 #if USE_GC
-typedef Function* bangfunptr_t;
+  typedef Function* bangfunptr_t;
   #define BANGFUN_CREF Bang::bangfunptr_t
   #define STATIC_CAST_TO_BANGFUN(f)  static_cast<Bang::Function*>( f )
   #define NEW_BANGFUN(A)             new A
 #else
-typedef std::shared_ptr<Thread> bangthreadptr_t;
-typedef gcptr<Function> bangfunptr_t;
+  typedef gcptrfun bangfunptr_t;
   #define BANGFUN_CREF const Bang::bangfunptr_t&
-  #define STATIC_CAST_TO_BANGFUN(f) Bang::gcptr<Bang::Function>( reinterpret_cast<const Bang::gcptr<Bang::Function>&>(f) )
-//#define NEW_BANGFUN(A) false ^ std::make_shared<A>
-  #define NEW_BANGFUN(A,...)  Bang::gcptr<A>( new A( __VA_ARGS__ ) )
+  #define STATIC_CAST_TO_BANGFUN(f) gcptrfun( reinterpret_cast<const gcptrfun&>(f) )
+  #define NEW_BANGFUN(A,...)  gcptr<A>( new A( __VA_ARGS__ ) )
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
@@ -376,7 +388,7 @@ typedef gcptr<Function> bangfunptr_t;
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
                 case kBoundFun: // fall through
-                case kFun:  new (v_.cfun) gcptr<Function>( rhs.tofun() ); return;
+                case kFun:  new (v_.cfun) gcptrfun( rhs.tofun() ); return;
 #endif
                 case kStr:  new (v_.cstr) bangstring( rhs.tostr() ); return;
                 case kBool: v_.b = rhs.v_.b; return;
@@ -395,7 +407,7 @@ typedef gcptr<Function> bangfunptr_t;
                 case kFun: v_.funptr = rhs.v_.funptr; return;
 #else
                 case kBoundFun: // fall through
-                case kFun: new (v_.cfun) gcptr<Function>( std::move(rhs.tofun()) ); return;
+                case kFun: new (v_.cfun) gcptrfun( std::move(rhs.tofun()) ); return;
 #endif
                 case kStr:  new (v_.cstr) bangstring( std::move(rhs.tostr()) ); return;
                 case kBool: v_.b = rhs.v_.b; return;
@@ -413,7 +425,7 @@ typedef gcptr<Function> bangfunptr_t;
                 reinterpret_cast<bangstring*>(v_.cstr)->~bangstring();
 #if !USE_GC            
             else if (type_ == kBoundFun || type_ == kFun)
-                reinterpret_cast<gcptr<Function>*>(v_.cfun)->~gcptr<Function>();
+                reinterpret_cast<gcptrfun*>(v_.cfun)->~gcptrfun();
 #endif 
             else if (type_ == kThread)
                 reinterpret_cast<BANGTHREADPTR*>(v_.cthread)->~shared_ptr<Thread>();
@@ -438,7 +450,7 @@ typedef gcptr<Function> bangfunptr_t;
 #if USE_GC
             bangfunptr_t funptr;
 #else
-            char     cfun[sizeof(gcptr<Function>)];
+            char     cfun[sizeof(gcptrfun)];
 #endif
             char cthread[sizeof(BANGTHREADPTR)];
             tfn_primitive funprim;
@@ -513,7 +525,7 @@ typedef gcptr<Function> bangfunptr_t;
 #if USE_GC
             v_.funptr = f;
 #else
-            new (v_.cfun) gcptr<Function>(f);
+            new (v_.cfun) gcptrfun(f);
 #endif 
         }
 
@@ -531,7 +543,7 @@ typedef gcptr<Function> bangfunptr_t;
 #if USE_GC
             v_.funptr = f;
 #else
-            new (v_.cfun) gcptr<Function>(std::move(f));
+            new (v_.cfun) gcptrfun(std::move(f));
 #endif 
         }
         
@@ -565,7 +577,7 @@ typedef gcptr<Function> bangfunptr_t;
 #if USE_GC
             return v_.funptr;
 #else
-            return *reinterpret_cast<const gcptr<Function>* >(v_.cfun);
+            return *reinterpret_cast<const gcptrfun* >(v_.cfun);
 #endif 
         }
 
@@ -620,8 +632,8 @@ typedef gcptr<Function> bangfunptr_t;
     };
 
     class Upvalue;
-    typedef Bang::gcptr<Upvalue> SHAREDUPVALUE;
-    typedef const Bang::gcptr<Upvalue>& SHAREDUPVALUE_CREF; // avoids ref/unref
+    typedef gcptrupval SHAREDUPVALUE;
+    typedef const gcptrupval& SHAREDUPVALUE_CREF; // avoids ref/unref
 
     class Upvalue : public gcbase<Upvalue>
     {
