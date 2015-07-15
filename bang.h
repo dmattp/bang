@@ -1,8 +1,11 @@
+#ifndef BANG_H__
+#define BANG_H__
 
 #include <memory>
 #include <vector>
 #include <iterator>
 #include <functional>
+#include <algorithm>
 #include <stdexcept>
 #include <ostream>
 #include <list>
@@ -206,14 +209,18 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     
 #if USE_GC
   typedef Function* bangfunptr_t;
-  #define BANGFUN_CREF Bang::bangfunptr_t
-  #define STATIC_CAST_TO_BANGFUN(f)  static_cast<Bang::Function*>( f )
-  #define NEW_BANGFUN(A)             new A
+# define BANGFUN_CREF Bang::bangfunptr_t
+# define STATIC_CAST_TO_BANGFUN(f)  static_cast<Bang::Function*>( f )
+# define NEW_BANGFUN(A,...) new A( __VA_ARGS__ )
 #else
   typedef gcptrfun bangfunptr_t;
-  #define BANGFUN_CREF const Bang::bangfunptr_t&
-  #define STATIC_CAST_TO_BANGFUN(f) gcptrfun( reinterpret_cast<const gcptrfun&>(f) )
-  #define NEW_BANGFUN(A,...)  gcptr<A>( new A( __VA_ARGS__ ) )
+# define BANGFUN_CREF const Bang::bangfunptr_t&
+# define STATIC_CAST_TO_BANGFUN(f) Bang::gcptrfun( reinterpret_cast<const Bang::gcptrfun&>(f) )
+# if LCFG_GCPTR_STD    
+#  define NEW_BANGFUN(A,...)  std::make_shared<A>( __VA_ARGS__ )
+# else
+#  define NEW_BANGFUN(A,...)  Bang::gcptr<A >( new A( __VA_ARGS__ ) )
+# endif 
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
@@ -326,6 +333,10 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             {
                 return !strcmp( str, psz );
             }
+            bool operator< ( const bangstringstore& rhs ) const
+            {
+                return std::lexicographical_compare( str, str + len, rhs.str, rhs.str + len  );
+            }
         }; // end, bangstringstore class
 
         bangstringstore* store_;
@@ -350,6 +361,10 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         : store_( other.store_ )
         {
             other.store_ = nullptr;
+        }
+        bool operator< ( const bangstring& rhs ) const
+        {
+            return *store_ < *rhs.store_;
         }
         const bangstring& operator=( const bangstring& rhs )
         {
@@ -1104,3 +1119,4 @@ inline Bang::bangstring operator+( const std::string& s, const Bang::bangstring&
 
 
 
+#endif // ifndef BANG_H__

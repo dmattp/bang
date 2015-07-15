@@ -63,6 +63,11 @@ namespace Array
                 
                 if (str == "#")
                     s.push( double(stack_.size()) );
+                else if (str == "push" || str == "to-stack")
+                {
+                    auto pushit = NEW_BANGFUN(FunctionRestoreStack, stack_ );
+                    s.push( STATIC_CAST_TO_BANGFUN(pushit) );
+                }
 #if HAVE_ARRAY_MUTATION
                 // I'm a little more willing to accept mutating arrays (vs upvals) just
                 // because I don't know why.  Because arraylib is currently a library, and libraries
@@ -96,11 +101,6 @@ namespace Array
                     this->appendStack(s);
                 }
 #endif 
-                else if (str == "push")
-                {
-                    auto pushit = NEW_BANGFUN(FunctionRestoreStack, stack_ );
-                    s.push( STATIC_CAST_TO_BANGFUN(pushit) );
-                }
             }
         }
     };

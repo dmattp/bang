@@ -33,7 +33,7 @@ arraylib$(EXT_SO): arraylib.cpp bang.h
 stringlib$(EXT_SO): stringlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 
-hashlib$(EXT_SO): hashlib.cpp bang.h
+hashlib$(EXT_SO): hashlib.cpp hashlib.h bang.h 
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 
 #  -Wl,--out-implib,$(@:.dll=.a)

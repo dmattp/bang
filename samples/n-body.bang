@@ -5,7 +5,7 @@
 -- modified by Mario Pernici
 -- Translated to Bang! by David Placek
 
-# 1 < ? 99000; as N -- tonumber(arg and arg[1]) or 9000 -- lua=9k runs in ~100ms
+# 1 < ? 9000; as N -- tonumber(arg and arg[1]) or 9000 -- lua=9k runs in ~100ms
 
 
 3.141592653589793 as PI           

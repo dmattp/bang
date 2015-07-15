@@ -68,8 +68,12 @@ namespace String
         checkstrtype(s.loc_top());
         const Value& v = s.pop();
         std::string str = v.tostr();
+//        std::cerr << "to-bytes begin=" << str.begin() << " end=" <<str.end() << std::endl;
         std::for_each( str.begin(), str.end(),
-            [&]( char c ) { s.push( double((unsigned char)c) ); } );
+            [&]( char c ) {
+//                std::cerr << "to-bytes c=" << int(c) << std::endl;
+                 s.push( double((unsigned char)c) );
+            } );
     }
     
     void from_bytes( Bang::Stack& s, const Bang::RunContext& ctx)
