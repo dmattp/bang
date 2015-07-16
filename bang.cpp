@@ -1181,20 +1181,31 @@ namespace Primitives {
         s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
 #endif 
     }
-    void rebindFunction( Stack& s, const RunContext& rc )
+    void rebindvalues( Stack& s, const Value& v, const Value& vbindname, const Value& newval )
     {
-        const Value& vbindname = s.pop();
-        const Value& v = s.pop();
         if (!v.isboundfun())
             throw std::runtime_error("rebind-fun: not a bound function");
         auto bprog = v.toboundfunhold();
         const auto& bindname = vbindname.tostr();
-        const Value& newval = s.pop();
 
         SHAREDUPVALUE newchain = replace_upvalue( bprog->upvalues_, bindname, newval );
 
         const auto& newfun = NEW_BANGFUN(BoundProgram, bprog->program_, newchain );
         s.push( newfun );
+    }
+    void rebindOuterFunction( Stack& s, const RunContext& rc )
+    {
+        const Value& vbindname = s.pop();
+        const Value& newval = s.pop();
+        const Value& v = s.pop();
+        rebindvalues( s, v, vbindname, newval );
+    }
+    void rebindFunction( Stack& s, const RunContext& rc )
+    {
+        const Value& vbindname = s.pop();
+        const Value& v = s.pop();
+        const Value& newval = s.pop();
+        rebindvalues( s, v, vbindname, newval );
     }
 }
 
@@ -2459,7 +2470,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     for (int i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup)
+        if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
             Ast::ApplyDotOperator* pdot = dynamic_cast<Ast::ApplyDotOperator*>(ast[i+1]);
             if (pdot)
@@ -2956,6 +2967,7 @@ Parser::Program::Program
                 if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
                 if (rwPrimitive( "rebind",    &Primitives::rebindFunction    ) ) continue;
+                if (rwPrimitive( "rebind-outer",    &Primitives::rebindOuterFunction    ) ) continue;
 //                if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
 //                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
