@@ -1,0 +1,81 @@
+'stringlib' crequire! as string
+'arraylib' crequire! as array
+'c:/m/n2proj/bang/lib/hof.bang' require! .map as map
+'c:/m/n2proj/bang/lib/iterate.bang' require! .range as range
+
+def :maxstrlen = {
+   def :inner currmax = { as str
+--      'str= currmax= ss='@ str@ currmax@ #@
+      str string.len! as slen
+      slen currmax > ? slen : currmax;
+      # 1 > ? inner!
+   }
+   0 # 1 > ? inner!
+}
+
+------------------------------------------------------------------
+
+def :pad-stack value = { as target
+    def! :inner = {
+       -- # target 'pad-stack #=%@ target=%@\n' print!
+        # target <
+        ? value inner!
+    }
+}
+
+def :pad-string s = { as width
+--   s width 'pad-string s=[%@] width=%@\n' print!
+   (s string.to-bytes! width 32 pad-stack! string.from-bytes!)
+--   (s string.to-bytes! array.from-stack! drop! s)
+}
+
+def :pad-strings-plus1 = {
+   save-stack! as list
+   list! maxstrlen! 1 + as max
+   list! fun str = max str pad-string!; map!
+}
+
+def :select field = {
+   fun object = field object!
+}
+
+def :Foldl operator = {
+  # 1 > 
+  ? operator! operator Foldl!
+}
+
+-- 'numItems='@ numItems@
+
+-- OMG wtf is this
+-- format table accepts a list of fields on the stack and returns a function which,
+-- when called on a stack full of objects, converts each field in turn for each object
+-- to a string and displays each given field of the object in a table
+def :format-table = {
+    array.from-stack! as fields
+    '#' fields! 1 - as maxfield
+    fun = {
+        -- save all the items, i'm gonna iterate over them quite a bit
+        array.from-stack! as items '#' items! as numItems
+        fun ndx = {
+            ndx fields! as field
+            (items.push! fun object = field object! tostring!; map! pad-strings-plus1! array.from-stack!)
+        }
+        0 maxfield range! -- '#' fields! range!
+        array.from-stack! as padded-fields
+        fun itemIndex = {
+           -- 'itemIndex='@ itemIndex@
+           (
+             itemIndex items! as item
+             fun fieldNdx = {
+                fieldNdx padded-fields! as fieldValues
+                itemIndex fieldValues!
+             }
+             0 maxfield range!
+           fun = +; Foldl!
+           )
+        }
+        0 numItems 1 - range!
+    }
+}
+
+fun = lookup
