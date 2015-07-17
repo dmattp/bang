@@ -1,4 +1,5 @@
 #include <iostream>
+#include <numeric> // for std::accumulate
 #include <stdio.h>
 
 #include "bang.h"
@@ -8,6 +9,7 @@ using namespace Bang;
 namespace {
     bool gDumpMode = false;
 }
+
 
 void repl_prompt()
 {
@@ -109,6 +111,73 @@ Ast::Base* BangmainParsingContext::hitEof( const Ast::CloseValue* uvchain )
         return ( new Ast::BreakProg() );
 }
 
+    class RegurgeString  : public Bang::RegurgeIo
+    {
+        std::string str_;
+        bool atEof_;
+    public:
+        RegurgeString( const std::string& str )
+        : str_( str ),
+          atEof_( str.size() < 1 )
+        {
+        }
+        char getc()
+        {
+            int icud = RegurgeIo::getcud();
+
+            if (icud != EOF)
+                return icud;
+
+            if (atEof_)
+                throw Bang::ErrorEof();
+        
+            if (str_.size() < 1)
+            {
+                atEof_ = true;
+                return 0x0a;
+            }
+            else
+            {
+                char rc = str_.front();
+                str_.erase( str_.begin() );
+                return rc;
+            }
+        }
+    };
+
+    class ShParsingContext : public Bang::ParsingContext
+    {
+    public:
+        ShParsingContext( Bang::InteractiveEnvironment& i )
+        : Bang::ParsingContext(i)
+        {
+        }
+        Bang::Ast::Base* hitEof( const Bang::Ast::CloseValue* uvchain )
+        {
+//            std::cerr << "ShParsingContext::hitEof\n";
+            return new Ast::BreakProg(); // ShEofMarker( *this, uvchain );
+        }
+    };
+
+    void eval_more_bang_code( const std::string& vstr, Bang::Thread& thread ) // , const Bang::RunContext& ctx )
+    {
+        Bang::InteractiveEnvironment interact;
+        ShParsingContext parsectx( interact );
+
+        try
+        {
+            RegurgeString strmFile( vstr );
+            auto prog = Bang::ParseToProgram( parsectx, strmFile, false, nullptr );
+            RunProgram( &thread, prog, SHAREDUPVALUE() );
+        }
+        catch( const std::exception& e )
+        {
+            std::cerr << "Error parsing command line: " << e.what() << std::endl;
+            exit(-1);
+        }
+    }
+
+
 
 
 /*
@@ -126,42 +195,74 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 
     bool bDump = false;
     bool bInteractive = false;
+    bool bCmdLineAfterProgram = false;
 
     Bang::InteractiveEnvironment interact;
 
-    if (argc > 1)
+    const char* fname = nullptr;
+    for (int n = 1; n < argc; ++n)
     {
-        if (std::string("-dump") == argv[1])
+        std::string arg = argv[n];
+        if (arg == "-dump")
         {
             bDump = true;
-            argv[1] = argv[2];
-            --argc;
+            argv[n] = nullptr;
         }
-
-        if (std::string("-i") == argv[1])
+        else if (arg == "-i")
         {
             interact.repl_prompt = &repl_prompt;
             bInteractive = true;
-            argv[1] = argv[2];
-            --argc;
+            argv[n] = nullptr;
+        }
+        else if (arg.size() > 5 && arg.substr(arg.size()-5,5) == ".bang")
+        {
+            fname = argv[n];
+            argv[n] = nullptr;
+        }
+        else if (arg == "-e") // everything after -e is a program
+        {
+            argv[n] = nullptr;
+            break;
+        }
+        else if (arg == "-em") // everything after -e is a program
+        {
+            bCmdLineAfterProgram = true;
+            argv[n] = nullptr;
+            break;
         }
     }
-    const char* fname = argv[1];
-    if (argc < 2)
+    
+    if (!fname)
     {
 #ifdef kDefaultScript
         bDump = true;
         fname = kDefaultScript;
 #else
-        fname = nullptr; // kDefaultScript;
         interact.repl_prompt = &repl_prompt;
         bInteractive = true;
 #endif 
     }
 
+    std::string cmdlineprog =
+        std::accumulate( argv+1, argv + argc, std::string(""),
+            []( std::string acc, const char* arg ) {
+                return acc + (arg ? (std::string(" ") + arg) : "");
+            });
+
     gDumpMode = bDump;
 
     Bang::Thread thread;
+
+    if ((cmdlineprog.size() > 0) && !bCmdLineAfterProgram)
+    {
+//        std::cout << "CLPROG=" << cmdlineprog << '\n';
+        eval_more_bang_code( cmdlineprog, thread );
+        if (!fname) // if no file to parse, dump the stack and exit
+        {
+            thread.stack.dump( std::cout );
+            return 0;
+        }
+    }
 
     interact.repl_prompt();
     
@@ -173,15 +274,42 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
             Ast::Program* prog;
             if (fname)
             {
-                Bang::RequireKeyword requireMain( fname );
-                prog = requireMain.parseToProgramNoUpvals( parsectx, bDump );
+                if (cmdlineprog.size() > 0 && bCmdLineAfterProgram)
+                {
+/*
+  PARSE(upvalDESCchain-1,program-2 text)  => program-2, upvalDESCchain-2
+    EXECUTE (program-2, bound-upvals-1 ) => (I/O), bound-upvals-2
+    PARSE(upvalDESCchain-2,program-3 text)  => program-3, upvalDESCchain-3
+    EXECUTE (program-3, bound-upvals-2 ) => (I/O), bound-upvals-3
+    ...
+    ...
+    is that right?
+*/
+
+                    
+#if 0 // need ImportParsingContext class
+                    ImportParsingContext importContext
+                    (   parsecontext, stream,
+                        nullptr /*parent*/,
+                        nullptr /*upvalueChain*/,
+                        pRecParsing
+                    );
+                    RequireKeyword requireImport( fname );
+                    auto prog = requireImport.parseToProgramNoUpvals( importContext, gDumpMode ); // DUMP
+#endif 
+                }
+                else
+                {
+                    Bang::RequireKeyword requireMain( fname );
+                    prog = requireMain.parseToProgramNoUpvals( parsectx, bDump );
+                    RunProgram( &thread, prog, SHAREDUPVALUE() );
+                }
             }
             else
             {
                 prog = parseStdinToProgram( parsectx, nullptr );
+                RunProgram( &thread, prog, SHAREDUPVALUE() );
             }
-            SHAREDUPVALUE noUpvals;
-            RunProgram( &thread, prog, noUpvals );
 //             Bang::RequireKeyword requireMain( fname );
 //             requireMain.parseAndRun( parsectx, thread, bDump );
             thread.stack.dump( std::cout );

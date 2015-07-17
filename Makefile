@@ -36,6 +36,14 @@ stringlib$(EXT_SO): stringlib.cpp bang.h
 hashlib$(EXT_SO): hashlib.cpp hashlib.h bang.h 
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 
+
+ifeq (1,0)
+all:: bangone$(EXT_EXE)
+bangone$(EXT_EXE): bangmain.cpp bang.cpp hashlib.cpp 
+	$(CXX) $(CPPFLAGS)  $? -L . -o $@
+endif
+
+
 #  -Wl,--out-implib,$(@:.dll=.a)
 
 # -g0 doesnt seem to actually drop any size, maybe need linker option too?
