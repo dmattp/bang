@@ -139,34 +139,6 @@ namespace Hashlib
         {
             const auto& key = msg.tostr();
                 
-            if (key == "has")
-            {
-                const auto& has = NEW_BANGFUN(BangHashMemFun, this, &BangHash::has);
-                s.push( STATIC_CAST_TO_BANGFUN(has) );
-            }
-            else if (key == "keys")
-            {
-                const auto& sethash = NEW_BANGFUN(BangMemFun<BangHash>, this, &BangHash::keys);
-                s.push( STATIC_CAST_TO_BANGFUN(sethash) );
-            }
-            else
-#if HAVE_HASH_MUTATION
-            // I'm a little more willing to accept mutating arrays/hashes (vs upvals/program variable bindings) just
-            // because I don't know why.  Because arraylib is currently a library, and libraries
-            // are even more tentative and easier to replace than the core language, does not
-            // imply new syntax, and can always be retained as a deprecated library alongside
-            // mutation free alternatives or something.
-            // i don't like not having a distinction between hash keys and function names,
-            // that's awkward for sure.  Maybe the operator id's would help or something,
-            // and we could use #set, #has, etc.
-            // i also don't like gcnewing all these Function objects that are generally
-            // going to be immediately applied anyway.
-            if (key == "set")
-            {
-                const auto& sethash = NEW_BANGFUN(BangMemFun<BangHash>, this, &BangHash::set);
-                s.push( STATIC_CAST_TO_BANGFUN(sethash) );
-            }
-#endif 
             {
                 // auto hash = key.gethash();
                 auto loc = hash_.find( key );
@@ -182,6 +154,40 @@ namespace Hashlib
 //         toArrayFun->appendStack(s);
 //         s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
 //     }
+    void BangHash::customOperator( const Value& v, const bangstring& theOperator, Stack& s)
+    {
+        const static Bang::bangstring opHas("/has");
+        const static Bang::bangstring opKeys("/keys");
+        const static Bang::bangstring opSet("/set");
+
+        BangHash& self = reinterpret_cast<BangHash&>(*v.tofun());
+
+        if (theOperator == opSet)
+        {
+            self.set(s);
+        }
+        else if (theOperator == opHas)
+        {
+            self.has(s);
+        }
+        else if (theOperator == opKeys)
+        {
+            self.keys(s);
+        }
+    }
+
+    struct HashOps : public Bang::Operators
+    {
+        HashOps()
+        {
+            customOperator = &BangHash::customOperator;
+        }
+    } gHashOperators;
+    
+    DLLEXPORT BangHash::BangHash()
+    {
+        operators = &gHashOperators;
+    }
 
     void hashNew( Stack& s, const RunContext& rc )
     {

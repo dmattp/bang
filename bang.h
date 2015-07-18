@@ -40,6 +40,7 @@ namespace Bang
     class RunContext;
     class ParsingContext;
     class Value;
+    class bangstring;
 
     enum EOperators
     {
@@ -51,7 +52,13 @@ namespace Bang
     typedef void (*tfn_operator)( const Value& v, Stack& );
     struct Operators
     {
+        DLLEXPORT static void invalidOperator (const Value& v, Stack& );
+        void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
         tfn_operator optable[kOpLAST];
+        Operators() {
+            for (int i = 0; i < kOpLAST; ++i)
+                optable[i] = &Operators::invalidOperator;
+        }
     };
    
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
@@ -394,18 +401,11 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             rhs.store_ = nullptr;
             return *this;
         }
-        bool operator==( const bangstring& rhs ) const
-        {
-            return *store_ == *(rhs.store_);
-        }
-        bool operator==( const char* rhs ) const
-        {
-            return *store_ == rhs;
-        }
-        bool operator==( const std::string& rhs ) const
-        {
-            return *store_ == rhs; // static_cast<const std::string&>(*this) == rhs;
-        }
+        
+        bool operator==( const bangstring& rhs ) const { return *store_ == *(rhs.store_); }
+        bool operator==( const char* rhs ) const { return *store_ == rhs; }
+        bool operator==( const std::string& rhs ) const { return *store_ == rhs; }
+       // static_cast<const std::string&>(*this) == rhs;
 
         operator std::string() const {
             //std::cerr << "casting to str" << store_->str << std::endl;
@@ -673,6 +673,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         void dump( std::ostream& o ) const;
         
         void applyOperator( EOperators which, Stack& ) const;
+        void applyCustomOperator( const bangstring& theOperator, Stack& ) const;
     }; // end, class Value
 
     class NthParent {
@@ -886,7 +887,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     public:
         Operators* operators;
 //        std::weak_ptr<Function> self_;
-        Function();
+        DLLEXPORT Function();
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };

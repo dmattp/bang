@@ -543,6 +543,10 @@ namespace Primitives
 
 } // end, namespace Primitives
 
+    DLLEXPORT void Operators::invalidOperator(const Value& v, Stack&)
+    {
+        bangerr() << "Invalid operator applied";
+    }
 
     struct NumberOps : public Bang::Operators
     {
@@ -597,7 +601,7 @@ namespace Primitives
     
     Bang::Operators gFunctionOperators;
 
-    Bang::Function:: Function()
+    DLLEXPORT Bang::Function:: Function()
     : operators( &gFunctionOperators )
     {}
 
@@ -625,6 +629,19 @@ namespace Primitives
             case kThread: bangerr() << "operators not supported for threads"; break; 
         }
         (*optable[which])( *this, s );
+    }
+
+    void Value::applyCustomOperator( const bangstring& theOperator, Stack& s ) const
+    {
+        switch (type_)
+        {
+            case kNum: bangerr() << "no custom num ops"; break;
+            case kStr: bangerr() << "no custom string ops"; break;
+            case kFun: // fall through
+            case kBoundFun: this->tofun()->operators->customOperator( *this, theOperator, s ); break;
+            case kFunPrimitive: bangerr() << "custom operators not supported for function primitives"; break; 
+            case kThread: bangerr() << "custom operators not supported for threads"; break; 
+        }
     }
     
 
@@ -890,6 +907,50 @@ namespace Ast
         {
             const Value& owner = stack.pop();
             owner.applyOperator( openum_, stack );
+        }
+    };
+
+
+    class ApplyCustomOperator : public Base
+    {
+    public:
+        bangstring custom_ ; // method
+        ApplyCustomOperator( const bangstring& custom )
+        : custom_( custom )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyCustomOperator(" << custom_ << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+        {
+            const Value& owner = stack.pop();
+            owner.applyCustomOperator( custom_, stack );
+        }
+    };
+    
+    class ApplyCustomOperatorDotted : public Base
+    {
+    public:
+        bangstring custom_ ; // method
+        bangstring dotted_ ; // method
+        ApplyCustomOperatorDotted( const bangstring& custom, const bangstring& dotted )
+        : custom_( custom ),
+          dotted_( dotted )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyCustomOperatorDotted(" << custom_ << ',' << dotted_ << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+        {
+            const Value& owner = stack.pop();
+            stack.push( dotted_ );
+            owner.applyCustomOperator( custom_, stack );
         }
     };
     
@@ -3016,16 +3077,34 @@ Parser::Program::Program
                 const std::string& token = op.name();
                 // std::cerr << "got operator token=" << op.name() << std::endl;
                 EOperators openum = optoken2enum( token );
-                if (openum == kOpCustom)
-                {
-                    bangerr(ParseFail) << "e02a Parsing, custom operators not yet supported" << " in " << mark.sayWhere();
-                }
+                mark.accept();
+                if (openum != kOpCustom)
+                    ast_.push_back( new Ast::ApplyEnumOperator( openum ) );
                 else
                 {
-                    mark.accept();
-                    ast_.push_back( new Ast::ApplyEnumOperator( openum ) );
-                    continue;
+                    eatwhitespace(mark);
+                    char c = mark.getc();
+                    if (c != '.') // "Object Method / Message / Dereference / Index" operator
+                    {
+                        mark.regurg(c);
+                        ast_.push_back( new Ast::ApplyCustomOperator( internstring(token) ) );
+                    }
+                    else
+                    {
+                        mark.accept();
+                        try
+                        {
+                            Identifier methodName( mark );
+                            mark.accept();
+                            ast_.push_back( new Ast::ApplyCustomOperatorDotted( internstring(token), internstring(methodName.name()) ) );
+                        }
+                        catch( const ErrorNoMatch& )
+                        {
+                            bangerr(ParseFail) << "valid identifier must follow .operator in " << mark.sayWhere();
+                        }
+                    }
                 }
+                continue;
             }
             catch( const ErrorNoMatch& )
             {
