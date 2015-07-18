@@ -39,6 +39,20 @@ namespace Bang
     class BoundProgram;
     class RunContext;
     class ParsingContext;
+    class Value;
+
+    enum EOperators
+    {
+        kOpPlus, kOpMinus, kOpLt, kOpGt, kOpEq, kOpMult, kOpDiv, kOpModulo,
+
+        kOpCustom, kOpLAST
+    };
+    
+    typedef void (*tfn_operator)( const Value& v, Stack& );
+    struct Operators
+    {
+        tfn_operator optable[kOpLAST];
+    };
    
     typedef void (*tfn_primitive)( Stack&, const RunContext& );
 
@@ -657,6 +671,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         void tostring( std::ostream& ) const;
     
         void dump( std::ostream& o ) const;
+        
+        void applyOperator( EOperators which, Stack& ) const;
     }; // end, class Value
 
     class NthParent {
@@ -868,8 +884,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Function& operator=(const Function&);
     private:
     public:
+        Operators* operators;
 //        std::weak_ptr<Function> self_;
-        Function() {} // : isClosure_(false) {}
+        Function();
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
     };

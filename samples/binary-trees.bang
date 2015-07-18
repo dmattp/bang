@@ -1,4 +1,4 @@
-# 1 < ? 14; as N
+# 1 < ? 12; as N
 
 -- The Computer Language Benchmarks Game
 -- http://benchmarksgame.alioth.debian.org/
@@ -76,7 +76,7 @@ fun depth_div2 = {
 } mindepth 2 / maxdepth 2 / range!
 
 longlivedtree ItemCheck! as lltcheck
-'llt depth=' maxdepth tostring! + ' check=' + lltcheck tostring! +@
+maxdepth lltcheck 'llt depth=%@ check=%@\n' print!
 
 
 ----io.write(string.format("long lived tree of depth %d\t check: %d\n",

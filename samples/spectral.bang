@@ -1,4 +1,4 @@
-# 1 < ? 950; as N
+# 1 < ? 125; as N
 
 
 def :times = { swap! as loopFun

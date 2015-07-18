@@ -4,7 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define HAVE_MUTATION 1  // enable '|>' operator; boo
+#define HAVE_MUTATION 0  // enable '|>' operator; boo
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -13,6 +13,8 @@
 #endif
 #define HAVE_DOT_OPERATOR 1
 #define DOT_OPERATOR_INLINE 1
+
+#define HAVE_COMPLETE_OPERATORS 0
 
 /*
   Keywords
@@ -99,11 +101,6 @@ namespace {
         }
     };
 #define bangerr(...) for ( ebuild<__VA_ARGS__> err; true; err.throw_() ) err
-
-
-
-    
-    
     
 }
 
@@ -358,41 +355,26 @@ namespace Ast { class Base; }
         ppInstr = inppInstr;
     }
 
-namespace Primitives
+namespace Numbers
 {
     template <class T>
-    void infix2to1( Stack& s, T operation )
+    void infix2to1( double v2, Stack& s, T operation )
     {
-        double v2 = s.loc_top().tonum();
-        s.pop_back();
         Value& v1 = s.loc_topMutate();
-
-//        if (v1.isnum() && v2.isnum())
-        {
-            v1.mutateNoType( operation( v1.tonum(), v2 ) );
-        }
-//         else
-//             throw std::runtime_error("Binary operator incompatible types");
+        // typecheck v1 here
+        v1.mutateNoType( operation( v1.tonum(), v2 ) );
     }
 
     template <class T>
-    void infix2to1bool( Stack& s, T operation )
+    void infix2to1bool( double v2, Stack& s, T operation )
     {
-        double v2 = s.loc_top().tonum();
-        s.pop_back();
         Value& v1 = s.loc_topMutate();
-
-//        if (v1.isnum() && v2.isnum())
-        {
-            v1.mutatePrimitiveToBool( operation( v1.tonum(), v2 ) );
-        }
-//         else
-//             throw std::runtime_error("Binary operator.b incompatible types");
+        // typecheck v1 here
+        v1.mutatePrimitiveToBool( operation( v1.tonum(), v2 ) );
     }
     
-    void plus ( Stack& s, const RunContext& )
-    {
-//        if (s.loc_top().isnum())
+
+#if 0 // Strings::plus    
         if (s.loc_top().isstr())
         {
             bangstring v2 = s.loc_top().tostr();
@@ -400,17 +382,25 @@ namespace Primitives
             bangstring v1 = s.pop().tostr();
             s.push( v1 + v2 );
         }
-        else
-            infix2to1( s, [](double v1, double v2) { return v1 + v2; } );
-    }
-    void minus( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 - v2; } ); }
-    void mult ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 * v2; } ); }
-    void div  ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return v1 / v2; } ); }
-    void lt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 < v2; } ); }
-    void gt   ( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 > v2; } ); }
-    void modulo ( Stack& s, const RunContext& ) { infix2to1( s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
-    void eq( Stack& s, const RunContext& ) { infix2to1bool( s, [](double v1, double v2) { return v1 == v2; } ); }
+#endif
+    
+    void minus  ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 - v2; } ); }
+    void plus   ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 + v2; } ); }
+    void mult   ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 * v2; } ); }
+    void div    ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 / v2; } ); }
+    void lt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 < v2; } ); }
+    void gt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 > v2; } ); }
+    void modulo ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
+    void eq     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 == v2; } ); }
 
+    void custom     ( const Value& v, Stack& s ) {
+        bangerr() << "custom operotar not implemented for numbers";
+    }
+    
+} // end, Numbers namespace
+    
+namespace Primitives
+{
     void increment( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() + 1 ); }
     void decrement( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() - 1 ); }
     
@@ -561,6 +551,65 @@ namespace Primitives
 } // end, namespace Primitives
 
 
+    Bang::Operators gNumberOperators;
+    Bang::Operators gStringOperators;
+    Bang::Operators gFunctionOperators;
+
+    Bang::Function:: Function()
+    : operators( &gFunctionOperators )
+    {}
+
+    /*
+    :  c == '+' ? Primitives::plus
+    :  c == '-' ? Primitives::minus
+    :  c == '<' ? Primitives::lt
+    :  c == '>' ? Primitives::gt
+    :  c == '=' ? Primitives::eq
+    :  c == '*' ? Primitives::mult
+    :  c == '/' ? Primitives::div
+    */
+
+    static void initPrimitiveOperators()
+    {
+        gNumberOperators.optable[kOpPlus]   = &Numbers::plus;
+        gNumberOperators.optable[kOpMinus]  = &Numbers::minus;
+        gNumberOperators.optable[kOpLt]     = &Numbers::lt;
+        gNumberOperators.optable[kOpGt]     = &Numbers::gt;
+        gNumberOperators.optable[kOpEq]     = &Numbers::eq;
+        gNumberOperators.optable[kOpMult]   = &Numbers::mult;
+        gNumberOperators.optable[kOpDiv]    = &Numbers::div;
+        gNumberOperators.optable[kOpModulo] = &Numbers::modulo;
+        gNumberOperators.optable[kOpCustom] = &Numbers::custom;
+/*        
+        gNumberOperators[kOp] = &Numbers::;
+        gNumberOperators[kOp] = &Numbers::;
+        gNumberOperators[kOp] = &Numbers::;
+
+        gStringOperators[kOp] = &Strings::;
+        gStringOperators[kOp] = &Strings::;
+        gStringOperators[kOp] = &Strings::;
+        gStringOperators[kOp] = &Strings::;
+*/
+    }
+
+
+    void Value::applyOperator( EOperators which, Stack& s ) const
+    {
+        tfn_operator* optable;
+        switch (type_)
+        {
+            case kNum: optable = gNumberOperators.optable; break;
+            case kStr: optable = gStringOperators.optable; break;
+            case kFun: // fall through
+            case kBoundFun: optable = this->tofun()->operators->optable; break;
+            case kFunPrimitive: bangerr() << "operators not supported for function primitives"; break; 
+            case kThread: bangerr() << "operators not supported for threads"; break; 
+        }
+        (*optable[which])( *this, s );
+    }
+    
+
+
 static tfn_primitive bangprimforchar( int c )
 {
     return
@@ -575,15 +624,7 @@ static tfn_primitive bangprimforchar( int c )
     // I mean, I guess pushing them directly in the Rst will be "faster" than
     // doing a lookup and pushing an upvalue, so that's something - especially
     // for logical / comparison operators, but I'd still like to see them not be a special case
-    :  c == '+' ? Primitives::plus
-    :  c == '-' ? Primitives::minus
-    :  c == '<' ? Primitives::lt
-    :  c == '>' ? Primitives::gt
-    :  c == '=' ? Primitives::eq
-    :  c == '*' ? Primitives::mult
-    :  c == '/' ? Primitives::div
     :  c == '\\' ? Primitives::drop
-    :  c == '%' ? Primitives::modulo
     :  c == '(' ? Primitives::beginStackBound
     :  c == ')' ? Primitives::endStackBound
 
@@ -776,6 +817,7 @@ namespace Ast
         ;
 #endif 
     };
+    
 
     class ApplyDotOperatorUpval : public Base
     {
@@ -809,12 +851,32 @@ namespace Ast
             return rc.getUpValue( uvnumber_ );
         }
     };
+
+
+
+    class ApplyEnumOperator : public Base
+    {
+    public:
+        EOperators openum_ ; // method
+        ApplyEnumOperator( EOperators openum )
+        : openum_( openum )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyEnumOperator(" << openum_ << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+        {
+            const Value& owner = stack.pop();
+            owner.applyOperator( openum_, stack );
+        }
+    };
     
     
     class PushPrimitive: public Base
     {
-//        friend void OptimizeAst( std::vector<Ast::Base*>& ast );
-
     public:
         tfn_primitive primitive_;
         std::string desc_;
@@ -2123,7 +2185,7 @@ class Parser
             {
                 name_.push_back(c);
                 mark.accept();
-
+
                 for (c = mark.getc(); isalpha(c) || isdigit(c) || (c=='_'); c = mark.getc())
                 {
                     name_.push_back(c);
@@ -2143,6 +2205,44 @@ class Parser
         const std::string& name() { return name_; }
     };
 
+    static bool isoperatorchar( char c )
+    {
+        auto found = strchr( "+-<>=/*@$%^&", c );
+        return found ? true : false;
+    }
+
+    static bool operatorterminator( char c )
+    {
+        if (isspace(c))
+            return true;
+        
+        auto found = strchr( ";}).!", c );
+        return found ? true : false;
+    }
+    
+    class OperatorToken
+    {
+        std::string name_;
+    public:
+        OperatorToken( StreamMark& stream )
+        {
+            StreamMark mark(stream);
+            char c = mark.getc();
+            
+            if (!isoperatorchar(c))
+                throw ErrorNoMatch();
+
+            do
+            {
+                name_.push_back(c);
+                mark.accept();
+                c = mark.getc();
+            }
+            while (!operatorterminator(c));
+        }
+        const std::string& name() { return name_; }
+    };
+    
     static bool eatReservedWord( const std::string& rw, StreamMark& stream )
     {
         StreamMark mark(stream);
@@ -2481,29 +2581,31 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
 
+#if 1 // HAVE_COMPLETE_OPERATORS    
     for (int i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
         if (plit && plit->v_.isnum() && plit->v_.tonum() == 1.0)
         {
-            Ast::ApplyPrimitive* pprim = dynamic_cast<Ast::ApplyPrimitive*>(ast[i+1]);
+            Ast::ApplyEnumOperator* pprim = dynamic_cast<Ast::ApplyEnumOperator*>(ast[i+1]);
             if (pprim)
             {
-                if (pprim->primitive_ == &Primitives::plus)
+                if (pprim->openum_ == kOpPlus)
                 {
-                    pprim->primitive_ = &Primitives::increment;
-                    pprim->desc_ = "increment";
+                    Ast::PushPrimitive p( &Primitives::increment, "increment" );
+                    ast[i+1] = new Ast::ApplyPrimitive( &p );
                     ast[i] = &noop;
                 }
-                else if (pprim->primitive_ == &Primitives::minus)
+                else if (pprim->openum_ == kOpMinus)
                 {
-                    pprim->primitive_ = &Primitives::decrement;
-                    pprim->desc_ = "decrement";
+                    Ast::PushPrimitive p( &Primitives::decrement, "decrement" );
+                    ast[i+1] = new Ast::ApplyPrimitive( &p );
                     ast[i] = &noop;
                 }
             }
         }
     }
+#endif 
 
     delNoops();
 
@@ -2602,6 +2704,8 @@ namespace Primitives {
     {
         StreamMark mark(stream);
 
+        { static bool isinit = false; if (!isinit) { initPrimitiveOperators(); isinit = true; } }
+
         try
         {
             Parser parser( parsectx, mark, upvalchain );
@@ -2650,6 +2754,26 @@ namespace Primitives {
         }
 
         return fun;
+    }
+
+
+    EOperators optoken2enum( const std::string& op )
+    {
+        if (op.size() != 1)
+            return kOpCustom;
+
+        switch (op.front())
+        {
+            case '+': return kOpPlus;
+            case '-': return kOpMinus;
+            case '<': return kOpLt;
+            case '>': return kOpGt;
+            case '=': return kOpEq;
+            case '*': return kOpMult;
+            case '/': return kOpDiv;
+            case '%': return kOpModulo;
+            default: return kOpCustom;
+        };
     }
     
     
@@ -2866,6 +2990,28 @@ Parser::Program::Program
             }
                 
             mark.regurg(c); // no single char operator found
+
+            try
+            {
+                OperatorToken op( mark );
+                const std::string& token = op.name();
+                // std::cerr << "got operator token=" << op.name() << std::endl;
+                EOperators openum = optoken2enum( token );
+                if (openum == kOpCustom)
+                {
+                    bangerr(ParseFail) << "e02a Parsing, custom operators not yet supported" << " in " << mark.sayWhere();
+                }
+                else
+                {
+                    mark.accept();
+                    ast_.push_back( new Ast::ApplyEnumOperator( openum ) );
+                    continue;
+                }
+            }
+            catch( const ErrorNoMatch& )
+            {
+            }
+            
 
             //////////////////////////////////////////////////////////////////
             // Reserved Words
