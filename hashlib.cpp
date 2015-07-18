@@ -30,7 +30,9 @@ namespace Hashlib
 //     {
 //         return jenkins_one_at_a_time_hash( &s.front(), s.length() );
 //     }
-    
+
+    // i wonder if the point of the 'seed' here is to thwart attacks based on
+    // known hash values
 //     unsigned int luaS_hash (const char *str, size_t l ) { // , unsigned int seed) {
 //         unsigned int h = 0xdeadbeef ^ ((unsigned int)(l));
 //         size_t l1;

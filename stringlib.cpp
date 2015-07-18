@@ -7,8 +7,6 @@
 
 namespace String
 {
-
-    
     using namespace Bang;
     void checkstrtype( const Bang::Value& v )
     {
@@ -34,24 +32,6 @@ namespace String
         const Value& vStr = s.pop();
         checkstrtype( vStr );
         s.push( std::string(vStr.tostr()).substr( sBeg.tonum(), sEnd.tonum()-sBeg.tonum()+1 ) );
-    }
-
-    void lt( Bang::Stack& s, const Bang::RunContext& ctx)
-    {
-        const Value& sRt = s.pop();
-        const Value& sLt = s.pop();
-        checkstrtype( sLt );
-        checkstrtype( sRt );
-        s.push( std::string(sLt.tostr()) < std::string(sRt.tostr()) );
-    }
-
-    void eq( Bang::Stack& s, const Bang::RunContext& ctx)
-    {
-        const Value& sRt = s.pop();
-        const Value& sLt = s.pop();
-        checkstrtype( sLt );
-        checkstrtype( sRt );
-        s.push( sLt.tostr() == sRt.tostr() );
     }
 
     void byte( Bang::Stack& s, const Bang::RunContext& ctx)
@@ -100,8 +80,6 @@ namespace String
         const Bang::tfn_primitive p =
             (  str == "len"    ? &len
             :  str == "sub"    ? &sub
-            :  str == "lt"     ? &lt
-            :  str == "eq"     ? &eq
             :  str == "byte"     ? &byte
             :  str == "to-bytes"   ? &to_bytes
             :  str == "from-bytes"   ? &from_bytes

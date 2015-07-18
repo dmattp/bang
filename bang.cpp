@@ -4,7 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define HAVE_MUTATION 0  // enable '|>' operator; boo
+#define HAVE_MUTATION 1  // enable '|>' operator; boo
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -375,13 +375,6 @@ namespace Numbers
     
 
 #if 0 // Strings::plus    
-        if (s.loc_top().isstr())
-        {
-            bangstring v2 = s.loc_top().tostr();
-            s.pop_back();
-            bangstring v1 = s.pop().tostr();
-            s.push( v1 + v2 );
-        }
 #endif
     
     void minus  ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 - v2; } ); }
@@ -551,8 +544,57 @@ namespace Primitives
 } // end, namespace Primitives
 
 
-    Bang::Operators gNumberOperators;
-    Bang::Operators gStringOperators;
+    struct NumberOps : public Bang::Operators
+    {
+        NumberOps()
+        {
+            optable[kOpPlus]   = &Numbers::plus;
+            optable[kOpMinus]  = &Numbers::minus;
+            optable[kOpLt]     = &Numbers::lt;
+            optable[kOpGt]     = &Numbers::gt;
+            optable[kOpEq]     = &Numbers::eq;
+            optable[kOpMult]   = &Numbers::mult;
+            optable[kOpDiv]    = &Numbers::div;
+            optable[kOpModulo] = &Numbers::modulo;
+            optable[kOpCustom] = &Numbers::custom;
+        }
+    } gNumberOperators;
+    
+    struct StringOps : public Bang::Operators
+    {
+        static void lt( const Bang::Value& sRt, Bang::Stack& s )
+        {
+            const bangstring& sLt = s.poptostr();
+            s.push( sLt < sRt.tostr() );
+        }
+
+        static void eq( const Bang::Value& sRt, Bang::Stack& s )
+        {
+            const bangstring& sLt = s.poptostr();
+            s.push( sLt == sRt.tostr() );
+        }
+
+        static void gt( const Bang::Value& sRtv, Bang::Stack& s )
+        {
+            const bangstring& sLt = s.poptostr();
+            const bangstring& sRt = sRtv.tostr();
+            s.push( !(sLt == sRt) && !(sLt < sRt) );
+        }
+        static void plus( const Bang::Value& sRtv, Bang::Stack& s )
+        {
+            const bangstring& v2 = sRtv.tostr();
+            const bangstring& v1 = s.poptostr();
+            s.push( std::string(v1) + std::string(v2) );
+        }
+        StringOps()
+        {
+            optable[kOpEq]   = &eq;
+            optable[kOpLt]   = &lt;
+            optable[kOpGt]   = &gt;
+            optable[kOpPlus]   = &plus;
+        }
+    } gStringOperators;
+    
     Bang::Operators gFunctionOperators;
 
     Bang::Function:: Function()
@@ -568,29 +610,6 @@ namespace Primitives
     :  c == '*' ? Primitives::mult
     :  c == '/' ? Primitives::div
     */
-
-    static void initPrimitiveOperators()
-    {
-        gNumberOperators.optable[kOpPlus]   = &Numbers::plus;
-        gNumberOperators.optable[kOpMinus]  = &Numbers::minus;
-        gNumberOperators.optable[kOpLt]     = &Numbers::lt;
-        gNumberOperators.optable[kOpGt]     = &Numbers::gt;
-        gNumberOperators.optable[kOpEq]     = &Numbers::eq;
-        gNumberOperators.optable[kOpMult]   = &Numbers::mult;
-        gNumberOperators.optable[kOpDiv]    = &Numbers::div;
-        gNumberOperators.optable[kOpModulo] = &Numbers::modulo;
-        gNumberOperators.optable[kOpCustom] = &Numbers::custom;
-/*        
-        gNumberOperators[kOp] = &Numbers::;
-        gNumberOperators[kOp] = &Numbers::;
-        gNumberOperators[kOp] = &Numbers::;
-
-        gStringOperators[kOp] = &Strings::;
-        gStringOperators[kOp] = &Strings::;
-        gStringOperators[kOp] = &Strings::;
-        gStringOperators[kOp] = &Strings::;
-*/
-    }
 
 
     void Value::applyOperator( EOperators which, Stack& s ) const
@@ -2704,7 +2723,7 @@ namespace Primitives {
     {
         StreamMark mark(stream);
 
-        { static bool isinit = false; if (!isinit) { initPrimitiveOperators(); isinit = true; } }
+//        { static bool isinit = false; if (!isinit) { initPrimitiveOperators(); isinit = true; } }
 
         try
         {
