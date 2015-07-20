@@ -11,60 +11,6 @@ namespace Hashlib
 {
     using namespace Bang;
 
-//     unsigned jenkins_one_at_a_time_hash(const char *key, size_t len)
-//     {
-//         unsigned hash, i;
-//         for(hash = i = 0; i < len; ++i)
-//         {
-//             hash += key[i];
-//             hash += (hash << 10);
-//             hash ^= (hash >> 6);
-//         }
-//         hash += (hash << 3);
-//         hash ^= (hash >> 11);
-//         hash += (hash << 15);
-//         return hash;
-//     }
-
-//     unsigned jenkins_one_at_a_time_hash(const std::string& s )
-//     {
-//         return jenkins_one_at_a_time_hash( &s.front(), s.length() );
-//     }
-
-    // i wonder if the point of the 'seed' here is to thwart attacks based on
-    // known hash values
-//     unsigned int luaS_hash (const char *str, size_t l ) { // , unsigned int seed) {
-//         unsigned int h = 0xdeadbeef ^ ((unsigned int)(l));
-//         size_t l1;
-//         size_t step = (l >> 5) + 1;
-//         for (l1 = l; l1 >= step; l1 -= step)
-//             h = h ^ ((h<<5) + (h>>2) + ((unsigned char)(str[l1 - 1])));
-//         return h;
-//     }
-
-#if 0    
-    ::std::size_t StringHashFunction::operator ()(const Bang::bangstring& str) const
-    {
-        return str.gethash();
-//             const int len = str.length();
-//             return jenkins_one_at_a_time_hash( &str.front(), len );
-//            return luaS_hash( &str.front(), len );
-    }
-#endif 
-
-
-//     class SetBangHash : public Function
-//     {
-//         gcptr<BangHash> hash_;
-//     public:
-//         SetBangHash( const gcptr<BangHash>& hash )
-//         : hash_( hash )
-//         {}
-        
-//         virtual void apply( Stack& s ); // , CLOSURE_CREF running )
-//     }; // end, SetBangHash
-
-
     void BangHash::set( Stack& s ) // , CLOSURE_CREF running )
     {
         const Value& vkey = s.pop();
@@ -80,9 +26,13 @@ namespace Hashlib
     
     DLLEXPORT void BangHash::set( const bangstring& key, const Value& v )
     {
-        auto loc = hash_.find( key );
+        auto loc = this->find( key );
         if (loc == hash_.end())
-            hash_.insert( std::pair<bangstring,Value>( key, v ) );
+#if LCFG_HASHLIB_SIMPLEVEC
+            hash_.push_back( kvp_t( key, v ) );
+#else
+            hash_.insert( kvp_t( key, v ) );
+#endif 
         else
             loc->second = v;
     }
@@ -108,6 +58,18 @@ namespace Hashlib
 
     typedef BangMemFun<BangHash> BangHashMemFun;
 
+#if LCFG_HASHLIB_SIMPLEVEC
+    std::vector< BangHash::kvp_t >::iterator BangHash::find( const bangstring& key )
+    {
+        for (auto it = hash_.begin(); it != hash_.end(); ++it)
+        {
+            if (it->first == key)
+                return it;
+        }
+        return hash_.end();
+    }
+#endif 
+
     void BangHash::has( Stack& s ) // , CLOSURE_CREF running )
     {
         const Value& key = s.pop();
@@ -115,7 +77,7 @@ namespace Hashlib
         if (key.isstr())
         {
             const auto& keystr = key.tostr(); // .gethash();
-            auto loc = hash_.find(keystr);
+            auto loc = this->find( keystr );
             s.push( loc != hash_.end() );
         }
         else
@@ -141,19 +103,13 @@ namespace Hashlib
                 
             {
                 // auto hash = key.gethash();
-                auto loc = hash_.find( key );
+                auto loc = this->find( key );
                 if (loc != hash_.end())
                     s.push( loc->second );
             }
         }
     }
 
-//     void stackToArray( Stack& s, const RunContext& rc )
-//     {
-//         const auto& toArrayFun = NEW_BANGFUN(FunctionStackToArray)( s );
-//         toArrayFun->appendStack(s);
-//         s.push( STATIC_CAST_TO_BANGFUN(toArrayFun) );
-//     }
     void BangHash::customOperator( const Value& v, const bangstring& theOperator, Stack& s)
     {
         const static Bang::bangstring opHas("/has");
@@ -173,6 +129,12 @@ namespace Hashlib
         else if (theOperator == opKeys)
         {
             self.keys(s);
+        }
+        else if (theOperator[0] == '>' && theOperator[1] == '>')
+        {
+            bangstring key( &theOperator.front(), theOperator.size()-2 );
+            const Value& v = s.pop();
+            self.set( key, v );
         }
     }
 

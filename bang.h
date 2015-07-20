@@ -314,6 +314,15 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 std::copy( stdstr.begin(), stdstr.end(), str );
                 str[len] = 0;
             }
+            bangstringstore( const char* pstr, int inlen  )
+            : refcount(1),
+              len(inlen),
+              hash( calchash(pstr,inlen) )
+            {
+                str = new char[len+1];
+                std::copy( pstr, pstr+inlen, str );
+                str[len] = 0;
+            }
             ~bangstringstore()
             {
                 delete[] str;
@@ -371,6 +380,10 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         unsigned gethash() const { return store_->hash; }
         bangstring( const std::string& other )
         : store_( new bangstringstore(other) )
+        {
+        }
+        bangstring( const char* pstr, int len  )
+        : store_( new bangstringstore(pstr, len) )
         {
         }
         bangstring( const bangstring& other )
