@@ -30,6 +30,8 @@ static const char* const BANG_VERSION = "0.004";
 # include "gc_allocator.h"
 #endif
 
+#include "atomic.h"
+
 
 namespace Bang
 {
@@ -139,16 +141,18 @@ namespace Bang
         {}
         void ref()
         {
-            ++refcount_;
+            Atomic::add( refcount_, 1 );
+//            ++refcount_;
 //            std::cerr << "gcbase=" << this << " ref=" << refcount_ << "\n";
         }
         void unref()
         {
 //            std::cerr << "gcbase=" << this << " UNREF=" << refcount_ << "\n";
-            if (refcount_ > 1)
-                --refcount_;
-            else
+            int oldval = Atomic::add( refcount_, -1 );
+            if (oldval == 1) // i am the winner!
+            {
                 deleter_(static_cast<T*>(this));
+            }
         }
     };
 
@@ -329,17 +333,15 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             }
             void unref()
             {
-                if (refcount > 1)
-                    --refcount;
-                else
+                const int oldval = Atomic::add( refcount, -1 );
+                if (oldval == 1) // i am the winner!
                 {
-//                    std::cerr << "delete bangstring, v=" << str << std::endl;
                     delete this;
                 }
             }
             void ref()
             {
-                ++refcount;
+                Atomic::add( refcount, 1 );
             }
             bool operator==( const bangstringstore& rhs ) const
             {
@@ -1022,6 +1024,69 @@ DLLEXPORT void RunProgram
     };
 
 
+
+
+template< class Tp >    
+struct FcStackHdr
+{
+    FcStackHdr<Tp>* prev;
+};
+
+
+template <class Tp>
+struct SimplePTAllocator
+{
+    typedef Tp value_type;
+    SimplePTAllocator(/*ctor args*/) : head(nullptr) {}
+    template <class T> SimplePTAllocator(const SimplePTAllocator<T>& other){}
+    template <class U> struct rebind { typedef SimplePTAllocator<U> other; };
+    FcStackHdr<Tp>* head;
+    
+    Tp* allocate(std::size_t n)
+    {
+        FcStackHdr<Tp>* hdr;
+        if (this->head)
+        {
+            hdr = this->head;
+            this->head = hdr->prev;
+        }
+        else
+        {
+            hdr = static_cast<FcStackHdr<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStackHdr<Tp>)) ) );
+//            ++gAllocated;
+        }
+        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
+        return mem;
+    }
+    void deallocate(Tp* p, std::size_t n)
+    {
+        FcStackHdr<Tp>* hdr = reinterpret_cast<FcStackHdr<Tp>*>(p);
+        --hdr;
+        static char freeOne;
+        if ((++freeOne & 0xF) == 0)
+        {
+            free( hdr );
+        }
+        else
+        {
+            hdr->prev = this->head;
+            this->head = hdr;
+        }
+    }
+    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
+    void destroy(Tp* p) { p->~Tp(); }
+};
+template <class T, class U>
+bool operator==(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
+{
+    return &a == &b;
+}
+template <class T, class U>
+bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
+{
+    return &a != &b;
+}
+    
     class Thread
     {
     public:
@@ -1029,6 +1094,8 @@ DLLEXPORT void RunProgram
         RunContext* callframe;
         Thread* pCaller;
         BANGFUNPTR boundProg_; // probably should have distinct type, BANGBOUNDPROGPTR or something
+        SimplePTAllocator<RunContext> rcAlloc_;
+        SimplePTAllocator<Upvalue> upvalAlloc_;
         Thread()
         : // pInteract( nullptr ),
         callframe( nullptr ),

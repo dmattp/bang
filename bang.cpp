@@ -30,7 +30,7 @@ Well, with the "module/object" system, there is now a second:
 And there are some built-in operators:
 
   Operators
-     ! -- apply
+     ! -- applyn
      ? -- conditional apply
 
 And syntactic sugar
@@ -54,6 +54,7 @@ And there are primitives, until a better library / module system is in place.
 #include <algorithm>
 #include <iterator>
 #include <map>
+#include <mutex> // for threadsafe upvalue allocator
 
 #include <stdio.h>
 #include <ctype.h>
@@ -175,6 +176,168 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
     return &a != &b;
 }
 
+
+    class recursive_mutex
+    {
+    public:
+        recursive_mutex()
+        {
+            InitializeCriticalSection(&m_cs);
+        }
+        ~recursive_mutex()
+        {
+            DeleteCriticalSection(&m_cs);
+        }
+        void lock()
+        {
+            EnterCriticalSection(&m_cs);
+        }
+        void unlock()
+        {
+            LeaveCriticalSection(&m_cs);
+        }
+        bool try_lock()
+        {
+            return !!TryEnterCriticalSection(&m_cs);
+        }
+    private:
+        CRITICAL_SECTION m_cs;
+        recursive_mutex( const recursive_mutex& ); // not implemented; private to prevent copying.
+    };
+    
+template <class Tp>
+struct SimpleThreadSafeAllocator
+{
+    typedef Tp value_type;
+    SimpleThreadSafeAllocator(/*ctor args*/) {}
+    template <class T> SimpleThreadSafeAllocator(const SimpleThreadSafeAllocator<T>& other){}
+    template <class U> struct rebind { typedef SimpleThreadSafeAllocator<U> other; };
+    recursive_mutex theLock;
+    
+    Tp* allocate(std::size_t n)
+    {
+        theLock.lock();
+        FcStack<Tp>* hdr;
+        if (FcStack<Tp>::head)
+        {
+            hdr = FcStack<Tp>::head;
+            FcStack<Tp>::head = hdr->prev;
+        }
+        else
+        {
+            hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
+//            ++gAllocated;
+        }
+        theLock.unlock();
+        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
+        return mem;
+    }
+    void deallocate(Tp* p, std::size_t n)
+    {
+        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
+        --hdr;
+        static char freeOne;
+        if ((++freeOne & 0xF) == 0)
+        {
+//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
+//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
+//            --gAllocated;
+            free( hdr );
+        }
+        else
+        {
+            theLock.lock();
+            hdr->prev = FcStack<Tp>::head;
+            FcStack<Tp>::head = hdr;
+            theLock.unlock();
+        }
+    }
+    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
+    void destroy(Tp* p) { p->~Tp(); }
+};
+template <class T, class U>
+bool operator==(const SimpleThreadSafeAllocator<T>& a, const SimpleThreadSafeAllocator<U>& b)
+{
+    return &a == &b;
+}
+template <class T, class U>
+bool operator!=(const SimpleThreadSafeAllocator<T>& a, const SimpleThreadSafeAllocator<U>& b)
+{
+    return &a != &b;
+}
+
+
+template <class Tp>
+struct LockfreeSimpleStackAllocator
+{
+    typedef Tp value_type;
+    LockfreeSimpleStackAllocator(/*ctor args*/) {}
+    template <class T> LockfreeSimpleStackAllocator(const LockfreeSimpleStackAllocator<T>& other){}
+    template <class U> struct rebind { typedef LockfreeSimpleStackAllocator<U> other; };
+    
+    Tp* allocate(std::size_t n)
+    {
+        FcStack<Tp>* hdr;
+
+        while (true)
+        {
+            hdr = FcStack<Tp>::head;
+            
+            if (!hdr)
+            {
+                hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
+                break;
+            }
+            else
+            {
+                if (hdr == Atomic::cmpxchg( FcStack<Tp>::head, hdr, hdr->prev ) )
+                    break;
+            }
+        }
+        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
+        return mem;
+    }
+    void deallocate(Tp* p, std::size_t n)
+    {
+        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
+        --hdr;
+        static char freeOne;
+        if ((++freeOne & 0xF) == 0)
+        {
+//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
+//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
+//            --gAllocated;
+            free( hdr );
+        }
+        else
+        {
+            auto found = FcStack<Tp>::head;
+            FcStack<Tp>* lastfound;
+            do
+            {
+                lastfound = found;
+                hdr->prev = found;
+                found = Atomic::cmpxchg( FcStack<Tp>::head, found, hdr );
+            }
+            while (found != lastfound);
+        }
+    }
+    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
+    void destroy(Tp* p) { p->~Tp(); }
+};
+template <class T, class U>
+bool operator==(const LockfreeSimpleStackAllocator<T>& a, const LockfreeSimpleStackAllocator<U>& b)
+{
+    return &a == &b;
+}
+template <class T, class U>
+bool operator!=(const LockfreeSimpleStackAllocator<T>& a, const LockfreeSimpleStackAllocator<U>& b)
+{
+    return &a != &b;
+}
+    
+
+    
 template <class Tp>
 struct SimplestAllocator
 {
@@ -209,10 +372,11 @@ bool operator!=(const SimplestAllocator<T>& a, const SimplestAllocator<U>& b)
 #endif
 
 #if !USE_GC    
-SimpleAllocator< Upvalue > gUpvalAlloc;
+//LockfreeSimpleStackAllocator< Upvalue > gUpvalAlloc;
+//SimplestAllocator< Upvalue > gUpvalAlloc;
+SimpleThreadSafeAllocator< Upvalue > gUpvalAlloc;
 #endif 
 
-    
         
 #if USE_GC
 # define NEW_UPVAL new Upvalue
@@ -231,7 +395,7 @@ SimpleAllocator< Upvalue > gUpvalAlloc;
 
 #else    
 // # define NEW_UPVAL(c,p,v) gcptrupval( new Upvalue( c, p, v ) )
-# define NEW_UPVAL(c,p,v) gcptrupval( new (::operator new (sizeof(Upvalue))) Upvalue( c, p, v ) )
+# define NEW_UPVAL(c,p,v,thr) gcptrupval( new (::operator new (sizeof(Upvalue))) Upvalue( c, p, v ) )
 DLLEXPORT void GCDellocator<Upvalue>::freemem(Upvalue* p)
 {
     ::operator delete(p);
@@ -1375,7 +1539,7 @@ namespace Primitives {
         throw std::runtime_error(oss.str());
     }
 
-SimpleAllocator<RunContext> gAllocRc;
+//SimplestAllocator<RunContext> gAllocRc;
 
 
     void Thread::setcallin(Thread*caller)
@@ -1389,7 +1553,7 @@ SimpleAllocator<RunContext> gAllocRc;
             BoundProgram* pbound = reinterpret_cast<BoundProgram*>( boundProg_.get() );
 
             this->callframe =
-                new (gAllocRc.allocate(sizeof(RunContext)))
+                new (this->rcAlloc_.allocate(sizeof(RunContext)))
                 RunContext( this, TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
         }
 
@@ -1439,7 +1603,7 @@ DLLEXPORT void RunProgram
 // ~~~todo: save initial upvalue, destroy when closing program?
 restartNonTail:
     pThread->callframe =
-        new (gAllocRc.allocate(sizeof(RunContext)))
+        new (pThread->rcAlloc_.allocate(sizeof(RunContext)))
         RunContext( pThread, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
 restartThread:
     pThread->callframe->thread = pThread;
@@ -1463,7 +1627,7 @@ restartTco:
                 {
                     RunContext* prev = frame.prev;
                     frame.~RunContext();
-                    gAllocRc.deallocate( &frame, sizeof(RunContext) );
+                    pThread->rcAlloc_.deallocate( &frame, sizeof(RunContext) );
                     pThread->callframe = prev;
                     if (prev)
                         goto restartReturn;

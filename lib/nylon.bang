@@ -11,8 +11,9 @@ def :cord cordfun = {
     def :the-startup-coroutine-wrapper xcord = {
       xcord.coro nsys.register-thread!
       xcord.coro nsys.schedule!
+      save-stack! as ss
       yield-nil!
-      xcord cordfun!
+      ss! xcord cordfun!
       xcord.coro nsys.unregister-thread!
     }
     
