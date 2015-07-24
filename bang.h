@@ -1095,7 +1095,6 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
         Thread* pCaller;
         BANGFUNPTR boundProg_; // probably should have distinct type, BANGBOUNDPROGPTR or something
         SimplePTAllocator<RunContext> rcAlloc_;
-        SimplePTAllocator<Upvalue> upvalAlloc_;
         Thread()
         : // pInteract( nullptr ),
         callframe( nullptr ),
