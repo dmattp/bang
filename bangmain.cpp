@@ -328,7 +328,8 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
         }
     }
     while (bInteractive);
-    
+
+    Bang::dumpProfilingStats();
     std::cerr << "toodaloo!" << std::endl;
 
     return 0;

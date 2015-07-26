@@ -23,9 +23,9 @@ def :cord cordfun = {
     def :schedule = coro nsys.schedule!;
 
     def :sleep seconds = {
-        seconds 'starting timer callback after %s seconds\n' print!
+--        seconds 'starting timer callback after %s seconds\n' print!
         fun = {
-            seconds 'got timer callback after %s seconds\n' print!
+--            seconds 'got timer callback after %s seconds\n' print!
             coro nsys.schedule!
         } seconds nsys.addOneShot!
 

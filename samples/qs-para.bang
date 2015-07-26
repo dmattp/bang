@@ -64,6 +64,6 @@ N testQuicksort!
 nylon.runloop!
 
 
-N 499 > ? { save-stack! drop! }
+N 9499 > ? { save-stack! drop! }
 
 -- with GC 1.2s

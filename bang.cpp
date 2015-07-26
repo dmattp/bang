@@ -4,7 +4,7 @@
 // All rights reserved, see accompanying [license.txt] file
 //////////////////////////////////////////////////////////////////
 
-#define HAVE_MUTATION 1  // enable '|>' operator; boo
+#define HAVE_MUTATION 0  // enable '|>' operator; boo
 
 #if HAVE_MUTATION
 # if __GNUC__
@@ -15,6 +15,7 @@
 #define DOT_OPERATOR_INLINE 1
 
 #define HAVE_COMPLETE_OPERATORS 0
+#define LCFG_KEEP_PROFILING_STATS 1
 
 /*
   Keywords
@@ -54,7 +55,7 @@ And there are primitives, until a better library / module system is in place.
 #include <algorithm>
 #include <iterator>
 #include <map>
-#include <mutex> // for threadsafe upvalue allocator
+//#include <mutex> // for threadsafe upvalue allocator
 
 #include <stdio.h>
 #include <ctype.h>
@@ -222,13 +223,14 @@ struct SimpleThreadSafeAllocator
         {
             hdr = FcStack<Tp>::head;
             FcStack<Tp>::head = hdr->prev;
+            theLock.unlock();
         }
         else
         {
+            theLock.unlock();
             hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
 //            ++gAllocated;
         }
-        theLock.unlock();
         Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
         return mem;
     }
@@ -267,6 +269,7 @@ bool operator!=(const SimpleThreadSafeAllocator<T>& a, const SimpleThreadSafeAll
 }
 
 
+#if LCFG_MT_SAFEISH    
 template <class Tp>
 struct LockfreeSimpleStackAllocator
 {
@@ -274,6 +277,7 @@ struct LockfreeSimpleStackAllocator
     LockfreeSimpleStackAllocator(/*ctor args*/) {}
     template <class T> LockfreeSimpleStackAllocator(const LockfreeSimpleStackAllocator<T>& other){}
     template <class U> struct rebind { typedef LockfreeSimpleStackAllocator<U> other; };
+    static unsigned abactr;
     
     Tp* allocate(std::size_t n)
     {
@@ -281,17 +285,25 @@ struct LockfreeSimpleStackAllocator
 
         while (true)
         {
-            hdr = FcStack<Tp>::head;
+            FcStack<Tp>* const markedhdr = FcStack<Tp>::head;
             
-            if (!hdr)
+            if (!markedhdr)
             {
                 hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
+                if( ((uintptr_t)hdr) & 0x03)
+                {
+                    std::cerr << "malloc not 16 byte aligned" << std::endl;
+                    exit(-1);
+                }
                 break;
             }
             else
             {
-                if (hdr == Atomic::cmpxchg( FcStack<Tp>::head, hdr, hdr->prev ) )
+                FcStack<Tp>* const usablehdr = reinterpret_cast<FcStack<Tp>*>( (uintptr_t)markedhdr & ~((uintptr_t)0x3) );
+                if (hdr == Atomic::cmpxchg( FcStack<Tp>::head, markedhdr, usablehdr->prev ) )
+                {
                     break;
+                }
             }
         }
         Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
@@ -299,8 +311,8 @@ struct LockfreeSimpleStackAllocator
     }
     void deallocate(Tp* p, std::size_t n)
     {
-        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
-        --hdr;
+        FcStack<Tp>* const ashdr = reinterpret_cast<FcStack<Tp>*>(p);
+        FcStack<Tp>* const hdr = ashdr - 1;
         static char freeOne;
         if ((++freeOne & 0xF) == 0)
         {
@@ -311,13 +323,16 @@ struct LockfreeSimpleStackAllocator
         }
         else
         {
+            Atomic::add( abactr, 1 );
+            FcStack<Tp>* markedhdr = reinterpret_cast<FcStack<Tp>*>( (uintptr_t)hdr | (abactr & 0x3) );
+        
             auto found = FcStack<Tp>::head;
             FcStack<Tp>* lastfound;
             do
             {
                 lastfound = found;
                 hdr->prev = found;
-                found = Atomic::cmpxchg( FcStack<Tp>::head, found, hdr );
+                found = Atomic::cmpxchg( FcStack<Tp>::head, found, markedhdr );
             }
             while (found != lastfound);
         }
@@ -335,7 +350,9 @@ bool operator!=(const LockfreeSimpleStackAllocator<T>& a, const LockfreeSimpleSt
 {
     return &a != &b;
 }
-    
+template <class T>
+unsigned LockfreeSimpleStackAllocator<T>::abactr;
+#endif
 
     
 template <class Tp>
@@ -372,10 +389,15 @@ bool operator!=(const SimplestAllocator<T>& a, const SimplestAllocator<U>& b)
 #endif
 
 #if !USE_GC    
+#if LCFG_MT_SAFEISH    
 //LockfreeSimpleStackAllocator< Upvalue > gUpvalAlloc;
-//SimplestAllocator< Upvalue > gUpvalAlloc;
-SimpleThreadSafeAllocator< Upvalue > gUpvalAlloc;
+SimplestAllocator< Upvalue > gUpvalAlloc;
+#else
+SimpleAllocator< Upvalue > gUpvalAlloc;
 #endif 
+//SimpleThreadSafeAllocator< Upvalue > gUpvalAlloc;
+#endif
+    
 
         
 #if USE_GC
@@ -779,10 +801,23 @@ namespace Primitives
     :  c == '/' ? Primitives::div
     */
 
+#if LCFG_KEEP_PROFILING_STATS    
+    unsigned operatorCounts[kOpLAST];
+    DLLEXPORT void dumpProfilingStats()
+    {
+        for (int i = 0; i < kOpLAST; ++i)
+        {
+            std::cout << "op=" << i << " count=" << operatorCounts[i] << std::endl;
+        }
+    }
+#endif
 
     void Value::applyOperator( EOperators which, Stack& s ) const
     {
         tfn_operator* optable;
+#if LCFG_KEEP_PROFILING_STATS
+        ++operatorCounts[which];
+#endif 
         switch (type_)
         {
             case kNum: optable = gNumberOperators.optable; break;

@@ -16,6 +16,7 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
+#define LCFG_MT_SAFEISH 1
 
 static const char* const BANG_VERSION = "0.004";
 
@@ -30,7 +31,14 @@ static const char* const BANG_VERSION = "0.004";
 # include "gc_allocator.h"
 #endif
 
-#include "atomic.h"
+#if LCFG_MT_SAFEISH 
+# include "atomic.h"
+#define MT_SAFEISH_INC(counter) Atomic::add( counter, 1 )
+#define MT_SAFEISH_DEC(counter) (1 == Atomic::add( counter, -1 ))
+#else
+#define MT_SAFEISH_INC(counter) ++counter
+#define MT_SAFEISH_DEC(counter) (0 == --counter)
+#endif
 
 
 namespace Bang
@@ -46,9 +54,26 @@ namespace Bang
 
     enum EOperators
     {
-        kOpPlus, kOpMinus, kOpLt, kOpGt, kOpEq, kOpMult, kOpDiv, kOpModulo,
+        // operator   conventional meaning
+        kOpPlus,   // stack-0 + thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   A
+        kOpMinus,  // stack-0 - thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   A
+        kOpLt,     // stack-0 < thing  -> bool          // ApplyThingAndValue2BoolOperator    B
+        kOpGt,     // stack-0 > thing  -> bool          // ApplyThingAndValue2BoolOperator    B
+        kOpEq,     // stack-0 = thing  -> bool          // ApplyThingAndValue2BoolOperator    B
+        kOpMult,   // stack-0 * thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   C
+        kOpDiv,    // stack-0 / thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   C
+        kOpModulo, // stack-0 % thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   C
 
-        kOpCustom, kOpLAST
+        // kOpApply,   //  ... thing! -> ???            // ApplyThing2Stack                   D
+        // kOpDot,     //  ... thing .parse-time-ident -> ...
+        // kOpLogOr,   //  stack-0 || thing -> bool     // ApplyThingAndValue2BoolOperator    B
+        // kOpLogAnd,  //  stack-0 && thing -> bool     // ApplyThingAndValue2BoolOperator    B
+        // kOpLogNot,  //  ~thing -> bool               // ApplyThing2BoolOperator            E
+        // kOpIndex,   // ... thing[expression] -> ...  // ApplyThingAndValue2Stack           F
+        
+        kOpCustom,       // ... thing/custom -> ... // ApplyThingWithCustomOperator2Stack     G
+        //      kOpCustomDotted, // ... thing/custom.parse-time-ident -> ... // ApplyThingWithCustomOperator2Stack H
+        kOpLAST
     };
     
     typedef void (*tfn_operator)( const Value& v, Stack& );
@@ -141,15 +166,14 @@ namespace Bang
         {}
         void ref()
         {
-            Atomic::add( refcount_, 1 );
 //            ++refcount_;
 //            std::cerr << "gcbase=" << this << " ref=" << refcount_ << "\n";
+            MT_SAFEISH_INC( refcount_ );
         }
         void unref()
         {
 //            std::cerr << "gcbase=" << this << " UNREF=" << refcount_ << "\n";
-            int oldval = Atomic::add( refcount_, -1 );
-            if (oldval == 1) // i am the winner!
+            if (MT_SAFEISH_DEC( refcount_ ))
             {
                 deleter_(static_cast<T*>(this));
             }
@@ -333,15 +357,14 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             }
             void unref()
             {
-                const int oldval = Atomic::add( refcount, -1 );
-                if (oldval == 1) // i am the winner!
+                if (MT_SAFEISH_DEC(refcount)) // i am the winner!
                 {
                     delete this;
                 }
             }
             void ref()
             {
-                Atomic::add( refcount, 1 );
+                MT_SAFEISH_INC(refcount);
             }
             bool operator==( const bangstringstore& rhs ) const
             {
@@ -1184,6 +1207,7 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
 //        DLLEXPORT void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump);
     }; // end, class RequireKeyword
     
+    DLLEXPORT void dumpProfilingStats();
     
 } // end, namespace Bang
 
