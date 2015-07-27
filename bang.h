@@ -84,6 +84,8 @@ namespace Bang
         void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
         tfn_opThingAndValue2Value opPlus;
         tfn_opThingAndValue2Value opMult;
+        tfn_opThingAndValue2Value opGt;
+        tfn_opThingAndValue2Value opLt;
         tfn_operator optable[kOpLAST];
         Operators() {
             opPlus = nullptr;

@@ -567,13 +567,15 @@ namespace Numbers
     
     void minus  ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 - v2; } ); }
     void div    ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 / v2; } ); }
-    void lt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 < v2; } ); }
-    void gt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 > v2; } ); }
     void modulo ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
     void eq     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 == v2; } ); }
 
     Bang::Value plus( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() + thing.tonum() ); }
     Bang::Value mult( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() * thing.tonum() ); }
+    Bang::Value gt( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() > thing.tonum() ); }
+    Bang::Value lt( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() < thing.tonum() ); }
+//     void lt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 < v2; } ); }
+//     void gt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 > v2; } ); }
     
     void custom     ( const Value& v, Stack& s ) {
         bangerr() << "custom operotar not implemented for numbers";
@@ -743,10 +745,10 @@ namespace Primitives
         {
             opPlus = &Numbers::plus;
             opMult = &Numbers::mult;
+            opLt   = &Numbers::lt;
+            opGt   = &Numbers::gt;
 //            optable[kOpPlus]   = &Numbers::plus;
             optable[kOpMinus]  = &Numbers::minus;
-            optable[kOpLt]     = &Numbers::lt;
-            optable[kOpGt]     = &Numbers::gt;
             optable[kOpEq]     = &Numbers::eq;
 //            optable[kOpMult]   = &Numbers::mult;
             optable[kOpDiv]    = &Numbers::div;
@@ -757,23 +759,22 @@ namespace Primitives
     
     struct StringOps : public Bang::Operators
     {
-        static void lt( const Bang::Value& sRt, Bang::Stack& s )
-        {
-            const bangstring& sLt = s.poptostr();
-            s.push( sLt < sRt.tostr() );
-        }
-
         static void eq( const Bang::Value& sRt, Bang::Stack& s )
         {
             const bangstring& sLt = s.poptostr();
             s.push( sLt == sRt.tostr() );
         }
 
-        static void gt( const Bang::Value& sRtv, Bang::Stack& s )
+        static Bang::Value gt( const Bang::Value& sThing, const Bang::Value& sOther )
         {
-            const bangstring& sLt = s.poptostr();
-            const bangstring& sRt = sRtv.tostr();
-            s.push( !(sLt == sRt) && !(sLt < sRt) );
+            const bangstring& sLt = sOther.tostr();
+            const bangstring& sRt = sThing.tostr();
+            return Value( !(sLt == sRt) && !(sLt < sRt) );
+        }
+        static Bang::Value lt( const Bang::Value& sThing, const Bang::Value& sOther )
+        {
+            const bangstring& sLt = sOther.tostr();
+            return Value ( sLt < sThing.tostr() );
         }
         static Bang::Value plus( const Bang::Value& sThing, const Bang::Value& sOther )
         {
@@ -784,9 +785,8 @@ namespace Primitives
         StringOps()
         {
             optable[kOpEq]   = &eq;
-            optable[kOpLt]   = &lt;
-            optable[kOpGt]   = &gt;
-            // optable[kOpPlus]   = &plus;
+            opLt = &lt;
+            opGt = &gt;
             opPlus = &plus;
         }
     } gStringOperators;
@@ -858,6 +858,8 @@ namespace Primitives
         {
             case kOpPlus: return op->opPlus( *this, other );
             case kOpMult: return op->opMult( *this, other );
+            case kOpGt: return op->opGt( *this, other );
+            case kOpLt: return op->opLt( *this, other );
             default: bangerr() << "op=" << which << "not supported for type=" << type_;
         }
     }
@@ -1179,18 +1181,25 @@ namespace Ast
         ESourceDest srcthing_;
         ESourceDest srcother_;
         ESourceDest dest_;
-        Value thingLiteral_;
+        Value thingLiteral_; // when srcthing_ == kSrcLiteral
+        NthParent uvnumber_; // when srcthing_ == kSrcLiteral
         ApplyThingAndValue2ValueOperator( EOperators openum )
         : openum_( openum ),
           srcthing_( kSrcStack ),
           srcother_( kSrcStack ),
-          dest_( kSrcStack )
+          dest_( kSrcStack ),
+          uvnumber_( kNoParent )
         {}
 
         void setThingLiteral( const Bang::Value& thinglit )
         {
             thingLiteral_ = thinglit;
             srcthing_ = kSrcLiteral;
+        }
+        void setThingUpval( const NthParent uvnumber )
+        {
+            uvnumber_ = uvnumber;
+            srcthing_ = kSrcUpval;
         }
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -1203,15 +1212,22 @@ namespace Ast
                 o << ',';
                 thingLiteral_.dump( o );
             }
+            else if (srcthing_ == kSrcUpval)
+            {
+                o << ',' << uvnumber_.toint();
+            }
              o << " dest=" << sd2str(dest_)
               << ")\n";
         }
-        virtual void run( Stack& stack, const RunContext& ) const
+        virtual void run( Stack& stack, const RunContext& rc ) const
         {
             switch (srcthing_)
             {
                 case kSrcLiteral:
                     stack.push( thingLiteral_.applyAndValue2Value( openum_, stack.pop() ) );
+                    break;
+                case kSrcUpval:
+                    stack.push( rc.getUpValue( uvnumber_ ).applyAndValue2Value( openum_, stack.pop() ) );
                     break;
                 case kSrcStack:
                     const Value& owner = stack.pop();
@@ -3014,6 +3030,20 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 ast[i] = &noop;
                 ++i;
             }
+            continue;
+        }
+
+        const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
+        if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
+        {
+            Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
+            if (pTav2v)
+            {
+                pTav2v->setThingUpval( pup->uvnumber_ );
+                ast[i] = &noop;
+                ++i;
+            }
+            continue;
         }
     }
     delNoops();
@@ -3412,6 +3442,8 @@ Parser::Program::Program
                 {
                     switch( openum )
                     {
+                        case kOpGt:
+                        case kOpLt:
                         case kOpMult: // fall through
                         case kOpPlus: ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); break;
                         default: ast_.push_back( new Ast::ApplyEnumOperator( openum ) ); break;
