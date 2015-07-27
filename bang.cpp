@@ -574,8 +574,8 @@ namespace Numbers
     
 namespace Primitives
 {
-    void increment( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() + 1 ); }
-    void decrement( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() - 1 ); }
+//     void increment( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() + 1 ); }
+//     void decrement( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() - 1 ); }
     
     void stacklen( Stack& s, const RunContext& ctx)
     {
@@ -3118,33 +3118,33 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
 
-#if 1 // HAVE_COMPLETE_OPERATORS    
-    for (int i = 0; i < ast.size() - 1; ++i)
-    {
-        const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
-        if (plit && plit->v_.isnum() && plit->v_.tonum() == 1.0)
-        {
-            Ast::ApplyEnumOperator* pprim = dynamic_cast<Ast::ApplyEnumOperator*>(ast[i+1]);
-            if (pprim)
-            {
-                if (pprim->openum_ == kOpPlus)
-                {
-                    Ast::PushPrimitive p( &Primitives::increment, "increment" );
-                    ast[i+1] = new Ast::ApplyPrimitive( &p );
-                    ast[i] = &noop;
-                }
-                else if (pprim->openum_ == kOpMinus)
-                {
-                    Ast::PushPrimitive p( &Primitives::decrement, "decrement" );
-                    ast[i+1] = new Ast::ApplyPrimitive( &p );
-                    ast[i] = &noop;
-                }
-            }
-        }
-    }
-#endif 
+// #if 0 // HAVE_COMPLETE_OPERATORS    
+//     for (int i = 0; i < ast.size() - 1; ++i)
+//     {
+//         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
+//         if (plit && plit->v_.isnum() && plit->v_.tonum() == 1.0)
+//         {
+//             Ast::ApplyEnumOperator* pprim = dynamic_cast<Ast::ApplyEnumOperator*>(ast[i+1]);
+//             if (pprim)
+//             {
+//                 if (pprim->openum_ == kOpPlus)
+//                 {
+//                     Ast::PushPrimitive p( &Primitives::increment, "increment" );
+//                     ast[i+1] = new Ast::ApplyPrimitive( &p );
+//                     ast[i] = &noop;
+//                 }
+//                 else if (pprim->openum_ == kOpMinus)
+//                 {
+//                     Ast::PushPrimitive p( &Primitives::decrement, "decrement" );
+//                     ast[i+1] = new Ast::ApplyPrimitive( &p );
+//                     ast[i] = &noop;
+//                 }
+//             }
+//         }
+//     }
+// #endif 
 
-    delNoops();
+//    delNoops();
 
 
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
