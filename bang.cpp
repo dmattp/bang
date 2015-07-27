@@ -1325,8 +1325,16 @@ namespace Ast
                     break;
             }
         }
+
+//         inline Bang::Value getOtherValue( const RunContext& frame, Stack& stack ) const
+//         {
+//             return srcother_ == kSrcUpval ? frame.getUpValue(uvnumberOther_) : stack.pop();
+//         }
+    // disappointing but the inline member function does not run as quickly as the macro here.
+#define pa_getOtherValue(pa, frame, stack )  \
+    (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop())
     };
-    
+
 
     class ApplyCustomOperator : public Base
     {
@@ -1837,6 +1845,118 @@ static Thread gNullThread;
 DLLEXPORT Thread* pNullThread( &gNullThread );
 DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
+    template< ESourceDest edst >
+    struct StoreValue
+    {
+        static inline void store( Stack& stack, Thread*, Bang::Value&& bv ) { char This_should_never_be_instantiated[0-edst-1]; }
+    };
+
+    template<>
+    struct StoreValue<kSrcStack>
+    {
+        static inline void store( Stack& stack, Thread*, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv )
+        {
+            stack.push( std::move(bv) );
+        }
+    };
+
+    template<>
+    struct StoreValue<kSrcRegister>
+    {
+        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv )
+        {
+            pThread->r0_ = std::move(bv);
+        }
+    };
+
+    template<>
+    struct StoreValue<kSrcRegisterBool>
+    {
+        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, const Bang::Value& bv )
+        {
+            pThread->rb0_ = bv.tobool();
+        }
+    };
+
+    template<>
+    struct StoreValue<kSrcCloseValue>
+    {
+        static inline void store( Stack&, Thread*, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa, Bang::Value&& bv )
+        {
+            frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, std::move(bv) );
+        }
+    };
+
+
+    template <ESourceDest esd> 
+    struct CallOperatorInst
+    {
+    };
+
+    template <> 
+    struct CallOperatorInst<kSrcLiteral>
+    {
+        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack )
+        {
+            return pa.thingliteralop_( pa.thingLiteral_, pa_getOtherValue( pa, frame, stack ) );
+        }
+    };
+
+    template <> 
+    struct CallOperatorInst<kSrcRegister>
+    {
+        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack )
+        {
+            return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+        }
+    };
+
+    template <> 
+    struct CallOperatorInst<kSrcUpval>
+    {
+        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack )
+        {
+            return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+        }
+    };
+
+    template <> 
+    struct CallOperatorInst<kSrcStack>
+    {
+        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack )
+        {
+            const Value& owner = stack.pop();
+            return owner.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+        }
+    };
+
+    template< ESourceDest eThingSource, ESourceDest eValueDest >
+    struct GetThingSaveResult
+    {
+        static inline void doit(  Stack& stack, Thread* pThread, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa )
+        {
+            StoreValue<eValueDest>::store( stack, pThread, frame, pa, CallOperatorInst<eThingSource>::get( pa, pThread, frame, stack ) );
+        }
+    };
+
+    /* this is pretty horribly worse than the plain inline version with MSVC; it's *nearly* as good with GCC, but
+     * still not quite.  I guess I should be happy that it comes anywhere near close. */
+    template< ESourceDest edst >
+    struct ApplyThingValueCall
+    {
+        static inline void docall( Stack& stack, Thread* pThread, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa )
+        {
+            switch (pa.srcthing_)
+            {
+                case kSrcUpval:    GetThingSaveResult<kSrcUpval,edst>   ::doit( stack, pThread, frame, pa ); break;
+                case kSrcStack:    GetThingSaveResult<kSrcStack,edst>   ::doit( stack, pThread, frame, pa ); break;
+                case kSrcLiteral:  GetThingSaveResult<kSrcLiteral,edst> ::doit( stack, pThread, frame, pa ); break;
+                case kSrcRegister: GetThingSaveResult<kSrcRegister,edst>::doit( stack, pThread, frame, pa ); break;
+            }
+        }
+    };
+
+
     
 DLLEXPORT void RunProgram
 (   
@@ -2069,101 +2189,13 @@ restartTco:
                     const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
                     switch (pa.dest_)
                     {
-                        case kSrcStack:
-                            switch (pa.srcthing_)
-                            {
-                                case kSrcLiteral:
-                                    stack.push( pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                                case kSrcRegister:
-                                    stack.push( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                                case kSrcUpval:
-                                    stack.push( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                                case kSrcStack:
-                                    const Value& owner = stack.pop();
-                                    stack.push( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                            }
-                            break;
-                            
-                        case kSrcRegister:
-                            switch (pa.srcthing_)
-                            {
-                                case kSrcLiteral:
-                                    pThread->r0_ = pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() );
-                                    break;
-                                case kSrcRegister:
-                                    pThread->r0_ = ( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                                case kSrcUpval:
-                                    pThread->r0_ = ( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                                case kSrcStack:
-                                    const Value& owner = stack.pop();
-                                    pThread->r0_ = ( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
-                                    break;
-                            }
-                            break;
-                            
-                        case kSrcRegisterBool:
-                            switch (pa.srcthing_)
-                            {
-                                case kSrcLiteral:
-                                    pThread->rb0_ = pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ).tobool();
-                                    break;
-                                case kSrcRegister:
-                                    pThread->rb0_ = ( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ).tobool();
-                                    break;
-                                case kSrcUpval:
-                                    pThread->rb0_ = ( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ).tobool();
-                                    break;
-                                case kSrcStack:
-                                    const Value& owner = stack.pop();
-                                    pThread->rb0_ = ( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ).tobool();
-                                    break;
-                            }
-                            break;
-                            
-                        case kSrcCloseValue:
-                            switch (pa.srcthing_)
-                            {
-                                case kSrcLiteral:
-                                    frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
-                                        pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() )
-                                    );
-                                    break;
-                                case kSrcRegister:
-                                    frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
-                                        ( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
-                                    break;
-                                case kSrcUpval:
-                                    frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
-                                        ( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
-                                    break;
-                                case kSrcStack:
-                                    const Value& owner = stack.pop();
-                                    frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
-                                        ( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
-                                    break;
-                            }
-                            break;
+                        case kSrcStack:        ApplyThingValueCall<kSrcStack>       ::docall( stack, pThread, frame, pa ); break;
+                        case kSrcRegister:     ApplyThingValueCall<kSrcRegister>    ::docall( stack, pThread, frame, pa ); break;
+                        case kSrcRegisterBool: ApplyThingValueCall<kSrcRegisterBool>::docall( stack, pThread, frame, pa ); break;
+                        case kSrcCloseValue:   ApplyThingValueCall<kSrcCloseValue>  ::docall( stack, pThread, frame, pa ); break;
                     }
                 }
-            break;
+                break;
 
 #if DOT_OPERATOR_INLINE
                 case Ast::Base::kApplyDotOperator:

@@ -764,10 +764,12 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
         }
 
+#if 1         //~~~ this seems to not help at all; hurts even, maybe
         Upvalue( const Ast::CloseValue* closer, SHAREDUPVALUE_CREF parent, Value&& v )
-        : closer_( closer ), parent_( parent ), v_( v )
+        : closer_( closer ), parent_( parent ), v_( static_cast<Value&&>(v) )
         {
         }
+#endif 
         
         bool binds( const bangstring& name ) const;
 
@@ -873,6 +875,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 //         stack_.emplace_back( std::forward(v) );
 //     }
 
+        void push( Value&& v ) {
+            stack_.emplace_back( std::move(v) );
+        }
         void push( const Value& v ) { stack_.push_back( v ); }
         void push( const gcptr<BoundProgram>& bp ) { stack_.emplace_back( bp ); }
 //        void push( BANGCLOSURE&& fun ) { stack_.emplace_back( fun ); }
