@@ -179,7 +179,7 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
     return &a != &b;
 }
 
-
+#if 0
     class recursive_mutex
     {
     public:
@@ -269,6 +269,7 @@ bool operator!=(const SimpleThreadSafeAllocator<T>& a, const SimpleThreadSafeAll
 {
     return &a != &b;
 }
+#endif 
 
 
 #if LCFG_MT_SAFEISH    
