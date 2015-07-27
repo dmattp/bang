@@ -1025,6 +1025,15 @@ const Ast::Base* gFailedAst = nullptr;
     };
     
 
+    enum ESourceDest {
+        kSrcStack,
+        kSrcLiteral,
+        kSrcUpval,
+        kSrcRegister,
+        kSrcRegisterBool,
+        kSrcCloseValue
+    };
+    
     
 namespace Ast
 {
@@ -1187,16 +1196,10 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
+
     class ApplyThingAndValue2ValueOperator : public Base
     {
     public:
-        enum ESourceDest {
-            kSrcStack,
-            kSrcLiteral,
-            kSrcUpval,
-            kSrcRegister,
-            kSrcCloseValue
-        };
         static const char* sd2str( ESourceDest sd )
         {
             return
@@ -1204,6 +1207,7 @@ namespace Ast
             : sd == kSrcLiteral ? "Literal"
             : sd == kSrcUpval ? "Upval"
             : sd == kSrcRegister ? "Register"
+            : sd == kSrcRegisterBool ? "RegisterBool"
             : sd == kSrcCloseValue ? "CloseValue"
             : "Unknown-source/dest"
             );
@@ -1233,6 +1237,7 @@ namespace Ast
         bool thingNotStack() { return srcthing_ != kSrcStack; }
 
         void setDestRegister() { dest_ = kSrcRegister; }
+        void setDestRegisterBool() { dest_ = kSrcRegisterBool; }
 
         void setDestCloseValue( const Ast::CloseValue* cv )
         {
@@ -1596,24 +1601,36 @@ namespace Ast
     {
         Ast::Program* if_;
         Ast::Program* else_;
+        ESourceDest condSource_;
     public:
         IfElse( Ast::Program* if__, Ast::Program* else__ )
         : Base( kIfElse ),
           if_(if__),
-          else_( else__ )
+          else_( else__ ),
+          condSource_( kSrcStack )
         {}
 
-        Ast::Program* branchTaken( Stack& stack ) const
+        void setSrcRegisterBool() { condSource_ = kSrcRegisterBool; }
+
+        Ast::Program* branchTaken( Thread& thr ) const
         {
-            bool isCond = stack.loc_top().tobool();
-            stack.pop_back();
-            return isCond ? if_ : else_;
+            if (condSource_ == kSrcStack)
+            {
+                bool isCond = thr.stack.loc_top().tobool();
+                thr.stack.pop_back();
+                return isCond ? if_ : else_;
+            }
+            else
+            {
+                return thr.rb0_ ? if_ : else_;
+            }
         }
         
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "If";
+            o << "If (" << (condSource_ == kSrcStack ? "Stack" : "RegisterBool" ) << ')';
+            
             if_->dump( level, o );
             if (else_)
             {
@@ -1967,7 +1984,7 @@ restartTco:
                 case Ast::Base::kTCOIfElse:
                 {
                     const Ast::IfElse* ifelse = reinterpret_cast<const Ast::IfElse*>(pInstr);
-                    const Ast::Program* p = ifelse->branchTaken(stack);
+                    const Ast::Program* p = ifelse->branchTaken(*pThread);
                     if (p)
                     {
                         frame.rebind( TMPFACT_PROG_TO_RUNPROG(p) );
@@ -1979,7 +1996,7 @@ restartTco:
                 case Ast::Base::kIfElse:
                 {
                     const Ast::IfElse* ifelse = reinterpret_cast<const Ast::IfElse*>(pInstr);
-                    const Ast::Program* p = ifelse->branchTaken(stack);
+                    const Ast::Program* p = ifelse->branchTaken(*pThread);
                     if (p)
                     {
                         inprog = p;
@@ -2052,73 +2069,95 @@ restartTco:
                     const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
                     switch (pa.dest_)
                     {
-                        case Ast::ApplyThingAndValue2ValueOperator::kSrcStack:
+                        case kSrcStack:
                             switch (pa.srcthing_)
                             {
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
-                                    stack.push( pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                case kSrcLiteral:
+                                    stack.push( pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
+                                case kSrcRegister:
                                     stack.push( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcUpval:
+                                case kSrcUpval:
                                     stack.push( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcStack:
+                                case kSrcStack:
                                     const Value& owner = stack.pop();
                                     stack.push( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
                             }
                             break;
                             
-                        case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
+                        case kSrcRegister:
                             switch (pa.srcthing_)
                             {
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
-                                    pThread->r0_ = pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() );
+                                case kSrcLiteral:
+                                    pThread->r0_ = pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
+                                case kSrcRegister:
                                     pThread->r0_ = ( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcUpval:
+                                case kSrcUpval:
                                     pThread->r0_ = ( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcStack:
+                                case kSrcStack:
                                     const Value& owner = stack.pop();
                                     pThread->r0_ = ( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
                             }
                             break;
                             
-                        case Ast::ApplyThingAndValue2ValueOperator::kSrcCloseValue:
+                        case kSrcRegisterBool:
                             switch (pa.srcthing_)
                             {
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
+                                case kSrcLiteral:
+                                    pThread->rb0_ = pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ).tobool();
+                                    break;
+                                case kSrcRegister:
+                                    pThread->rb0_ = ( pThread->r0_.applyAndValue2Value( pa.openum_,
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ).tobool();
+                                    break;
+                                case kSrcUpval:
+                                    pThread->rb0_ = ( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ).tobool();
+                                    break;
+                                case kSrcStack:
+                                    const Value& owner = stack.pop();
+                                    pThread->rb0_ = ( owner.applyAndValue2Value( pa.openum_,
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ).tobool();
+                                    break;
+                            }
+                            break;
+                            
+                        case kSrcCloseValue:
+                            switch (pa.srcthing_)
+                            {
+                                case kSrcLiteral:
                                     frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
-                                        pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() )
+                                        pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() )
                                     );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
+                                case kSrcRegister:
                                     frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
                                         ( pThread->r0_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcUpval:
+                                case kSrcUpval:
                                     frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
                                         ( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
                                     break;
-                                case Ast::ApplyThingAndValue2ValueOperator::kSrcStack:
+                                case kSrcStack:
                                     const Value& owner = stack.pop();
                                     frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
                                         ( owner.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
+                                            pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) ) );
                                     break;
                             }
                             break;
@@ -3232,7 +3271,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (psecond)
             {
-                if (psecond->srcthing_ == Ast::ApplyThingAndValue2ValueOperator::kSrcStack)
+                if (psecond->srcthing_ == kSrcStack)
                 {
                     pfirst->setDestRegister();
                     psecond->setThingRegister();
@@ -3246,6 +3285,15 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     pfirst->setDestCloseValue( psecond );
                     ast[i+1] = &noop;
                     ++i;
+                }
+                else
+                {
+                    Ast::IfElse* psecond = dynamic_cast<Ast::IfElse*>(ast[i+1]);
+                    if (psecond)
+                    {
+                        pfirst->setDestRegisterBool();
+                        psecond->setSrcRegisterBool();
+                    }
                 }
             }
         }
