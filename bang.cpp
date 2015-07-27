@@ -1202,7 +1202,8 @@ namespace Ast
         NthParent uvnumberOther_;
         std::string otheruvname_;
         ApplyThingAndValue2ValueOperator( EOperators openum )
-        : openum_( openum ),
+        : Base( kApplyThingAndValue2ValueOperator ),
+          openum_( openum ),
           srcthing_( kSrcStack ),
           srcother_( kSrcStack ),
           dest_( kSrcStack ),
@@ -1266,6 +1267,7 @@ namespace Ast
         }
         virtual void run( Stack& stack, const RunContext& rc ) const
         {
+            bangerr() << "ApplyThingAndValue2ValueOperator::run() should not be called";
             switch (srcthing_)
             {
                 case kSrcLiteral:
@@ -2008,6 +2010,28 @@ restartTco:
                     }
                 }
                 break;
+
+                case Ast::Base::kApplyThingAndValue2ValueOperator:
+                {
+                    const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
+                    switch (pa.srcthing_)
+                    {
+                        case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
+                            stack.push( pa.thingLiteral_.applyAndValue2Value( pa.openum_,
+                                    pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                            break;
+                        case Ast::ApplyThingAndValue2ValueOperator::kSrcUpval:
+                            stack.push( frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_,
+                                    pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                            break;
+                        case Ast::ApplyThingAndValue2ValueOperator::kSrcStack:
+                            const Value& owner = stack.pop();
+                            stack.push( owner.applyAndValue2Value( pa.openum_,
+                                    pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                            break;
+                    }
+                }
+            break;
 
 #if DOT_OPERATOR_INLINE
                 case Ast::Base::kApplyDotOperator:
