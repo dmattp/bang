@@ -83,14 +83,19 @@ namespace Bang
         DLLEXPORT static void invalidOperator (const Value& v, Stack& );
         DLLEXPORT static Value opThingAndValue2Value_noop( const Value& thing, const Value& other );
         void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
-        tfn_opThingAndValue2Value opGt;
-        tfn_opThingAndValue2Value opLt;
-        tfn_opThingAndValue2Value opEq;
-        tfn_opThingAndValue2Value opPlus;
-        tfn_opThingAndValue2Value opMult;
-        tfn_opThingAndValue2Value opDiv;
-        tfn_opThingAndValue2Value opMinus;
-        tfn_opThingAndValue2Value opModulo;
+        union {
+            struct {
+                tfn_opThingAndValue2Value opPlus;
+                tfn_opThingAndValue2Value opMinus;
+                tfn_opThingAndValue2Value opLt;
+                tfn_opThingAndValue2Value opGt;
+                tfn_opThingAndValue2Value opEq;
+                tfn_opThingAndValue2Value opMult;
+                tfn_opThingAndValue2Value opDiv;
+                tfn_opThingAndValue2Value opModulo;
+            };
+            tfn_opThingAndValue2Value ops[kOpLAST];
+        };
 //        tfn_operator optable[kOpLAST];
         Operators() {
             opPlus = opMult = opGt = opLt = opDiv = opEq = opModulo = opThingAndValue2Value_noop;
@@ -724,6 +729,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         
         void applyOperator( EOperators which, Stack& ) const;
         Value applyAndValue2Value( EOperators which, const Value& other ) const;
+        tfn_opThingAndValue2Value getOperator( EOperators which ) const;
         void applyCustomOperator( const bangstring& theOperator, Stack& ) const;
     }; // end, class Value
 

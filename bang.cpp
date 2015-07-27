@@ -836,12 +836,9 @@ namespace Primitives
 //         (*optable[which])( *this, s );
 //     }
 
-    Value Value::applyAndValue2Value( EOperators which, const Value& other ) const
+    tfn_opThingAndValue2Value Value::getOperator( EOperators which ) const
     {
         Bang::Operators* op;
-#if LCFG_KEEP_PROFILING_STATS
-        ++operatorCounts[which];
-#endif 
         switch (type_)
         {
             case kNum: op = &gNumberOperators; break;
@@ -853,16 +850,26 @@ namespace Primitives
         }
         switch( which )
         {
-            case kOpPlus:   return op->opPlus( *this, other );
-            case kOpMult:   return op->opMult( *this, other );
-            case kOpDiv:    return op->opDiv( *this, other );
-            case kOpMinus:  return op->opMinus( *this, other );
-            case kOpGt:     return op->opGt( *this, other );
-            case kOpLt:     return op->opLt( *this, other );
-            case kOpEq:     return op->opEq( *this, other );
-            case kOpModulo: return op->opModulo( *this, other );
+            case kOpPlus:   return op->opPlus;
+            case kOpMult:   return op->opMult;
+            case kOpDiv:    return op->opDiv;
+            case kOpMinus:  return op->opMinus;
+            case kOpGt:     return op->opGt;
+            case kOpLt:     return op->opLt;
+            case kOpEq:     return op->opEq;
+            case kOpModulo: return op->opModulo;
             default: bangerr() << "op=" << which << "not supported for type=" << type_;
         }
+    }
+    
+
+    Value Value::applyAndValue2Value( EOperators which, const Value& other ) const
+    {
+        Bang::Operators* op;
+#if LCFG_KEEP_PROFILING_STATS
+        ++operatorCounts[which];
+#endif
+        return (this->getOperator( which ))( *this, other );
     }
     
     void Value::applyCustomOperator( const bangstring& theOperator, Stack& s ) const
@@ -1208,6 +1215,7 @@ namespace Ast
         const Ast::CloseValue* cv_;
         Value thingLiteral_; // when srcthing_ == kSrcLiteral
         Value otherLiteral_; // when srcthing_ == kSrcLiteral
+        tfn_opThingAndValue2Value thingliteralop_;
         NthParent uvnumber_; // when srcthing_ == kSrcLiteral
         std::string thinguvname_;
         NthParent uvnumberOther_;
@@ -1237,6 +1245,7 @@ namespace Ast
         void setThingLiteral( const Bang::Value& thinglit )
         {
             thingLiteral_ = thinglit;
+            thingliteralop_ = thinglit.getOperator( openum_ );
             srcthing_ = kSrcLiteral;
         }
         void setThingUpval( const Ast::PushUpval* pup )
@@ -2047,8 +2056,7 @@ restartTco:
                             switch (pa.srcthing_)
                             {
                                 case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
-                                    stack.push( pa.thingLiteral_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                    stack.push( pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
                                     break;
                                 case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
                                     stack.push( pThread->r0_.applyAndValue2Value( pa.openum_,
@@ -2070,8 +2078,7 @@ restartTco:
                             switch (pa.srcthing_)
                             {
                                 case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
-                                    pThread->r0_ = ( pa.thingLiteral_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) );
+                                    pThread->r0_ = pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() );
                                     break;
                                 case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
                                     pThread->r0_ = ( pThread->r0_.applyAndValue2Value( pa.openum_,
@@ -2094,8 +2101,7 @@ restartTco:
                             {
                                 case Ast::ApplyThingAndValue2ValueOperator::kSrcLiteral:
                                     frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_,
-                                        ( pa.thingLiteral_.applyAndValue2Value( pa.openum_,
-                                            pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() ) )
+                                        pa.thingliteralop_( pa.thingLiteral_, pa.srcother_ == Ast::ApplyThingAndValue2ValueOperator::kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop() )
                                     );
                                     break;
                                 case Ast::ApplyThingAndValue2ValueOperator::kSrcRegister:
