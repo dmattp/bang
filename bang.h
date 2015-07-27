@@ -68,7 +68,7 @@ namespace Bang
         // kOpDot,     //  ... thing .parse-time-ident -> ...
         // kOpLogOr,   //  stack-0 || thing -> bool     // ApplyThingAndValue2BoolOperator    B
         // kOpLogAnd,  //  stack-0 && thing -> bool     // ApplyThingAndValue2BoolOperator    B
-        // kOpLogNot,  //  ~thing -> bool               // ApplyThing2BoolOperator            E
+        // kOpLogNot,  //  ~thing -> bool             op  // ApplyThing2BoolOperator            E
         // kOpIndex,   // ... thing[expression] -> ...  // ApplyThingAndValue2Stack           F
         
         kOpCustom,       // ... thing/custom -> ... // ApplyThingWithCustomOperator2Stack     G
@@ -77,12 +77,17 @@ namespace Bang
     };
     
     typedef void (*tfn_operator)( const Value& v, Stack& );
+    typedef Bang::Value (*tfn_opThingAndValue2Value)( const Value& thing, const Value& other );
     struct Operators
     {
         DLLEXPORT static void invalidOperator (const Value& v, Stack& );
         void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
+        tfn_opThingAndValue2Value opPlus;
+        tfn_opThingAndValue2Value opMult;
         tfn_operator optable[kOpLAST];
         Operators() {
+            opPlus = nullptr;
+            customOperator = nullptr;
             for (int i = 0; i < kOpLAST; ++i)
                 optable[i] = &Operators::invalidOperator;
         }
@@ -711,6 +716,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         void dump( std::ostream& o ) const;
         
         void applyOperator( EOperators which, Stack& ) const;
+        Value applyAndValue2Value( EOperators which, const Value& other ) const;
         void applyCustomOperator( const bangstring& theOperator, Stack& ) const;
     }; // end, class Value
 

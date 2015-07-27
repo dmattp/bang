@@ -17,6 +17,8 @@
 #define HAVE_COMPLETE_OPERATORS 0
 #define LCFG_KEEP_PROFILING_STATS 0
 
+#define LCFG_OPTIMIZE_OPVV2V_WITHLIT 1
+
 /*
   Keywords
     fun fun! as def
@@ -564,14 +566,15 @@ namespace Numbers
 #endif
     
     void minus  ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 - v2; } ); }
-    void plus   ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 + v2; } ); }
-    void mult   ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 * v2; } ); }
     void div    ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return v1 / v2; } ); }
     void lt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 < v2; } ); }
     void gt     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 > v2; } ); }
     void modulo ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
     void eq     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 == v2; } ); }
 
+    Bang::Value plus( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() + thing.tonum() ); }
+    Bang::Value mult( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() * thing.tonum() ); }
+    
     void custom     ( const Value& v, Stack& s ) {
         bangerr() << "custom operotar not implemented for numbers";
     }
@@ -738,12 +741,14 @@ namespace Primitives
     {
         NumberOps()
         {
-            optable[kOpPlus]   = &Numbers::plus;
+            opPlus = &Numbers::plus;
+            opMult = &Numbers::mult;
+//            optable[kOpPlus]   = &Numbers::plus;
             optable[kOpMinus]  = &Numbers::minus;
             optable[kOpLt]     = &Numbers::lt;
             optable[kOpGt]     = &Numbers::gt;
             optable[kOpEq]     = &Numbers::eq;
-            optable[kOpMult]   = &Numbers::mult;
+//            optable[kOpMult]   = &Numbers::mult;
             optable[kOpDiv]    = &Numbers::div;
             optable[kOpModulo] = &Numbers::modulo;
             optable[kOpCustom] = &Numbers::custom;
@@ -770,18 +775,19 @@ namespace Primitives
             const bangstring& sRt = sRtv.tostr();
             s.push( !(sLt == sRt) && !(sLt < sRt) );
         }
-        static void plus( const Bang::Value& sRtv, Bang::Stack& s )
+        static Bang::Value plus( const Bang::Value& sThing, const Bang::Value& sOther )
         {
-            const bangstring& v2 = sRtv.tostr();
-            const bangstring& v1 = s.poptostr();
-            s.push( std::string(v1) + std::string(v2) );
+            const bangstring& v2 = sThing.tostr();
+            const bangstring& v1 = sOther.tostr();
+            return Bang::Value( v1 + v2 );
         }
         StringOps()
         {
             optable[kOpEq]   = &eq;
             optable[kOpLt]   = &lt;
             optable[kOpGt]   = &gt;
-            optable[kOpPlus]   = &plus;
+            // optable[kOpPlus]   = &plus;
+            opPlus = &plus;
         }
     } gStringOperators;
     
@@ -833,6 +839,29 @@ namespace Primitives
         (*optable[which])( *this, s );
     }
 
+    Value Value::applyAndValue2Value( EOperators which, const Value& other ) const
+    {
+        Bang::Operators* op;
+#if LCFG_KEEP_PROFILING_STATS
+        ++operatorCounts[which];
+#endif 
+        switch (type_)
+        {
+            case kNum: op = &gNumberOperators; break;
+            case kStr: op = &gStringOperators; break;
+            case kFun: // fall through
+            case kBoundFun: // fall through
+            case kFunPrimitive: // fall through
+            case kThread: bangerr() << "thingAndValue2Value operators not supported for type=" << type_;
+        }
+        switch( which )
+        {
+            case kOpPlus: return op->opPlus( *this, other );
+            case kOpMult: return op->opMult( *this, other );
+            default: bangerr() << "op=" << which << "not supported for type=" << type_;
+        }
+    }
+    
     void Value::applyCustomOperator( const bangstring& theOperator, Stack& s ) const
     {
         switch (type_)
@@ -1091,6 +1120,21 @@ namespace Ast
     };
 
 
+        static const char* op2str( EOperators which )
+        {
+            return
+            ( which == kOpPlus   ? "+"
+            : which == kOpMinus  ? "-"
+            : which == kOpLt     ? "<"
+            : which == kOpGt     ? ">"
+            : which == kOpEq     ? "="
+            : which == kOpMult   ? "*"
+            : which == kOpDiv    ? "/"
+            : which == kOpModulo ? "%"
+            : which == kOpCustom ? "custom"
+            : "unknown operator"
+            );
+        }
 
     class ApplyEnumOperator : public Base
     {
@@ -1103,7 +1147,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyEnumOperator(" << openum_ << ")\n";
+            o << "ApplyEnumOperator(" << openum_ << " (" << op2str(openum_) << ") )\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
         {
@@ -1112,6 +1156,71 @@ namespace Ast
         }
     };
 
+    class ApplyThingAndValue2ValueOperator : public Base
+    {
+    public:
+        enum ESourceDest {
+            kSrcStack,
+            kSrcLiteral,
+            kSrcUpval,
+            kSrcRegister
+        };
+        static const char* sd2str( ESourceDest sd )
+        {
+            return
+            ( sd == kSrcStack ? "Stack"
+            : sd == kSrcLiteral ? "Literal"
+            : sd == kSrcUpval ? "Upval"
+            : sd == kSrcRegister ? "Register"
+            : "Unknown-source/dest"
+            );
+        }
+        EOperators openum_ ; // method
+        ESourceDest srcthing_;
+        ESourceDest srcother_;
+        ESourceDest dest_;
+        Value thingLiteral_;
+        ApplyThingAndValue2ValueOperator( EOperators openum )
+        : openum_( openum ),
+          srcthing_( kSrcStack ),
+          srcother_( kSrcStack ),
+          dest_( kSrcStack )
+        {}
+
+        void setThingLiteral( const Bang::Value& thinglit )
+        {
+            thingLiteral_ = thinglit;
+            srcthing_ = kSrcLiteral;
+        }
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyThingAndValue2ValueOperator( op=" << openum_ << "(" << op2str(openum_)
+              << ") s1=" << sd2str(srcother_)
+              << " s2=" << sd2str(srcthing_) ;
+            if (srcthing_ == kSrcLiteral)
+            {
+                o << ',';
+                thingLiteral_.dump( o );
+            }
+             o << " dest=" << sd2str(dest_)
+              << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+        {
+            switch (srcthing_)
+            {
+                case kSrcLiteral:
+                    stack.push( thingLiteral_.applyAndValue2Value( openum_, stack.pop() ) );
+                    break;
+                case kSrcStack:
+                    const Value& owner = stack.pop();
+                    stack.push( owner.applyAndValue2Value( openum_, stack.pop() ) );
+                    break;
+            }
+        }
+    };
+    
 
     class ApplyCustomOperator : public Base
     {
@@ -2891,6 +3000,25 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
     delNoops();
 
+
+#if LCFG_OPTIMIZE_OPVV2V_WITHLIT
+    for (int i = 0; i < ast.size() - 1; ++i)
+    {
+        const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
+        if (plit)
+        {
+            Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
+            if (pTav2v)
+            {
+                pTav2v->setThingLiteral( plit->v_ );
+                ast[i] = &noop;
+                ++i;
+            }
+        }
+    }
+    delNoops();
+#endif 
+
     
     const int astLen = ast.size();
     if (astLen > 1) // last instr should always be "kBreakProg"
@@ -3281,7 +3409,14 @@ Parser::Program::Program
                 EOperators openum = optoken2enum( token );
                 mark.accept();
                 if (openum != kOpCustom)
-                    ast_.push_back( new Ast::ApplyEnumOperator( openum ) );
+                {
+                    switch( openum )
+                    {
+                        case kOpMult: // fall through
+                        case kOpPlus: ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); break;
+                        default: ast_.push_back( new Ast::ApplyEnumOperator( openum ) ); break;
+                    }
+                }
                 else
                 {
                     eatwhitespace(mark);
