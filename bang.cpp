@@ -15,7 +15,7 @@
 #define DOT_OPERATOR_INLINE 1
 
 #define HAVE_COMPLETE_OPERATORS 0
-#define LCFG_KEEP_PROFILING_STATS 1
+#define LCFG_KEEP_PROFILING_STATS 0
 
 /*
   Keywords
@@ -803,14 +803,17 @@ namespace Primitives
 
 #if LCFG_KEEP_PROFILING_STATS    
     unsigned operatorCounts[kOpLAST];
+#endif
+
     DLLEXPORT void dumpProfilingStats()
     {
+#if LCFG_KEEP_PROFILING_STATS    
         for (int i = 0; i < kOpLAST; ++i)
         {
             std::cout << "op=" << i << " count=" << operatorCounts[i] << std::endl;
         }
-    }
 #endif
+    }
 
     void Value::applyOperator( EOperators which, Stack& s ) const
     {
