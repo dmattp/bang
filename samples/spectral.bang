@@ -49,7 +49,7 @@ def :Av N = {
 -- A! 
   -- 1 nth!  -- i j i
   + 1 -   -- i (i+j-1 aka ij)
-  dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
+  as ij ij 1 - ij * 0.5 * -- i (ij*(ij-1)*0.5)
   +
   / -- 1.0 (earlier) / ...
 
@@ -69,7 +69,7 @@ def :Atv N = {
 --        j dup! i swap!
 
   + 1 -   -- i (i+j-1 aka ij)
-  dup! 1 - * 0.5 * -- i (ij*(ij-1)*0.5)
+  as ij ij 1 - ij * 0.5 * -- i (ij*(ij-1)*0.5)
   +
   / -- 1.0 (earlier) / ...
 

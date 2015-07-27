@@ -44,7 +44,7 @@ def :advance dt = { as nbody as bodies
     def! :innerloop bivx bivy bivz j = { 
       j nbody <
       ? j bodies! as bj
-        bix bj.x - biy bj.y - biz bj.z - as dz as dy as dx
+        bix bj.x - as dx biy bj.y - as dy biz bj.z - as dz -- as dy as dx
         
         dx dx * dy dy * + dz dz * + as dist2
         dt dist2 sqrt! dist2 * / as mag
