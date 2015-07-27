@@ -83,18 +83,20 @@ namespace Bang
         DLLEXPORT static void invalidOperator (const Value& v, Stack& );
         DLLEXPORT static Value opThingAndValue2Value_noop( const Value& thing, const Value& other );
         void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
-        tfn_opThingAndValue2Value opPlus;
-        tfn_opThingAndValue2Value opMult;
         tfn_opThingAndValue2Value opGt;
         tfn_opThingAndValue2Value opLt;
+        tfn_opThingAndValue2Value opEq;
+        tfn_opThingAndValue2Value opPlus;
+        tfn_opThingAndValue2Value opMult;
         tfn_opThingAndValue2Value opDiv;
         tfn_opThingAndValue2Value opMinus;
-        tfn_operator optable[kOpLAST];
+        tfn_opThingAndValue2Value opModulo;
+//        tfn_operator optable[kOpLAST];
         Operators() {
-            opPlus = opMult = opGt = opLt = opDiv = opThingAndValue2Value_noop;
+            opPlus = opMult = opGt = opLt = opDiv = opEq = opModulo = opThingAndValue2Value_noop;
             customOperator = nullptr;
-            for (int i = 0; i < kOpLAST; ++i)
-                optable[i] = &Operators::invalidOperator;
+//           for (int i = 0; i < kOpLAST; ++i)
+//                 optable[i] = &Operators::invalidOperator;
         }
     };
    

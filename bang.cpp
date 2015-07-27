@@ -561,11 +561,12 @@ namespace Numbers
         v1.mutatePrimitiveToBool( operation( v1.tonum(), v2 ) );
     }
     
-    void modulo ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
-    void eq     ( const Value& v, Stack& s ) { infix2to1bool( v.tonum(), s, [](double v1, double v2) { return v1 == v2; } ); }
+//    void modulo ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
 
     Bang::Value gt( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() > thing.tonum() ); }
     Bang::Value lt( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() < thing.tonum() ); }
+    Bang::Value eq( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() == thing.tonum() ); }
+    Bang::Value modulo( const Value& thing, const Value& other )  { return Bang::Value( double((int)other.tonum() % (int)thing.tonum()) ); }
     Bang::Value plus( const Value& thing, const Value& other )  { return Bang::Value( other.tonum() + thing.tonum() ); }
     Bang::Value mult( const Value& thing, const Value& other )  { return Bang::Value( other.tonum() * thing.tonum() ); }
     Bang::Value div( const Value& thing, const Value& other )   { return Bang::Value( other.tonum() / thing.tonum() ); }
@@ -736,25 +737,30 @@ namespace Primitives
     {
         NumberOps()
         {
-            opPlus  = &Numbers::plus;
-            opMult  = &Numbers::mult;
-            opLt    = &Numbers::lt;
-            opGt    = &Numbers::gt;
-            opMinus = &Numbers::minus;
-            opDiv   = &Numbers::div;
-            optable[kOpEq]     = &Numbers::eq;
-            optable[kOpModulo] = &Numbers::modulo;
+            opPlus   = &Numbers::plus;
+            opMult   = &Numbers::mult;
+            opLt     = &Numbers::lt;
+            opGt     = &Numbers::gt;
+            opMinus  = &Numbers::minus;
+            opDiv    = &Numbers::div;
+            opEq     = &Numbers::eq;
+            opModulo = &Numbers::modulo;
 //            optable[kOpCustom] = &Numbers::custom;
         }
     } gNumberOperators;
     
     struct StringOps : public Bang::Operators
     {
-        static void eq( const Bang::Value& sRt, Bang::Stack& s )
+        static Bang::Value eq( const Bang::Value& sThing, const Bang::Value& sOther )
         {
-            const bangstring& sLt = s.poptostr();
-            s.push( sLt == sRt.tostr() );
+            const bangstring& sLt = sOther.tostr();
+            return Value ( sLt == sThing.tostr() );
         }
+//         static void eq( const Bang::Value& sRt, Bang::Stack& s )
+//         {
+//             const bangstring& sLt = s.poptostr();
+//             s.push( sLt == sRt.tostr() );
+//         }
 
         static Bang::Value gt( const Bang::Value& sThing, const Bang::Value& sOther )
         {
@@ -775,7 +781,7 @@ namespace Primitives
         }
         StringOps()
         {
-            optable[kOpEq]   = &eq;
+            opEq = &eq;
             opLt = &lt;
             opGt = &gt;
             opPlus = &plus;
@@ -812,23 +818,23 @@ namespace Primitives
 #endif
     }
 
-    void Value::applyOperator( EOperators which, Stack& s ) const
-    {
-        tfn_operator* optable;
-#if LCFG_KEEP_PROFILING_STATS
-        ++operatorCounts[which];
-#endif 
-        switch (type_)
-        {
-            case kNum: optable = gNumberOperators.optable; break;
-            case kStr: optable = gStringOperators.optable; break;
-            case kFun: // fall through
-            case kBoundFun: optable = this->tofun()->operators->optable; break;
-            case kFunPrimitive: bangerr() << "operators not supported for function primitives"; break; 
-            case kThread: bangerr() << "operators not supported for threads"; break; 
-        }
-        (*optable[which])( *this, s );
-    }
+//     void Value::applyOperator( EOperators which, Stack& s ) const
+//     {
+//         tfn_operator* optable;
+// #if LCFG_KEEP_PROFILING_STATS
+//         ++operatorCounts[which];
+// #endif 
+//         switch (type_)
+//         {
+//             case kNum: optable = gNumberOperators.optable; break;
+//             case kStr: optable = gStringOperators.optable; break;
+//             case kFun: // fall through
+//             case kBoundFun: optable = this->tofun()->operators->optable; break;
+//             case kFunPrimitive: bangerr() << "operators not supported for function primitives"; break; 
+//             case kThread: bangerr() << "operators not supported for threads"; break; 
+//         }
+//         (*optable[which])( *this, s );
+//     }
 
     Value Value::applyAndValue2Value( EOperators which, const Value& other ) const
     {
@@ -847,12 +853,14 @@ namespace Primitives
         }
         switch( which )
         {
-            case kOpPlus:  return op->opPlus( *this, other );
-            case kOpMult:  return op->opMult( *this, other );
-            case kOpDiv:   return op->opDiv( *this, other );
-            case kOpMinus: return op->opMinus( *this, other );
-            case kOpGt:    return op->opGt( *this, other );
-            case kOpLt:    return op->opLt( *this, other );
+            case kOpPlus:   return op->opPlus( *this, other );
+            case kOpMult:   return op->opMult( *this, other );
+            case kOpDiv:    return op->opDiv( *this, other );
+            case kOpMinus:  return op->opMinus( *this, other );
+            case kOpGt:     return op->opGt( *this, other );
+            case kOpLt:     return op->opLt( *this, other );
+            case kOpEq:     return op->opEq( *this, other );
+            case kOpModulo: return op->opModulo( *this, other );
             default: bangerr() << "op=" << which << "not supported for type=" << type_;
         }
     }
@@ -1131,25 +1139,25 @@ namespace Ast
             );
         }
 
-    class ApplyEnumOperator : public Base
-    {
-    public:
-        EOperators openum_ ; // method
-        ApplyEnumOperator( EOperators openum )
-        : openum_( openum )
-        {}
+//     class ApplyEnumOperator : public Base
+//     {
+//     public:
+//         EOperators openum_ ; // method
+//         ApplyEnumOperator( EOperators openum )
+//         : openum_( openum )
+//         {}
 
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ApplyEnumOperator(" << openum_ << " (" << op2str(openum_) << ") )\n";
-        }
-        virtual void run( Stack& stack, const RunContext& ) const
-        {
-            const Value& owner = stack.pop();
-            owner.applyOperator( openum_, stack );
-        }
-    };
+//         virtual void dump( int level, std::ostream& o ) const
+//         {
+//             indentlevel(level, o);
+//             o << "ApplyEnumOperator(" << openum_ << " (" << op2str(openum_) << ") )\n";
+//         }
+//         virtual void run( Stack& stack, const RunContext& ) const
+//         {
+//             const Value& owner = stack.pop();
+//             owner.applyOperator( openum_, stack );
+//         }
+//     };
 
     class PushUpval : public Base
     {
@@ -3631,16 +3639,18 @@ Parser::Program::Program
                 mark.accept();
                 if (openum != kOpCustom)
                 {
-                    switch( openum )
-                    {
-                        case kOpGt:
-                        case kOpLt:
-                        case kOpDiv:
-                        case kOpMinus:
-                        case kOpMult: // fall through
-                        case kOpPlus: ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); break;
-                        default: ast_.push_back( new Ast::ApplyEnumOperator( openum ) ); break;
-                    }
+                    ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); 
+//                     switch( openum )
+//                     {
+//                         case kOpGt:
+//                         case kOpLt:
+//                         case kOpDiv:
+//                         case kOpMinus:
+//                         case kOpMult: // fall through
+//                         case kOpPlus:
+//                             ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); break;
+//                         default: ast_.push_back( new Ast::ApplyEnumOperator( openum ) ); break;
+//                     }
                 }
                 else
                 {
