@@ -16,7 +16,7 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 0
+#define LCFG_MT_SAFEISH 1
 
 static const char* const BANG_VERSION = "0.005";
 

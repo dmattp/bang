@@ -178,94 +178,9 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
 {
     return &a != &b;
 }
-
+#endif 
 
 #if LCFG_MT_SAFEISH    
-template <class Tp>
-struct LockfreeSimpleStackAllocator
-{
-    typedef Tp value_type;
-    LockfreeSimpleStackAllocator(/*ctor args*/) {}
-    template <class T> LockfreeSimpleStackAllocator(const LockfreeSimpleStackAllocator<T>& other){}
-    template <class U> struct rebind { typedef LockfreeSimpleStackAllocator<U> other; };
-    static unsigned abactr;
-    
-    Tp* allocate(std::size_t n)
-    {
-        FcStack<Tp>* hdr;
-
-        while (true)
-        {
-            FcStack<Tp>* const markedhdr = FcStack<Tp>::head;
-            
-            if (!markedhdr)
-            {
-                hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
-                if( ((uintptr_t)hdr) & 0x03)
-                {
-                    std::cerr << "malloc not 16 byte aligned" << std::endl;
-                    exit(-1);
-                }
-                break;
-            }
-            else
-            {
-                FcStack<Tp>* const usablehdr = reinterpret_cast<FcStack<Tp>*>( (uintptr_t)markedhdr & ~((uintptr_t)0x3) );
-                if (hdr == Atomic::cmpxchg( FcStack<Tp>::head, markedhdr, usablehdr->prev ) )
-                {
-                    break;
-                }
-            }
-        }
-        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
-        return mem;
-    }
-    void deallocate(Tp* p, std::size_t n)
-    {
-        FcStack<Tp>* const ashdr = reinterpret_cast<FcStack<Tp>*>(p);
-        FcStack<Tp>* const hdr = ashdr - 1;
-        static char freeOne;
-        if ((++freeOne & 0xF) == 0)
-        {
-//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
-//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
-//            --gAllocated;
-            free( hdr );
-        }
-        else
-        {
-            Atomic::add( abactr, 1 );
-            FcStack<Tp>* markedhdr = reinterpret_cast<FcStack<Tp>*>( (uintptr_t)hdr | (abactr & 0x3) );
-        
-            auto found = FcStack<Tp>::head;
-            FcStack<Tp>* lastfound;
-            do
-            {
-                lastfound = found;
-                hdr->prev = found;
-                found = Atomic::cmpxchg( FcStack<Tp>::head, found, markedhdr );
-            }
-            while (found != lastfound);
-        }
-    }
-    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
-    void destroy(Tp* p) { p->~Tp(); }
-};
-template <class T, class U>
-bool operator==(const LockfreeSimpleStackAllocator<T>& a, const LockfreeSimpleStackAllocator<U>& b)
-{
-    return &a == &b;
-}
-template <class T, class U>
-bool operator!=(const LockfreeSimpleStackAllocator<T>& a, const LockfreeSimpleStackAllocator<U>& b)
-{
-    return &a != &b;
-}
-template <class T>
-unsigned LockfreeSimpleStackAllocator<T>::abactr;
-#endif
-
-    
 template <class Tp>
 struct SimplestAllocator
 {
@@ -286,27 +201,14 @@ struct SimplestAllocator
     void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
     void destroy(Tp* p) { p->~Tp(); }
 };
-template <class T, class U>
-bool operator==(const SimplestAllocator<T>& a, const SimplestAllocator<U>& b)
-{
-    return &a == &b;
-}
-template <class T, class U>
-bool operator!=(const SimplestAllocator<T>& a, const SimplestAllocator<U>& b)
-{
-    return &a != &b;
-}
-
 #endif
 
 #if !USE_GC    
 #if LCFG_MT_SAFEISH    
-//LockfreeSimpleStackAllocator< Upvalue > gUpvalAlloc;
 SimplestAllocator< Upvalue > gUpvalAlloc;
 #else
 SimpleAllocator< Upvalue > gUpvalAlloc;
 #endif 
-//SimpleThreadSafeAllocator< Upvalue > gUpvalAlloc;
 #endif
     
 
