@@ -652,7 +652,6 @@ namespace Primitives
 
     Value Value::applyAndValue2Value( EOperators which, const Value& other ) const
     {
-        Bang::Operators* op;
 #if LCFG_KEEP_PROFILING_STATS
         ++operatorCounts[which];
 #endif
@@ -1847,7 +1846,7 @@ restartTco:
                                 return;
                             }
                         }
-                        catch (const std::exception& e ) // parse error
+                        catch (const std::exception& ) // parse error
                         {
                             //~~~ @todo: shouldn't I dump this here?  reportError or something?
                             pEof->repl_prompt(stack);
@@ -2912,7 +2911,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     };
     
-    for (int i = 0; i < ast.size() - 1; ++i)
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         Ast::Base* step = ast[i];
 
@@ -2979,7 +2978,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
     delNoops();
 
-    for (int i = 0; i < ast.size() - 1; ++i)
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
         if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
@@ -2995,7 +2994,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
 
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
-    for (int i = 0; i < ast.size() - 1; ++i)
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
         if (plit)
@@ -3025,7 +3024,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     }
     delNoops();
 
-    for (int i = 0; i < ast.size() - 1; ++i)
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
         if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
@@ -3060,7 +3059,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     
     /* IF first is a Bool maker and second is a Bool eater, then set src/dest to Bool register
      * If first is a Value maker and second is a Value eater, set src/dest to Value register */
-    for (int i = 0; i < ast.size() - 1; ++i)
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         Ast::ValueMaker* pfirst = dynamic_cast<Ast::ValueMaker*>(ast[i]);
         if (pfirst)
@@ -3499,24 +3498,24 @@ Parser::Program::Program
                 // std::cerr << "got operator token=" << op.name() << std::endl;
                 mark.accept();
                 
-                if (token == "~" or token == "/not")
+                if (token == "~" || token == "/not")
                 {
                     ast_.push_back( new Ast::OperatorNot() );
                     continue;
                 }
-                else if (token == "<~" or token == ">=")
+                else if (token == "<~" || token == ">=")
                 {
                     ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpLt ) ); 
                     ast_.push_back( new Ast::OperatorNot() );
                     continue;
                 }
-                else if (token == ">~" or token == "<=")
+                else if (token == ">~" || token == "<=")
                 {
                     ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpGt ) ); 
                     ast_.push_back( new Ast::OperatorNot() );
                     continue;
                 }
-                else if (token == "=~" or token == "<>")
+                else if (token == "=~" || token == "<>")
                 {
                     ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpEq ) ); 
                     ast_.push_back( new Ast::OperatorNot() );
