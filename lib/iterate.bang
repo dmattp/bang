@@ -18,7 +18,7 @@ def :times = { swap! as loopFun
 
 def :range last = { swap! as do-me
    def! :inner current = {
-      current last > not! ?
+      current last >~ ?
          current do-me!
          current 1 + inner!
    }

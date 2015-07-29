@@ -422,35 +422,6 @@ namespace Primitives
         s.push( s.loc_top() );
     }
     
-    
-    void lognot( Stack& s, const RunContext& ctx)
-    {
-        Value& v = s.loc_topMutate();
-        if (v.isbool())
-            v.mutateNoType( !v.tobool() );
-        else
-            throw std::runtime_error("Logical NOT operator incompatible type");
-    }
-
-    void logand( Stack& s, const RunContext& ctx)
-    {
-        const Value& v2 = s.pop();
-        const Value& v1 = s.pop();
-        if (v1.isbool() && v2.isbool())
-            s.push( v1.tobool() && v2.tobool() );
-        else
-            throw std::runtime_error("Logical AND operator incompatible type");
-    }
-    void logor( Stack& s, const RunContext& ctx)
-    {
-        const Value& v2 = s.pop();
-        const Value& v1 = s.pop();
-        if (v1.isbool() && v2.isbool())
-            s.push( v1.tobool() || v2.tobool() );
-        else
-            throw std::runtime_error("Logical AND operator incompatible type");
-    }
-
     void tostring( Stack& s, const RunContext& ctx )
     {
         const Value& v1 = s.pop();
@@ -558,6 +529,17 @@ namespace Primitives
             opModulo = &Numbers::modulo;
         }
     } gNumberOperators;
+
+    struct BoolOps : public Bang::Operators
+    {
+        static Bang::Value and_( const Bang::Value& thing, const Bang::Value& other )  { return Bang::Value( other.tobool() && thing.tobool() ); }
+        static Bang::Value or_( const Bang::Value& thing, const Bang::Value& other )   { return Bang::Value( other.tobool() || thing.tobool() ); }
+        BoolOps()
+        {
+            opAnd = &and_;
+            opOr = &or_;
+        }
+    } gBoolOperators;
     
     struct StringOps : public Bang::Operators
     {
@@ -651,8 +633,9 @@ namespace Primitives
         Bang::Operators* op;
         switch (type_)
         {
-            case kNum: op = &gNumberOperators; break;
-            case kStr: op = &gStringOperators; break;
+            case kNum:  op = &gNumberOperators; break;
+            case kBool: op = &gBoolOperators;   break;
+            case kStr:  op = &gStringOperators; break;
             case kFun: // fall through
             case kBoundFun: // fall through
             case kFunPrimitive: // fall through
@@ -668,6 +651,8 @@ namespace Primitives
             case kOpLt:     return op->opLt;
             case kOpEq:     return op->opEq;
             case kOpModulo: return op->opModulo;
+            case kOpOr:     return op->opOr;
+            case kOpAnd:    return op->opAnd;
             default: bangerr() << "op=" << which << "not supported for type=" << type_;
         }
     }
@@ -3083,7 +3068,10 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     }
 
     delNoops();
+
     
+    /* IF first is a Bool maker and second is a Bool eater, then set src/dest to Bool register
+     * If first is a Value maker and second is a Value eater, set src/dest to Value register */
     for (int i = 0; i < ast.size() - 1; ++i)
     {
         Ast::ValueMaker* pfirst = dynamic_cast<Ast::ValueMaker*>(ast[i]);
@@ -3523,9 +3511,37 @@ Parser::Program::Program
                 // std::cerr << "got operator token=" << op.name() << std::endl;
                 mark.accept();
                 
-                if (token == "~")
+                if (token == "~" or token == "/not")
                 {
                     ast_.push_back( new Ast::OperatorNot() );
+                    continue;
+                }
+                else if (token == "<~" or token == ">=")
+                {
+                    ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpLt ) ); 
+                    ast_.push_back( new Ast::OperatorNot() );
+                    continue;
+                }
+                else if (token == ">~" or token == "<=")
+                {
+                    ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpGt ) ); 
+                    ast_.push_back( new Ast::OperatorNot() );
+                    continue;
+                }
+                else if (token == "=~" or token == "<>")
+                {
+                    ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpEq ) ); 
+                    ast_.push_back( new Ast::OperatorNot() );
+                    continue;
+                }
+                else if (token == "/and")
+                {
+                    ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpAnd ) ); 
+                    continue;
+                }
+                else if (token == "/or")
+                {
+                    ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpOr ) ); 
                     continue;
                 }
                 
@@ -3654,9 +3670,6 @@ Parser::Program::Program
                     return false;
                 };
                 
-                if (rwPrimitive( "not",    &Primitives::lognot ) ) continue;
-                if (rwPrimitive( "and",    &Primitives::logand ) ) continue;
-                if (rwPrimitive( "or",     &Primitives::logor  ) ) continue;
                 if (rwPrimitive( "drop",   &Primitives::drop   ) ) continue;
                 if (rwPrimitive( "swap",   &Primitives::swap   ) ) continue;
                 if (rwPrimitive( "dup",    &Primitives::dup    ) ) continue;

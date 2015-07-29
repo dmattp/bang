@@ -16,7 +16,7 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 1
+#define LCFG_MT_SAFEISH 0
 
 static const char* const BANG_VERSION = "0.005";
 
@@ -64,11 +64,10 @@ namespace Bang
         kOpDiv,    // stack-0 / thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   C
         kOpModulo, // stack-0 % thing  -> type(thing)   // ApplyThingAndValue2ValueOperator   C
 
+        kOpOr,   //  stack-0 || thing -> bool     // ApplyThingAndValue2BoolOperator    B
+        kOpAnd,  //  stack-0 && thing -> bool     // ApplyThingAndValue2BoolOperator    B
         // kOpApply,   //  ... thing! -> ???            // ApplyThing2Stack                   D
         // kOpDot,     //  ... thing .parse-time-ident -> ...
-        // kOpLogOr,   //  stack-0 || thing -> bool     // ApplyThingAndValue2BoolOperator    B
-        // kOpLogAnd,  //  stack-0 && thing -> bool     // ApplyThingAndValue2BoolOperator    B
-        // kOpLogNot,  //  ~thing -> bool             op  // ApplyThing2BoolOperator            E
         // kOpIndex,   // ... thing[expression] -> ...  // ApplyThingAndValue2Stack           F
         
         kOpCustom,       // ... thing/custom -> ... // ApplyThingWithCustomOperator2Stack     G
@@ -83,8 +82,10 @@ namespace Bang
         DLLEXPORT static void invalidOperator (const Value& v, Stack& );
         DLLEXPORT static Value opThingAndValue2Value_noop( const Value& thing, const Value& other );
         void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
-        union {
-            struct {
+        union
+        {
+            struct
+            {
                 tfn_opThingAndValue2Value opPlus;
                 tfn_opThingAndValue2Value opMinus;
                 tfn_opThingAndValue2Value opLt;
@@ -93,15 +94,18 @@ namespace Bang
                 tfn_opThingAndValue2Value opMult;
                 tfn_opThingAndValue2Value opDiv;
                 tfn_opThingAndValue2Value opModulo;
+                tfn_opThingAndValue2Value opOr;
+                tfn_opThingAndValue2Value opAnd;
             };
-            tfn_opThingAndValue2Value ops[kOpLAST];
+//            tfn_opThingAndValue2Value ops[kOpLAST];
         };
-//        tfn_operator optable[kOpLAST];
-        Operators() {
-            opPlus = opMult = opGt = opLt = opDiv = opEq = opModulo = opThingAndValue2Value_noop;
+        
+        Operators()
+        {
+            opPlus = opMult = opGt = opLt = opDiv = opEq = opModulo = opOr = opAnd =
+                opThingAndValue2Value_noop;
+            
             customOperator = nullptr;
-//           for (int i = 0; i < kOpLAST; ++i)
-//                 optable[i] = &Operators::invalidOperator;
         }
     };
    
