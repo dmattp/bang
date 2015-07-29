@@ -654,7 +654,6 @@ namespace Primitives
             opDiv    = &Numbers::div;
             opEq     = &Numbers::eq;
             opModulo = &Numbers::modulo;
-//            optable[kOpCustom] = &Numbers::custom;
         }
     } gNumberOperators;
     
@@ -1075,26 +1074,6 @@ namespace Ast
             : "unknown operator"
             );
         }
-
-//     class ApplyEnumOperator : public Base
-//     {
-//     public:
-//         EOperators openum_ ; // method
-//         ApplyEnumOperator( EOperators openum )
-//         : openum_( openum )
-//         {}
-
-//         virtual void dump( int level, std::ostream& o ) const
-//         {
-//             indentlevel(level, o);
-//             o << "ApplyEnumOperator(" << openum_ << " (" << op2str(openum_) << ") )\n";
-//         }
-//         virtual void run( Stack& stack, const RunContext& ) const
-//         {
-//             const Value& owner = stack.pop();
-//             owner.applyOperator( openum_, stack );
-//         }
-//     };
 
     class PushUpval : public Base
     {
@@ -3139,34 +3118,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
 
-// #if 0 // HAVE_COMPLETE_OPERATORS    
-//     for (int i = 0; i < ast.size() - 1; ++i)
-//     {
-//         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
-//         if (plit && plit->v_.isnum() && plit->v_.tonum() == 1.0)
-//         {
-//             Ast::ApplyEnumOperator* pprim = dynamic_cast<Ast::ApplyEnumOperator*>(ast[i+1]);
-//             if (pprim)
-//             {
-//                 if (pprim->openum_ == kOpPlus)
-//                 {
-//                     Ast::PushPrimitive p( &Primitives::increment, "increment" );
-//                     ast[i+1] = new Ast::ApplyPrimitive( &p );
-//                     ast[i] = &noop;
-//                 }
-//                 else if (pprim->openum_ == kOpMinus)
-//                 {
-//                     Ast::PushPrimitive p( &Primitives::decrement, "decrement" );
-//                     ast[i+1] = new Ast::ApplyPrimitive( &p );
-//                     ast[i] = &noop;
-//                 }
-//             }
-//         }
-//     }
-// #endif 
-
-//    delNoops();
-
 
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
     for (int i = 0; i < ast.size() - 1; ++i)
@@ -3680,17 +3631,6 @@ Parser::Program::Program
                 if (openum != kOpCustom)
                 {
                     ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); 
-//                     switch( openum )
-//                     {
-//                         case kOpGt:
-//                         case kOpLt:
-//                         case kOpDiv:
-//                         case kOpMinus:
-//                         case kOpMult: // fall through
-//                         case kOpPlus:
-//                             ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); break;
-//                         default: ast_.push_back( new Ast::ApplyEnumOperator( openum ) ); break;
-//                     }
                 }
                 else
                 {

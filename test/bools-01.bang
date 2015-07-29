@@ -1,0 +1,19 @@
+true ~
+false ~
+true
+3 4 < '3 4 < %@' format!
+3 4 > '3 4 > %@' format!
+
+3 4 < ~ '3 4 < ~ %@' format!
+3 4 > ~ '3 4 > ~ %@' format!
+
+4 4 = ~ '4 4 = ~ %@' format!
+
+true as t
+t~ 'true ~ %@' format!
+
+false as f
+f~ 'false ~ %@' format!
+
+false ~ ? 'good' : 'bad';
+true ~ ? 'bad' : 'good';
