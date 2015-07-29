@@ -191,7 +191,6 @@ Test against reference output:
  */
 DLLEXPORT int bangmain( int argc, char* argv[] )
 {
-    std::cerr << "Bang! v" << BANG_VERSION << " - Welcome!" << std::endl;
 
     bool bDump = false;
     bool bInteractive = false;
@@ -207,6 +206,11 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
         {
             bDump = true;
             argv[n] = nullptr;
+        }
+        else if (arg == "-v")
+        {
+            std::cerr << "Bang! v" << BANG_VERSION << " - Welcome!" << std::endl;
+            exit(0);
         }
         else if (arg == "-i")
         {
@@ -253,14 +257,17 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 
     Bang::Thread thread;
 
-    if ((cmdlineprog.size() > 0) && !bCmdLineAfterProgram)
+    if (cmdlineprog.size() > 0)
     {
 //        std::cout << "CLPROG=" << cmdlineprog << '\n';
         eval_more_bang_code( cmdlineprog, thread );
         if (!fname) // if no file to parse, dump the stack and exit
         {
             thread.stack.dump( std::cout );
-            return 0;
+            if (!bCmdLineAfterProgram)
+            {
+                return 0;
+            }
         }
     }
 
@@ -330,7 +337,7 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
     while (bInteractive);
 
     Bang::dumpProfilingStats();
-    std::cerr << "toodaloo!" << std::endl;
+//    std::cerr << "toodaloo!" << std::endl;
 
     return 0;
 }

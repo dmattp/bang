@@ -179,98 +179,6 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
     return &a != &b;
 }
 
-#if 0
-    class recursive_mutex
-    {
-    public:
-        recursive_mutex()
-        {
-            InitializeCriticalSection(&m_cs);
-        }
-        ~recursive_mutex()
-        {
-            DeleteCriticalSection(&m_cs);
-        }
-        void lock()
-        {
-            EnterCriticalSection(&m_cs);
-        }
-        void unlock()
-        {
-            LeaveCriticalSection(&m_cs);
-        }
-        bool try_lock()
-        {
-            return !!TryEnterCriticalSection(&m_cs);
-        }
-    private:
-        CRITICAL_SECTION m_cs;
-        recursive_mutex( const recursive_mutex& ); // not implemented; private to prevent copying.
-    };
-    
-template <class Tp>
-struct SimpleThreadSafeAllocator
-{
-    typedef Tp value_type;
-    SimpleThreadSafeAllocator(/*ctor args*/) {}
-    template <class T> SimpleThreadSafeAllocator(const SimpleThreadSafeAllocator<T>& other){}
-    template <class U> struct rebind { typedef SimpleThreadSafeAllocator<U> other; };
-    recursive_mutex theLock;
-    
-    Tp* allocate(std::size_t n)
-    {
-        theLock.lock();
-        FcStack<Tp>* hdr;
-        if (FcStack<Tp>::head)
-        {
-            hdr = FcStack<Tp>::head;
-            FcStack<Tp>::head = hdr->prev;
-            theLock.unlock();
-        }
-        else
-        {
-            theLock.unlock();
-            hdr = static_cast<FcStack<Tp>*>( malloc( n * (sizeof(Tp) + sizeof(FcStack<Tp>)) ) );
-//            ++gAllocated;
-        }
-        Tp* mem = reinterpret_cast<Tp*>( hdr + 1 );
-        return mem;
-    }
-    void deallocate(Tp* p, std::size_t n)
-    {
-        FcStack<Tp>* hdr = reinterpret_cast<FcStack<Tp>*>(p);
-        --hdr;
-        static char freeOne;
-        if ((++freeOne & 0xF) == 0)
-        {
-//            std::cerr << "DEALLOCATE=" << gAllocated << "\n"; //  FunctionClosure p=" << p << " size=" << n << " sizeof<shptr>=" <<
-//            sizeof(std::shared_ptr<FunctionClosure>) << " sizeof Tp=" << sizeof(Tp) << std::endl;
-//            --gAllocated;
-            free( hdr );
-        }
-        else
-        {
-            theLock.lock();
-            hdr->prev = FcStack<Tp>::head;
-            FcStack<Tp>::head = hdr;
-            theLock.unlock();
-        }
-    }
-    void construct( Tp* p, const Tp& val ) { new (p) Tp(val); }
-    void destroy(Tp* p) { p->~Tp(); }
-};
-template <class T, class U>
-bool operator==(const SimpleThreadSafeAllocator<T>& a, const SimpleThreadSafeAllocator<U>& b)
-{
-    return &a == &b;
-}
-template <class T, class U>
-bool operator!=(const SimpleThreadSafeAllocator<T>& a, const SimpleThreadSafeAllocator<U>& b)
-{
-    return &a != &b;
-}
-#endif 
-
 
 #if LCFG_MT_SAFEISH    
 template <class Tp>
@@ -1034,6 +942,18 @@ const Ast::Base* gFailedAst = nullptr;
         kSrcRegisterBool,
         kSrcCloseValue
     };
+        static const char* sd2str( ESourceDest sd )
+        {
+            return
+            ( sd == kSrcStack ? "Stack"
+            : sd == kSrcLiteral ? "Literal"
+            : sd == kSrcUpval ? "Upval"
+            : sd == kSrcRegister ? "Register"
+            : sd == kSrcRegisterBool ? "RegisterBool"
+            : sd == kSrcCloseValue ? "CloseValue"
+            : "Unknown-source/dest"
+            );
+        }
     
     
 namespace Ast
@@ -1197,27 +1117,90 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
+    class BoolEater
+    {
+    protected:
+        ESourceDest boolsrc_;
+    public:
+        BoolEater()
+        : boolsrc_( kSrcStack )
+        {}
+        void setSrcRegisterBool() { boolsrc_ = kSrcRegisterBool; }
+    };
 
-    class ApplyThingAndValue2ValueOperator : public Base
+    class DestableOperator
+    {
+    public: // protected:
+        ESourceDest dest_;
+    public:
+        DestableOperator()
+        : dest_( kSrcStack )
+        {}
+    };
+    
+    class BoolMaker : public DestableOperator
     {
     public:
-        static const char* sd2str( ESourceDest sd )
+        BoolMaker()
+        {}
+        void setDestRegisterBool() { dest_ = kSrcRegisterBool; }
+    };
+
+    class ValueMaker : public BoolMaker
+    {
+    public: // protected:
+        const Ast::CloseValue* cv_; // valid when dest_ is kSrcCloseValue
+    public:
+        ValueMaker()
+        {}
+        void setDestRegister() { dest_ = kSrcRegister; }
+        void setDestCloseValue( const Ast::CloseValue* cv )
         {
-            return
-            ( sd == kSrcStack ? "Stack"
-            : sd == kSrcLiteral ? "Literal"
-            : sd == kSrcUpval ? "Upval"
-            : sd == kSrcRegister ? "Register"
-            : sd == kSrcRegisterBool ? "RegisterBool"
-            : sd == kSrcCloseValue ? "CloseValue"
-            : "Unknown-source/dest"
-            );
+            dest_ = kSrcCloseValue;
+            cv_ = cv;
         }
+    };
+
+    class OperatorNot : public Base, public BoolEater, public BoolMaker
+    {
+    public:
+        OperatorNot() {}
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "OperatorNot( src=" << sd2str(boolsrc_) << " dest=" << sd2str(dest_) << ")\n";
+        }
+        virtual void run( Stack& s, const RunContext& rc ) const
+        {
+            if (boolsrc_ == kSrcStack)
+            {
+                Value& v = s.loc_topMutate();
+                if (!v.isbool())
+                    throw std::runtime_error("Logical NOT operator incompatible type");
+                if (dest_ == kSrcStack)
+                    v.mutateNoType( !v.tobool() );
+                else // should only be kSrcRegisterBool
+                {
+                    rc.thread->rb0_ = !v.tobool();
+                    s.pop_back();
+                }
+            }
+            else // should only be kSrcRegisterBool
+            {
+                if (dest_ == kSrcStack)
+                    s.push( !rc.thread->rb0_ );
+                else
+                    rc.thread->rb0_ = !rc.thread->rb0_;
+            }
+        }
+    };
+
+    class ApplyThingAndValue2ValueOperator : public Base, public ValueMaker
+    {
+    public:
         EOperators openum_ ; // method
         ESourceDest srcthing_;
         ESourceDest srcother_;
-        ESourceDest dest_;
-        const Ast::CloseValue* cv_;
         Value thingLiteral_; // when srcthing_ == kSrcLiteral
         Value otherLiteral_; // when srcthing_ == kSrcLiteral
         tfn_opThingAndValue2Value thingliteralop_;
@@ -1230,21 +1213,11 @@ namespace Ast
           openum_( openum ),
           srcthing_( kSrcStack ),
           srcother_( kSrcStack ),
-          dest_( kSrcStack ),
           uvnumber_( kNoParent ),
           uvnumberOther_( kNoParent )
         {}
 
         bool thingNotStack() { return srcthing_ != kSrcStack; }
-
-        void setDestRegister() { dest_ = kSrcRegister; }
-        void setDestRegisterBool() { dest_ = kSrcRegisterBool; }
-
-        void setDestCloseValue( const Ast::CloseValue* cv )
-        {
-            dest_ = kSrcCloseValue;
-            cv_ = cv;
-        }
 
         void setThingRegister() { srcthing_ = kSrcRegister; }
 
@@ -1334,7 +1307,8 @@ namespace Ast
     // disappointing but the inline member function does not run as quickly as the macro here.
 #define pa_getOtherValue(pa, frame, stack )  \
     (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop())
-    };
+        
+    }; // end, class ApplyThingAndValue2ValueOperator
 
 
     class ApplyCustomOperator : public Base
@@ -1606,24 +1580,20 @@ namespace Ast
         }
     };
 
-    class IfElse : public Base
+    class IfElse : public Base, public BoolEater
     {
         Ast::Program* if_;
         Ast::Program* else_;
-        ESourceDest condSource_;
     public:
         IfElse( Ast::Program* if__, Ast::Program* else__ )
         : Base( kIfElse ),
           if_(if__),
-          else_( else__ ),
-          condSource_( kSrcStack )
+          else_( else__ )
         {}
-
-        void setSrcRegisterBool() { condSource_ = kSrcRegisterBool; }
 
         Ast::Program* branchTaken( Thread& thr ) const
         {
-            if (condSource_ == kSrcStack)
+            if (boolsrc_ == kSrcStack)
             {
                 bool isCond = thr.stack.loc_top().tobool();
                 thr.stack.pop_back();
@@ -1638,7 +1608,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "If (" << (condSource_ == kSrcStack ? "Stack" : "RegisterBool" ) << ')';
+            o << "If (" << (boolsrc_ == kSrcStack ? "Stack" : "RegisterBool" ) << ')';
             
             if_->dump( level, o );
             if (else_)
@@ -1846,102 +1816,67 @@ static Thread gNullThread;
 DLLEXPORT Thread* pNullThread( &gNullThread );
 DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
-    template< ESourceDest edst >
-    struct StoreValue
-    {
+    template< ESourceDest edst > struct StoreValueResultTo {
         static inline void store( Stack& stack, Thread*, Bang::Value&& bv ) { char This_should_never_be_instantiated[0-edst-1]; }
     };
-
-    template<>
-    struct StoreValue<kSrcStack>
-    {
-        static inline void store( Stack& stack, Thread*, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv )
-        {
+    template<> struct StoreValueResultTo<kSrcStack> {
+        static inline void store( Stack& stack, Thread*, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv ) {
             stack.push( std::move(bv) );
         }
     };
-
-    template<>
-    struct StoreValue<kSrcRegister>
-    {
-        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv )
-        {
+    template<> struct StoreValueResultTo<kSrcRegister> {
+        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv ) {
             pThread->r0_ = std::move(bv);
         }
     };
-
-    template<>
-    struct StoreValue<kSrcRegisterBool>
-    {
-        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, const Bang::Value& bv )
-        {
+    template<> struct StoreValueResultTo<kSrcRegisterBool> {
+        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, const Bang::Value& bv ) {
             pThread->rb0_ = bv.tobool();
         }
     };
-
-    template<>
-    struct StoreValue<kSrcCloseValue>
-    {
-        static inline void store( Stack&, Thread*, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa, Bang::Value&& bv )
-        {
+    template<> struct StoreValueResultTo<kSrcCloseValue> {
+        static inline void store( Stack&, Thread*, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa, Bang::Value&& bv ) {
             frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, std::move(bv) );
         }
     };
 
 
-    template <ESourceDest esd> 
-    struct CallOperatorInst
-    {
-    };
-
-    template <> 
-    struct CallOperatorInst<kSrcLiteral>
-    {
-        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack )
-        {
+    template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom { };
+    template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack ) {
             return pa.thingliteralop_( pa.thingLiteral_, pa_getOtherValue( pa, frame, stack ) );
         }
     };
-
-    template <> 
-    struct CallOperatorInst<kSrcRegister>
-    {
-        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack )
-        {
+    template <> struct Invoke2n2OperatorWithThingFrom<kSrcRegister> {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
         }
     };
-
-    template <> 
-    struct CallOperatorInst<kSrcUpval>
-    {
-        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack )
-        {
+    template <> struct Invoke2n2OperatorWithThingFrom<kSrcUpval> {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack ) {
             return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
         }
     };
-
-    template <> 
-    struct CallOperatorInst<kSrcStack>
-    {
-        static inline Bang::Value get( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack )
-        {
+    template <> struct Invoke2n2OperatorWithThingFrom<kSrcStack> {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack ) {
             const Value& owner = stack.pop();
             return owner.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
         }
     };
 
     template< ESourceDest eThingSource, ESourceDest eValueDest >
-    struct GetThingSaveResult
+    struct ThingValueOperatorFetchFromSaveTo
     {
-        static inline void doit(  Stack& stack, Thread* pThread, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa )
+        static inline void apply(  Stack& stack, Thread* pThread, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa )
         {
-            StoreValue<eValueDest>::store( stack, pThread, frame, pa, CallOperatorInst<eThingSource>::get( pa, pThread, frame, stack ) );
+            StoreValueResultTo<eValueDest>::store( stack, pThread, frame, pa, Invoke2n2OperatorWithThingFrom<eThingSource>::getAndCall( pa, pThread, frame, stack ) );
         }
     };
 
     /* this is pretty horribly worse than the plain inline version with MSVC; it's *nearly* as good with GCC, but
-     * still not quite.  I guess I should be happy that it comes anywhere near close. */
+     * still not quite.  I guess I should be happy that it comes anywhere near close. As much as I like the
+     * theory of "use templates, not preprocessor" I guess compilers still aren't quite as smart as human
+     * crafted syntax expansions. */
     template< ESourceDest edst >
     struct ApplyThingValueCall
     {
@@ -1949,10 +1884,10 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         {
             switch (pa.srcthing_)
             {
-                case kSrcUpval:    GetThingSaveResult<kSrcUpval,edst>   ::doit( stack, pThread, frame, pa ); break;
-                case kSrcStack:    GetThingSaveResult<kSrcStack,edst>   ::doit( stack, pThread, frame, pa ); break;
-                case kSrcLiteral:  GetThingSaveResult<kSrcLiteral,edst> ::doit( stack, pThread, frame, pa ); break;
-                case kSrcRegister: GetThingSaveResult<kSrcRegister,edst>::doit( stack, pThread, frame, pa ); break;
+                case kSrcUpval:    ThingValueOperatorFetchFromSaveTo<kSrcUpval,edst>   ::apply( stack, pThread, frame, pa ); break;
+                case kSrcStack:    ThingValueOperatorFetchFromSaveTo<kSrcStack,edst>   ::apply( stack, pThread, frame, pa ); break;
+                case kSrcLiteral:  ThingValueOperatorFetchFromSaveTo<kSrcLiteral,edst> ::apply( stack, pThread, frame, pa ); break;
+                case kSrcRegister: ThingValueOperatorFetchFromSaveTo<kSrcRegister,edst>::apply( stack, pThread, frame, pa ); break;
             }
         }
     };
@@ -2534,7 +2469,7 @@ public:
     virtual std::string sayWhere()
     {
         std::ostringstream oss;
-        oss << "FILE=" << filename_ << " L" << loc_.lineno_ << " C" << loc_.linecol_;
+        oss << filename_ << ":" << loc_.lineno_ << " C" << loc_.linecol_;
         return oss.str();
     }
 
@@ -2830,7 +2765,7 @@ class Parser
 
     static bool isoperatorchar( char c )
     {
-        auto found = strchr( "+-<>=/*@$%^&", c );
+        auto found = strchr( "+-<>=/*@$%^&~", c );
         return found ? true : false;
     }
 
@@ -3298,7 +3233,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     
     for (int i = 0; i < ast.size() - 1; ++i)
     {
-        Ast::ApplyThingAndValue2ValueOperator* pfirst = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
+        Ast::ValueMaker* pfirst = dynamic_cast<Ast::ValueMaker*>(ast[i]);
         if (pfirst)
         {
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
@@ -3321,13 +3256,23 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 }
                 else
                 {
-                    Ast::IfElse* psecond = dynamic_cast<Ast::IfElse*>(ast[i+1]);
+                    Ast::BoolEater* psecond = dynamic_cast<Ast::BoolEater*>(ast[i+1]);
                     if (psecond)
                     {
                         pfirst->setDestRegisterBool();
                         psecond->setSrcRegisterBool();
                     }
                 }
+            }
+        }
+        else
+        {
+            Ast::BoolMaker* pfirst  = dynamic_cast<Ast::BoolMaker*>(ast[i]);
+            Ast::BoolEater* psecond = dynamic_cast<Ast::BoolEater*>(ast[i+1]);
+            if (pfirst && psecond)
+            {
+                pfirst->setDestRegisterBool();
+                psecond->setSrcRegisterBool();
             }
         }
     }
@@ -3721,9 +3666,17 @@ Parser::Program::Program
             {
                 OperatorToken op( mark );
                 const std::string& token = op.name();
+
                 // std::cerr << "got operator token=" << op.name() << std::endl;
-                EOperators openum = optoken2enum( token );
                 mark.accept();
+                
+                if (token == "~")
+                {
+                    ast_.push_back( new Ast::OperatorNot() );
+                    continue;
+                }
+                
+                EOperators openum = optoken2enum( token );
                 if (openum != kOpCustom)
                 {
                     ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( openum ) ); 
@@ -3907,7 +3860,7 @@ Parser::Program::Program
             }
             catch( const ErrorNoMatch& )
             {
-                bangerr(ParseFail) << " in " << mark.sayWhere() << "unparseable token [" << c << "]";
+                bangerr(ParseFail) << " in " << mark.sayWhere() << " unparseable token [" << c << "]";
             }
         } // end, while true
 
