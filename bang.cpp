@@ -354,41 +354,8 @@ namespace Ast { class Base; }
         ppInstr = inppInstr;
     }
 
-namespace Numbers
-{
-    template <class T>
-    void infix2to1( double v2, Stack& s, T operation )
-    {
-        Value& v1 = s.loc_topMutate();
-        // typecheck v1 here
-        v1.mutateNoType( operation( v1.tonum(), v2 ) );
-    }
-
-    template <class T>
-    void infix2to1bool( double v2, Stack& s, T operation )
-    {
-        Value& v1 = s.loc_topMutate();
-        // typecheck v1 here
-        v1.mutatePrimitiveToBool( operation( v1.tonum(), v2 ) );
-    }
-    
-//    void modulo ( const Value& v, Stack& s ) { infix2to1( v.tonum(),     s, [](double v1, double v2) { return double(int(v1) % int(v2)); } ); }
-
-    Bang::Value gt( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() > thing.tonum() ); }
-    Bang::Value lt( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() < thing.tonum() ); }
-    Bang::Value eq( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() == thing.tonum() ); }
-    Bang::Value modulo( const Value& thing, const Value& other )  { return Bang::Value( double((int)other.tonum() % (int)thing.tonum()) ); }
-    Bang::Value plus( const Value& thing, const Value& other )  { return Bang::Value( other.tonum() + thing.tonum() ); }
-    Bang::Value mult( const Value& thing, const Value& other )  { return Bang::Value( other.tonum() * thing.tonum() ); }
-    Bang::Value div( const Value& thing, const Value& other )   { return Bang::Value( other.tonum() / thing.tonum() ); }
-    Bang::Value minus( const Value& thing, const Value& other ) { return Bang::Value( other.tonum() - thing.tonum() ); }
-} // end, Numbers namespace
-    
 namespace Primitives
 {
-//     void increment( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() + 1 ); }
-//     void decrement( Stack& s, const RunContext& ) { Value& top = s.loc_topMutate(); top.mutateNoType( top.tonum() - 1 ); }
-    
     void stacklen( Stack& s, const RunContext& ctx)
     {
         s.push(double(s.size()));
@@ -507,20 +474,32 @@ namespace Primitives
     {
         bangerr() << "Invalid/unsupported operator applied";
     }
+    namespace { using namespace Bang;
+        
+
     struct NumberOps : public Bang::Operators
     {
+        static Value gt( const Value& thing, const Value& other )      { return Bang::Value( other.tonum() > thing.tonum() );                   }
+        static Value lt( const Value& thing, const Value& other )      { return Bang::Value( other.tonum() < thing.tonum() );                   }
+        static Value eq( const Value& thing, const Value& other )      { return Bang::Value( other.tonum() == thing.tonum() );                  }
+        static Value plus( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() + thing.tonum() );                   }
+        static Value mult( const Value& thing, const Value& other )    { return Bang::Value( other.tonum() * thing.tonum() );                   }
+        static Value div( const Value& thing, const Value& other )     { return Bang::Value( other.tonum() / thing.tonum() );                   }
+        static Value minus( const Value& thing, const Value& other )   { return Bang::Value( other.tonum() - thing.tonum() );                   }
+        static Value modulo( const Value& thing, const Value& other )  { return Bang::Value( double((int)other.tonum() % (int)thing.tonum()) ); }
+    
         NumberOps()
         {
-            opPlus   = &Numbers::plus;
-            opMult   = &Numbers::mult;
-            opLt     = &Numbers::lt;
-            opGt     = &Numbers::gt;
-            opMinus  = &Numbers::minus;
-            opDiv    = &Numbers::div;
-            opEq     = &Numbers::eq;
-            opModulo = &Numbers::modulo;
+            opPlus   = &plus;
+            opMult   = &mult;
+            opLt     = &lt;
+            opGt     = &gt;
+            opMinus  = &minus;
+            opDiv    = &div;
+            opEq     = &eq;
+            opModulo = &modulo;
         }
-    } gNumberOperators;
+    } gNumberOperators; }
 
     struct BoolOps : public Bang::Operators
     {
@@ -540,12 +519,6 @@ namespace Primitives
             const bangstring& sLt = sOther.tostr();
             return Value ( sLt == sThing.tostr() );
         }
-//         static void eq( const Bang::Value& sRt, Bang::Stack& s )
-//         {
-//             const bangstring& sLt = s.poptostr();
-//             s.push( sLt == sRt.tostr() );
-//         }
-
         static Bang::Value gt( const Bang::Value& sThing, const Bang::Value& sOther )
         {
             const bangstring& sLt = sOther.tostr();
@@ -578,16 +551,6 @@ namespace Primitives
     : operators( &gFunctionOperators )
     {}
 
-    /*
-    :  c == '+' ? Primitives::plus
-    :  c == '-' ? Primitives::minus
-    :  c == '<' ? Primitives::lt
-    :  c == '>' ? Primitives::gt
-    :  c == '=' ? Primitives::eq
-    :  c == '*' ? Primitives::mult
-    :  c == '/' ? Primitives::div
-    */
-
 #if LCFG_KEEP_PROFILING_STATS    
     unsigned operatorCounts[kOpLAST];
 #endif
@@ -601,24 +564,6 @@ namespace Primitives
         }
 #endif
     }
-
-//     void Value::applyOperator( EOperators which, Stack& s ) const
-//     {
-//         tfn_operator* optable;
-// #if LCFG_KEEP_PROFILING_STATS
-//         ++operatorCounts[which];
-// #endif 
-//         switch (type_)
-//         {
-//             case kNum: optable = gNumberOperators.optable; break;
-//             case kStr: optable = gStringOperators.optable; break;
-//             case kFun: // fall through
-//             case kBoundFun: optable = this->tofun()->operators->optable; break;
-//             case kFunPrimitive: bangerr() << "operators not supported for function primitives"; break; 
-//             case kThread: bangerr() << "operators not supported for threads"; break; 
-//         }
-//         (*optable[which])( *this, s );
-//     }
 
     tfn_opThingAndValue2Value Value::getOperator( EOperators which ) const
     {
@@ -797,10 +742,10 @@ const Ast::Base* gFailedAst = nullptr;
             const Ast::Program* parent,
             const Ast::CloseValue* upvalueChain,
             void* pRecParsing
-        ) :
-        parsecontext_(parsecontext), stream_(stream),
-        parent_(parent), upvalueChain_( upvalueChain ),
-        pRecParsing_( pRecParsing )
+        )
+        : parsecontext_(parsecontext), stream_(stream),
+          parent_(parent), upvalueChain_( upvalueChain ),
+          pRecParsing_( pRecParsing )
         {
         }
         virtual Ast::Base* hitEof( const Ast::CloseValue* uvchain );
@@ -944,6 +889,8 @@ namespace Ast
             : which == kOpMult   ? "*"
             : which == kOpDiv    ? "/"
             : which == kOpModulo ? "%"
+            : which == kOpOr ? "OR"
+            : which == kOpAnd ? "AND"
             : which == kOpCustom ? "custom"
             : "unknown operator"
             );
