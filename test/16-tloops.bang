@@ -8,6 +8,6 @@ def :times totalTimes = { fun! loopFun =
     totalTimes innerLoop!
 }
 
-def :say-hello = "hello"@;
+def :say-hello = "hello\n" print!;
 
 say-hello 7 times!

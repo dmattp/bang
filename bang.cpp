@@ -430,14 +430,6 @@ namespace Primitives
         s.push( os.str() );
     }
     
-    void printone( Stack& s, const RunContext& ctx )
-    {
-        const Value& v1 = s.pop();
-        //std::cout << "V=";
-        v1.dump( std::cout );
-        std::cout << std::endl;
-    }
-
     void format2ostream(  Stack& s, std::ostream& strout )
     {
         const Value& vfmt = s.pop();
@@ -700,10 +692,6 @@ static tfn_primitive bangprimforchar( int c )
     :  c == '(' ? Primitives::beginStackBound
     :  c == ')' ? Primitives::endStackBound
 
-    ///////////////////////////////// toys+test        
-    :  c == '@' ? Primitives::printone
-    /////////////////////////////////
-        
     :  nullptr
     );
 }
