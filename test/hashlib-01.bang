@@ -1,0 +1,14 @@
+
+'hashlib' crequire! as hash
+
+hash.new! as h
+
+100 'hundred' h/set
+3.14 'pi' h/set
+
+h.pi
+h.hundred
+h/keys -- not quite right, h/keys doesn't generate correct Ast if only trailing whitespace before EOF
+false
+
+

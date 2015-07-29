@@ -1,0 +1,12 @@
+100   true true   /and ? 1 : (!);
+101   true false  /and ? (!) : 1;
+102   false true  /and ? (!) : 1;
+103   false false /and ? (!) : 1;
+
+104   false false /or ? (!) : 1;
+105   false true  /or ? 1 : (!);
+106   true false  /or ? 1 : (!);
+107   true true   /or ? 1 : (!);
+
+
+
