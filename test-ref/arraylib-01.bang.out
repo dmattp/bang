@@ -1,0 +1,25 @@
+checking array create
+pass
+pass
+checking array/to-stack
+1
+2
+3
+pass
+checking array get/index
+pass
+pass
+pass
+checking array/set
+pass
+checking array/swap
+pass
+pass
+checking array/insert
+pass
+pass
+checking array/erase
+pass
+checking array/append
+pass
+pass

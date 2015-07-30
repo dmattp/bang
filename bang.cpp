@@ -74,8 +74,6 @@ And there are primitives, until a better library / module system is in place.
 #endif
 
 
-// #define kDefaultScript "c:/m/n2proj/bang/tmp/coro1.bang";
-//#define kDefaultScript "c:/m/n2proj/bang/tmp/cbad1.bang";
 // #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
 
 //~~~temporary #define for refactoring
@@ -107,6 +105,8 @@ namespace {
 #define bangerr(...) for ( ebuild<__VA_ARGS__> err; true; err.throw_() ) err
     
 }
+
+
 
 namespace Bang {
 
@@ -3613,11 +3613,8 @@ Parser::Program::Program
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
                 if (rwPrimitive( "rebind",    &Primitives::rebindFunction    ) ) continue;
                 if (rwPrimitive( "rebind-outer",    &Primitives::rebindOuterFunction    ) ) continue;
-//                if (rwPrimitive( "stack-to-array",    &Primitives::stackToArray    ) ) continue;
-//                if (rwPrimitive( "require_math",    &Primitives::require_math    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
                 if (rwPrimitive( "tostring", &Primitives::tostring    ) ) continue;
-//                if (rwPrimitive( "require",    &Primitives::require    ) ) continue;
             
                 bool bFoundRecFunId = false;
 

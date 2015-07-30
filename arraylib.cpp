@@ -11,33 +11,32 @@
 namespace Array
 {
     using namespace Bang;
+
     
-    class FunctionRestoreStack : public Function
-    {
-        std::vector<Value> stack_;
-    public:
-        FunctionRestoreStack( Stack& s )
-        //    : pStack_( std::make_shared<std::vector<Value>>() )
-        {
-            s.giveTo( stack_ );
-        }
-        FunctionRestoreStack( const std::vector<Value>& s )
-        : stack_(s)
-        {
-        }
-        virtual void apply( Stack& s ) // , CLOSURE_CREF running )
-        {
-            std::copy( stack_.begin(), stack_.end(), s.back_inserter() );
-        }
-    };
+//     class FunctionRestoreStack : public Function
+//     {
+//         std::vector<Value> stack_;
+//     public:
+//         FunctionRestoreStack( Stack& s )
+//         //    : pStack_( std::make_shared<std::vector<Value>>() )
+//         {
+//             s.giveTo( stack_ );
+//         }
+//         FunctionRestoreStack( const std::vector<Value>& s )
+//         : stack_(s)
+//         {
+//         }
+//         virtual void apply( Stack& s ) // , CLOSURE_CREF running )
+//         {
+//             std::copy( stack_.begin(), stack_.end(), s.back_inserter() );
+//         }
+//     };
     
     class FunctionStackToArray : public Function
     {
         std::vector<Value> stack_;
     public:
-        FunctionStackToArray( Stack& s )
-        {
-        }
+        FunctionStackToArray( Stack& s );
 
         void appendStack( Stack& s )
         {
@@ -57,56 +56,78 @@ namespace Array
             {
                 s.push( stack_[int(msg.tonum())] );
             }
-            else if (msg.isstr())
-            {
-                const auto& str = msg.tostr();
-                
-                if (str == "#")
-                    s.push( double(stack_.size()) );
-                else if (str == "push" || str == "to-stack")
-                {
-                    auto pushit = NEW_BANGFUN(FunctionRestoreStack, stack_ );
-                    s.push( STATIC_CAST_TO_BANGFUN(pushit) );
-                }
-#if HAVE_ARRAY_MUTATION
-                // I'm a little more willing to accept mutating arrays (vs upvals) just
-                // because I don't know why.  Because arraylib is currently a library, and libraries
-                // are even more tentative and easier to replace than the core language, does not
-                // imply new syntax, and can always be retained as a deprecated library alongside
-                // mutation free alternatives or something.
-                else if (str == "set")
-                {
-                    int ndx = int(s.pop().tonum());
-                    stack_[ndx] = s.pop();
-                }
-                else if (str == "swap")
-                {
-                    int ndx1 = int(s.pop().tonum());
-                    int ndx2 = int(s.pop().tonum());
-                    std::swap( stack_[ndx1], stack_[ndx2] );
-//                stack_[ndx] = s.pop();
-                }
-                else if (str == "insert")
-                {
-                    int ndx = int(s.pop().tonum());
-                    stack_.insert( stack_.begin()+ndx, s.pop() );
-                }
-                else if (str == "erase")
-                {
-                    int ndx = int(s.pop().tonum());
-                    stack_.erase( stack_.begin()+ndx );
-                }
-                else if (str == "append")
-                {
-                    this->appendStack(s);
-                }
-#endif 
-            }
         }
-    };
+        void customOperator( const Value& v, const bangstring& str, Stack& s)
+        {
+            const static Bang::bangstring opSize("/#");
+            const static Bang::bangstring opToStack("/to-stack");
+            const static Bang::bangstring opSet("/set");
+            const static Bang::bangstring opSwap("/swap");
+            const static Bang::bangstring opInsert("/insert");
+            const static Bang::bangstring opErase("/erase");
+            const static Bang::bangstring opAppend("/append");
+        
+            if (str == opSize)
+                s.push( double(stack_.size()) );
+            else if (str == opToStack)
+            {
+                std::copy( stack_.begin(), stack_.end(), s.back_inserter() );
+            }
+#if HAVE_ARRAY_MUTATION
+            // I'm a little more willing to accept mutating arrays (vs upvals) just
+            // because I don't know why.  Because arraylib is currently a library, and libraries
+            // are even more tentative and easier to replace than the core language, does not
+            // imply new syntax, and can always be retained as a deprecated library alongside
+            // mutation free alternatives or something.
+            else if (str == opSet)
+            {
+                int ndx = int(s.pop().tonum());
+                stack_[ndx] = s.pop();
+            }
+            else if (str == opSwap)
+            {
+                int ndx1 = int(s.pop().tonum());
+                int ndx2 = int(s.pop().tonum());
+                std::swap( stack_[ndx1], stack_[ndx2] );
+//                stack_[ndx] = s.pop();
+            }
+            else if (str == opInsert)
+            {
+                int ndx = int(s.pop().tonum());
+                stack_.insert( stack_.begin()+ndx, s.pop() );
+            }
+            else if (str == opErase)
+            {
+                int ndx = int(s.pop().tonum());
+                stack_.erase( stack_.begin()+ndx );
+            }
+            else if (str == opAppend)
+            {
+                this->appendStack(s);
+            }
+#endif 
+        }
+        static void customOperator_static( const Value& v, const bangstring& theOperator, Stack& s)
+        {
+            FunctionStackToArray& self = reinterpret_cast<FunctionStackToArray&>(*v.tofun());
+            self.customOperator( v, theOperator, s );
+        }
+    }; // end, FunctionStackToArray class
 
+    struct ArrayOperators : public Operators
+    {
+        ArrayOperators()
+        {
+            customOperator = &FunctionStackToArray::customOperator_static;
+        }
+    }
+    gArrayOperators;
+
+    FunctionStackToArray::FunctionStackToArray( Stack& s )
+    {
+        operators = &gArrayOperators;
+    }
     
-
     void stackToArray( Stack& s, const RunContext& rc )
     {
         auto toArrayFun = NEW_BANGFUN(FunctionStackToArray, s );

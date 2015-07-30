@@ -1,12 +1,14 @@
 -- @todo: runloop should track all cords, and if all corded functions have exited, then runloop
 --   should exit.
 
+'arraylib' crequire! as array
 'bangnylon' crequire! as nsys
 
 nsys.asthread as asthread
 
 
 def :cord cordfun = {
+    array.new! as msg-queue
 
     def :the-startup-coroutine-wrapper xcord = {
       xcord.coro nsys.register-thread!
