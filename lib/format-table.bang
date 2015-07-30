@@ -52,13 +52,13 @@ def :Foldl operator = {
 -- to a string and displays each given field of the object in a table
 def :format-table = {
     array.from-stack! as fields
-    '#' fields! 1 - as maxfield
+    fields/# 1 - as maxfield
     fun = {
         -- save all the items, i'm gonna iterate over them quite a bit
-        array.from-stack! as items '#' items! as numItems
+        array.from-stack! as items items/# as numItems
         fun ndx = {
             ndx fields! as field
-            (items.push! fun object = field object! tostring!; map! pad-strings-plus1! array.from-stack!)
+            (items/to-stack fun object = field object! tostring!; map! pad-strings-plus1! array.from-stack!)
         }
         0 maxfield range! -- '#' fields! range!
         array.from-stack! as padded-fields

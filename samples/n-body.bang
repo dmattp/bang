@@ -57,7 +57,7 @@ def :advance dt = { as nbody as bodies
           bj.vy dy bmi * + 
           bj.vz dz bmi * +
           bj.mass
-        make-Body! j bodies.set -- update bj
+        make-Body! j bodies/set -- update bj
 
         bj.mass mag * as bmj
 
@@ -70,7 +70,7 @@ def :advance dt = { as nbody as bodies
         biy bivy dt * +
         biz bivz dt * +
         bivx bivy bivz bi.mass
-        make-Body! i bodies.set
+        make-Body! i bodies/set
     } -- end, innerloop; should leave new "i" body 
   } -- end, each-body loop
   each-body 0 maxbodyndx range!
@@ -171,8 +171,8 @@ make-Body! as Neptune
 
 
 Sun Jupiter Saturn Uranus Neptune array.from-stack! as bodies
-'#' bodies! as nbody
-bodies nbody offsetMomentum! 0 bodies.set
+bodies/# as nbody
+bodies nbody offsetMomentum! 0 bodies/set
 bodies nbody energy! 'energy=%@\n' print!
 
 --io.write( string.format("%0.9f",energy(bodies, nbody)), "\n")

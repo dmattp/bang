@@ -12,23 +12,23 @@ def :fannkuch n = {
 --  # n "stack=%@ fannkuck n=%@\n" print!
 
    (fun=; 0 n range! stack-to-array!) as p
-   (p.push! stack-to-array!) as q
-   (p.push! stack-to-array!) as s
+   (p/to-stack stack-to-array!) as q
+   (p/to-stack stack-to-array!) as s
 
    def :iloopy j = { as i
-      i j q.swap
+      i j q/swap
       j i - 2 >
       ? i 1 + j 1 - iloopy!
    }
 
-   fun i = i p! i q.set; as setqfromp
+   fun i = i p! i q/set; as setqfromp
 
-   fun j = { j 1 + p! j p.set } as setjfromplus1
+   fun j = { j 1 + p! j p/set } as setjfromplus1
 
    def :setjfromplus1x top = {
      1
      def! :inner9 j = {
-       j 1 + p! j p.set
+       j 1 + p! j p/set
        j top < j 1 + inner9!
      }
 --     1 inner9!
@@ -40,16 +40,16 @@ def :fannkuch n = {
        ? {
            i n <
            ? {
-              i i s.set
+              i i s/set
               1 p! as t
               setjfromplus1 1 i range!
 --              i setjfromplus1x!
-              t i 1 +  p.set
+              t i 1 +  p/set
               i 1 + permute-loop!
            }
            : false
        }
-       : { sx 1 - i s.set true }
+       : { sx 1 - i s/set true }
    }
 
    def :flipper-loop sum maxflips sign = { 
@@ -59,7 +59,7 @@ def :fannkuch n = {
         ? { sum sign flips * + 
             flips maxflips > ? flips : maxflips 
         }
-        : { q1 q1 q.set
+        : { q1 q1 q/set
             q1 4 < ? : { 2 q1 1 - iloopy! }
             qq flips 1 + inner-flipper!
         } -- q1 1 = :
@@ -75,10 +75,10 @@ def :fannkuch n = {
         q1 1 sum maxflips sign flipper-loop!
      } -- end, q1 1 = not! ?
      sign 1 = ? {
-          1 2 p.swap
+          1 2 p/swap
           -1 inner-mainloop!
      } : {
-          2 3 p.swap
+          2 3 p/swap
           3 permute-loop! -- permute loop returns 'true' to continue or 'sum maxflips false' on finish
           ? 1 inner-mainloop!
      }

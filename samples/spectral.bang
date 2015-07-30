@@ -91,7 +91,7 @@ fun = 1; N times!
 false
 fun = { as oldv
         N AtAv! stack-to-array! as v
-v.push! N AtAv! v
+v/to-stack N AtAv! v
 } 10 times!
 as v stack-to-array! as u
 

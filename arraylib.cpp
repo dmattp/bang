@@ -161,7 +161,7 @@ namespace Array
             throw std::runtime_error("Array library does not implement: " + std::string(str));
     }
     
-} // end namespace Math
+} // end namespace Arraylib
 
 
 extern "C"
