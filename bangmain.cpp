@@ -1,6 +1,7 @@
 #include <iostream>
 #include <numeric> // for std::accumulate
 #include <stdio.h>
+#include <windows.h>
 
 #include "bang.h"
 
@@ -308,8 +309,11 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
                 else
                 {
                     Bang::RequireKeyword requireMain( fname );
+//                    auto before = GetTickCount();
                     prog = requireMain.parseToProgramNoUpvals( parsectx, bDump );
+//                    auto after = GetTickCount();
                     RunProgram( &thread, prog, SHAREDUPVALUE() );
+//                    std::cout << "elapsed parse time=" << (after-before) << "\n";
                 }
             }
             else

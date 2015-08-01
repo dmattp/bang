@@ -878,23 +878,23 @@ namespace Ast
     };
 
 
-        static const char* op2str( EOperators which )
-        {
-            return
-            ( which == kOpPlus   ? "+"
-            : which == kOpMinus  ? "-"
-            : which == kOpLt     ? "<"
-            : which == kOpGt     ? ">"
-            : which == kOpEq     ? "="
-            : which == kOpMult   ? "*"
-            : which == kOpDiv    ? "/"
-            : which == kOpModulo ? "%"
-            : which == kOpOr ? "OR"
-            : which == kOpAnd ? "AND"
-            : which == kOpCustom ? "custom"
-            : "unknown operator"
-            );
-        }
+    static const char* op2str( EOperators which )
+    {
+        return
+        ( which == kOpPlus   ? "+"
+        : which == kOpMinus  ? "-"
+        : which == kOpLt     ? "<"
+        : which == kOpGt     ? ">"
+        : which == kOpEq     ? "="
+        : which == kOpMult   ? "*"
+        : which == kOpDiv    ? "/"
+        : which == kOpModulo ? "%"
+        : which == kOpOr ? "OR"
+        : which == kOpAnd ? "AND"
+        : which == kOpCustom ? "custom"
+        : "unknown operator"
+        );
+    }
 
     class PushUpval : public Base
     {
@@ -914,7 +914,8 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "PushUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
+            o << (hasApply() ? "Apply" : "Push") << "Upval #" << uvnumber_.toint()
+              << " name='" << name_ << "'\n";
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
@@ -1186,7 +1187,6 @@ namespace Ast
 
     class ApplyPrimitive: public PushPrimitive
     {
-//        friend void OptimizeAst( std::vector<Ast::Base*>& ast );
     public:
         ApplyPrimitive( const PushPrimitive* pp )
         : PushPrimitive( *pp )
@@ -1196,7 +1196,6 @@ namespace Ast
         {
             if (gFailedAst == this)
                 o << "FAIL *** ";
-//            o << this << " ";
             indentlevel(level, o);
             o << "ApplyPrimitive op='" << desc_ << "'\n";
         }
@@ -1264,22 +1263,6 @@ namespace Ast
     };
 #endif 
     
-//     class ApplyUpval : public PushUpval
-//     {
-//     public:
-//         ApplyUpval( const PushUpval* puv )
-//         :  PushUpval( *puv )
-//         {
-//             instr_ = kApplyUpval;
-//         }
-          
-//         virtual void dump( int level, std::ostream& o ) const
-//         {
-//             indentlevel(level, o);
-//             o << "ApplyUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
-//         }
-//     };
-
     class PushUpvalByName : public Base
     {
     public:
@@ -1435,30 +1418,33 @@ namespace Ast
           nthparent_(boundAt)
         {}
 
+        bool hasApply() const { return instr_ == kApplyFunRec; } 
+        void setApply() { instr_ = kApplyFunRec; }
+        
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "PushFunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
+            o << (hasApply() ? "Apply" : "Push") << "FunctionRec[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
 
-    class ApplyFunctionRec : public PushFunctionRec
-    {
-    public:
-        ApplyFunctionRec( const Ast::PushFunctionRec* pfr )
-        : PushFunctionRec( *pfr )
-        {
-            instr_ = kApplyFunRec;
-        }
+//     class ApplyFunctionRec : public PushFunctionRec
+//     {
+//     public:
+//         ApplyFunctionRec( const Ast::PushFunctionRec* pfr )
+//         : PushFunctionRec( *pfr )
+//         {
+//             instr_ = kApplyFunRec;
+//         }
 
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
-        }
-    };
+//         virtual void dump( int level, std::ostream& o ) const
+//         {
+//             indentlevel(level, o);
+//             o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
+//         }
+//     };
     
 } // end, namespace Ast
 
@@ -1823,7 +1809,7 @@ restartTco:
                 {
                     // no dynamic cast, should be safe since we know the type from instr_
 //                    std::cerr << "got kTCOApplyFunRec" << std::endl;
-                    const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
+                    const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
                     frame.rebind
                     (  TMPFACT_PROG_TO_RUNPROG(afn->pRecFun_),
                         (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ )
@@ -1834,7 +1820,7 @@ restartTco:
 
                 case Ast::Base::kApplyFunRec:
                 {
-                    const Ast::ApplyFunctionRec* afn = reinterpret_cast<const Ast::ApplyFunctionRec*>(pInstr);
+                    const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
                     inprog = afn->pRecFun_;
                     inupvalues = (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ );
                     goto restartNonTail;
@@ -1868,7 +1854,6 @@ restartTco:
                 
                 case Ast::Base::kTCOApplyProgram:
                 {
-                    //std::cerr << "got kTCOApplyProgram\n";
                     const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr); 
                     frame.rebind( TMPFACT_PROG_TO_RUNPROG(afn) );
                     goto restartTco;
@@ -1877,7 +1862,6 @@ restartTco:
 
                 case Ast::Base::kApplyProgram:
                 {
-                    //std::cerr << "got kTCOApplyProgram\n";
                     const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr);
                     inprog = afn;
                     inupvalues = frame.upvalues_;
@@ -2111,6 +2095,8 @@ void Ast::ApplyPrimitive::run( Stack& stack, const RunContext& rc ) const
 
 void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
 {
+    if (hasApply())
+        bangerr() << "should not be calling run for ApplyUpval";
     stack.push( rc.getUpValue( uvnumber_ ) );
 };
 
@@ -2883,15 +2869,15 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
         }
 
-        if (1 && !dynamic_cast<const Ast::ApplyFunctionRec*>(step))
-        {
-            const Ast::PushFunctionRec* pup = dynamic_cast<const Ast::PushFunctionRec*>(step);
-            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
+//         if (1 && !dynamic_cast<const Ast::ApplyFunctionRec*>(step))
+         {
+             Ast::PushFunctionRec* pup = dynamic_cast<Ast::PushFunctionRec*>(step);
+            if (pup && !pup->hasApply() && dynamic_cast<const Ast::Apply*>(ast[i+1]))
             {
 //                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
-                Ast::ApplyFunctionRec* newfun = new Ast::ApplyFunctionRec( pup );
+//                Ast::ApplyFunctionRec* newfun = new Ast::ApplyFunctionRec( pup );
 //                newfun->reparentKids(pup); // ugly
-                ast[i] = newfun;
+                pup->setApply();
                 ast[i]->where_ = ast[i+1]->where_;
                 ast[i+1] = &noop;
                 
