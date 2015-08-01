@@ -908,6 +908,8 @@ namespace Ast
         {
         }
 
+        void setApply() { instr_ = kApplyUpval; }
+
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -915,6 +917,11 @@ namespace Ast
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
+
+        const Value& getUpValue( const RunContext& rc ) const
+        {
+            return rc.getUpValue( uvnumber_ );
+        }
     };
 
     class BoolEater
@@ -1256,26 +1263,21 @@ namespace Ast
     };
 #endif 
     
-    class ApplyUpval : public PushUpval
-    {
-    public:
-        ApplyUpval( const PushUpval* puv )
-        :  PushUpval( *puv )
-        {
-            instr_ = kApplyUpval;
-        }
+//     class ApplyUpval : public PushUpval
+//     {
+//     public:
+//         ApplyUpval( const PushUpval* puv )
+//         :  PushUpval( *puv )
+//         {
+//             instr_ = kApplyUpval;
+//         }
           
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ApplyUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
-        }
-
-        const Value& getUpValue( const RunContext& rc ) const
-        {
-            return rc.getUpValue( uvnumber_ );
-        }
-    };
+//         virtual void dump( int level, std::ostream& o ) const
+//         {
+//             indentlevel(level, o);
+//             o << "ApplyUpval #" << uvnumber_.toint() << " name='" << name_ << "'\n";
+//         }
+//     };
 
     class PushUpvalByName : public Base
     {
@@ -1311,7 +1313,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "Apply";
+            o << "Apply " << where_ ;
             if (gFailedAst == this)
                 o << " ***                                 <== *** FAILED *** ";
             o << std::endl;
@@ -1554,10 +1556,11 @@ namespace Primitives {
             program_->dump( 0, std::cerr );
         }
     
-    void throwNoFunVal( const Value& v )
+    void throwNoFunVal( const Ast::Base* pInstr, const Value& v )
     {
         std::ostringstream oss;
-        oss << "Called apply without function.2; found type=" << v.type_ << " V=";
+        oss << pInstr->where_;
+        oss << ": Called apply without function.2; found type=" << v.type_ << " V=";
         v.dump(oss);
         throw std::runtime_error(oss.str());
     }
@@ -1597,13 +1600,13 @@ namespace Primitives {
        upvalues_( uv )
     {}
     
-void RunApplyValue( const Value& v, Stack& stack, const RunContext& frame )
+void RunApplyValue( const Ast::Base* pInstr, const Value& v, Stack& stack, const RunContext& frame )
 {
     switch (v.type())
     {
         case Value::kFun: { auto f = v.tofun(); f->apply(stack); } break;
         case Value::kFunPrimitive: v.tofunprim()( stack, frame ); break;
-        default: throwNoFunVal(v);
+        default: throwNoFunVal(pInstr, v);
     }
 }
     
@@ -1890,7 +1893,7 @@ restartTco:
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
                     switch (v.type())
                     {
-                        default: RunApplyValue( v, stack, frame ); break;
+                        default: RunApplyValue( pInstr, v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
                         {
@@ -1909,7 +1912,7 @@ restartTco:
                     const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
                     switch (v.type())
                     {
-                        default: RunApplyValue( v, stack, frame ); break;
+                        default: RunApplyValue( pInstr, v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
                             auto pbound = v.toboundfun();
@@ -1940,7 +1943,7 @@ restartTco:
                     stack.push( reinterpret_cast<const Ast::ApplyDotOperator*>(pInstr)->getMsgVal() );
                     switch (v.type())
                     {
-                        default: RunApplyValue( v, stack, frame ); break;
+                        default: RunApplyValue( pInstr, v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
                             auto pbound = v.toboundfun();
@@ -1957,7 +1960,7 @@ restartTco:
                     stack.push( adoup->getMsgVal() );
                     switch (v.type())
                     {
-                        default: RunApplyValue( v, stack, frame ); break;
+                        default: RunApplyValue( pInstr, v, stack, frame ); break;
                         KTHREAD_CASE
                         case Value::kBoundFun:
                             auto pbound = v.toboundfun();
@@ -1975,7 +1978,7 @@ restartTco:
                     const Value& v = stack.pop();
                     switch (v.type())
                     {
-                        default: RunApplyValue( v, stack, frame ); break;
+                        default: RunApplyValue( pInstr, v, stack, frame ); break;
                         //~~~ should this setcallin? as with KTHREAD_CASE? or is it intentionally different
                         case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
                         case Value::kBoundFun:
@@ -1991,7 +1994,7 @@ restartTco:
                     const Value& v = stack.pop();
                     switch (v.type())
                     {
-                        default: RunApplyValue( v, stack, frame ); break;
+                        default: RunApplyValue( pInstr, v, stack, frame ); break;
                         KTHREAD_CASE    
                         case Value::kBoundFun:
                             auto pbound = v.toboundfun();
@@ -2188,7 +2191,7 @@ public:
     : stream_( stream )
     {}
 
-    virtual std::string sayWhere() {
+    virtual std::string sayWhere() const {
         return stream_.sayWhere();
     }
 
@@ -2266,7 +2269,7 @@ public:
     {
         fclose(f_);
     }
-    virtual std::string sayWhere()
+    virtual std::string sayWhere() const
     {
         std::ostringstream oss;
         oss << filename_ << ":" << loc_.lineno_ << " C" << loc_.linecol_;
@@ -2870,6 +2873,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 //                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
                 Ast::ApplyProgram* newfun = new Ast::ApplyProgram( pup );
                 ast[i] = newfun;
+                ast[i]->where_ = ast[i+1]->where_;
                 ast[i+1] = &noop;
                 // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
                 // 'reparent' or redesign this thing) ? still true??
@@ -2887,6 +2891,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 Ast::ApplyFunctionRec* newfun = new Ast::ApplyFunctionRec( pup );
 //                newfun->reparentKids(pup); // ugly
                 ast[i] = newfun;
+                ast[i]->where_ = ast[i+1]->where_;
                 ast[i+1] = &noop;
                 
                 // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
@@ -2902,6 +2907,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
             {
                  ast[i] = new Ast::ApplyUpval( pup );
+                 ast[i]->where_ = ast[i+1]->where_;
                  ast[i+1] = &noop;
                  delete pup;
                  ++i;
@@ -2915,6 +2921,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             if (pp && dynamic_cast<const Ast::Apply*>(ast[i+1]))
             {
                 ast[i] = new Ast::ApplyPrimitive( pp );
+                ast[i]->where_ = ast[i+1]->where_;
                 ast[i+1] = &noop;
                 delete step;
                 ++i;
@@ -2934,6 +2941,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             if (pdot)
             {
                 ast[i] = new Ast::ApplyDotOperatorUpval( pdot->msgStr_.tostr(), pup->uvnumber_ );
+                ast[i]->where_ = ast[i+1]->where_;
                 ast[i+1] = &noop;
             }
         }
@@ -3222,7 +3230,15 @@ namespace Primitives {
         };
     }
     
-    
+    Ast::Base* setwhere( Ast::Base* ast, const RegurgeStream& s )
+    {
+        ast->where_ = s.sayWhere();
+        return ast;
+    }
+    Ast::Base* newapplywhere( const RegurgeStream& s )
+    {
+        return setwhere( new Ast::Apply(), s );
+    }
 
 Parser::Program::Program
 (   ParsingContext& parsecontext,
@@ -3286,7 +3302,7 @@ Parser::Program::Program
                 ast_.push_back( fun.stealProgram() );
 
                 if (fun.hasPostApply())
-                    ast_.push_back( new Ast::Apply() );
+                    ast_.push_back( newapplywhere(stream) );
 
                 continue;
             } catch ( const ErrorNoMatch& ) {}
@@ -3298,7 +3314,7 @@ Parser::Program::Program
                 ast_.push_back( fun.stealDefProg() );
                 
                 if (fun.hasPostApply())
-                    ast_.push_back( new Ast::Apply() );
+                    ast_.push_back( newapplywhere(stream) );
                 else
                 {
                     Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, internstring(fun.getDefName()) );
@@ -3347,7 +3363,7 @@ Parser::Program::Program
             if (c == '!')
             {
                 mark.accept();
-                ast_.push_back( new Ast::Apply() );
+                ast_.push_back( newapplywhere(mark) );
                 continue;
             }
 #if HAVE_MUTATION            
@@ -3413,8 +3429,8 @@ Parser::Program::Program
 #else
                     ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
                     ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
-                       ast_.push_back( new Ast::Apply() ); // haveto apply the swap
-                    ast_.push_back( new Ast::Apply() ); // now apply to the object!!
+                    ast_.push_back( newapplywhere(mark) ); // haveto apply the swap
+                    ast_.push_back( newapplywhere(mark) ); // now apply to the object!!
 #endif 
                     continue;
                 }
@@ -3430,7 +3446,7 @@ Parser::Program::Program
                 {
                     mark.accept();
                     ast_.push_back( new Ast::PushPrimitive( prim, std::string(&c, (&c)+1) ) );
-                    ast_.push_back( new Ast::Apply() );
+                    ast_.push_back( newapplywhere(mark) );
                     continue;
                 }
             }

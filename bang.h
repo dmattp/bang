@@ -963,6 +963,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         class Base
         {
         public:
+            std::string where_;
             virtual void dump( int, std::ostream& o ) const = 0;
             virtual void run( Stack& stack, const RunContext& ) const
             {
@@ -991,7 +992,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kYieldCoroutine,
                 kEofMarker
             };
-            Base() : instr_(kUnk) {}
+            Base() : instr_(kUnk) {
+                where_ = "Unknown:??";
+            }
             Base( EAstInstr i ) : instr_( i ) {}
             bool isTailable() const { return instr_ != kUnk && instr_ != kBreakProg; } //  && instr_ != kApplyFun; }
             // return instr_ == kApply || instr_ == kConditionalApply || instr_ == kApplyUpval; }
@@ -1196,7 +1199,7 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
         virtual char getc() = 0;
         virtual void accept() = 0;
         virtual void regurg( char ) = 0;
-        virtual std::string sayWhere() { return "(unsure where)"; }
+        virtual std::string sayWhere() const { return "(unsure where)"; }
         virtual ~RegurgeStream() {}
     };
 
