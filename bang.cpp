@@ -908,6 +908,7 @@ namespace Ast
         {
         }
 
+        bool hasApply() const { return instr_ == kApplyUpval; } 
         void setApply() { instr_ = kApplyUpval; }
 
         virtual void dump( int level, std::ostream& o ) const
@@ -1560,7 +1561,7 @@ namespace Primitives {
     {
         std::ostringstream oss;
         oss << pInstr->where_;
-        oss << ": Called apply without function.2; found type=" << v.type_ << " V=";
+        oss << ": " << typeid(*pInstr).name() << ": Called apply without function.2; found type=" << v.type_ << " V=";
         v.dump(oss);
         throw std::runtime_error(oss.str());
     }
@@ -1890,7 +1891,7 @@ restartTco:
                 /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
                 case Ast::Base::kTCOApplyUpval:
                 {
-                    const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
+                    const Value& v = reinterpret_cast<const Ast::PushUpval*>(pInstr)->getUpValue( frame );
                     switch (v.type())
                     {
                         default: RunApplyValue( pInstr, v, stack, frame ); break;
@@ -1909,7 +1910,7 @@ restartTco:
                 /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
                 case Ast::Base::kApplyUpval:
                 {
-                    const Value& v = reinterpret_cast<const Ast::ApplyUpval*>(pInstr)->getUpValue( frame );
+                    const Value& v = reinterpret_cast<const Ast::PushUpval*>(pInstr)->getUpValue( frame );
                     switch (v.type())
                     {
                         default: RunApplyValue( pInstr, v, stack, frame ); break;
@@ -2900,21 +2901,17 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 continue;
             }
         }
-        
-        if (!dynamic_cast<const Ast::ApplyUpval*>(step))
+
+        Ast::PushUpval* pup = dynamic_cast<Ast::PushUpval*>(step);
+        if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
         {
-            const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(step);
-            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-            {
-                 ast[i] = new Ast::ApplyUpval( pup );
-                 ast[i]->where_ = ast[i+1]->where_;
-                 ast[i+1] = &noop;
-                 delete pup;
-                 ++i;
-                 continue;
-            }
+            pup->setApply(); // = new Ast::ApplyUpval( pup );
+            ast[i]->where_ = ast[i+1]->where_;
+            ast[i+1] = &noop;
+            ++i;
+            continue;
         }
-        
+            
         if (!dynamic_cast<const Ast::ApplyPrimitive*>(step))
         {
             const Ast::PushPrimitive* pp = dynamic_cast<const Ast::PushPrimitive*>(step);
@@ -2935,7 +2932,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
+        if (pup && !pup->hasApply() ) // !dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
             Ast::ApplyDotOperator* pdot = dynamic_cast<Ast::ApplyDotOperator*>(ast[i+1]);
             if (pdot)
@@ -2965,7 +2962,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
 
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
+        if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (pTav2v)
@@ -2982,7 +2979,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup && !dynamic_cast<const Ast::ApplyUpval*>(pup))
+        if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (pTav2v && pTav2v->thingNotStack())
