@@ -896,7 +896,17 @@ namespace Ast
         );
     }
 
-    class PushUpval : public Base
+    class IsApplicable
+    {
+    protected:
+        bool apply_;
+    public:
+        IsApplicable() : apply_(false) {}
+        bool hasApply() const { return apply_; }
+        virtual void setApply() { apply_ = true; }
+    };
+
+    class PushUpval : public Base, public IsApplicable
     {
     protected:
     public:
@@ -908,8 +918,10 @@ namespace Ast
         {
         }
 
-        bool hasApply() const { return instr_ == kApplyUpval; } 
-        void setApply() { instr_ = kApplyUpval; }
+        void setApply() {
+            IsApplicable::setApply();
+            instr_ = kApplyUpval;
+        }
 
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -1164,7 +1176,7 @@ namespace Ast
     };
     
     
-    class PushPrimitive: public Base
+    class PushPrimitive: public Base, public IsApplicable
     {
     public:
         tfn_primitive primitive_;
@@ -1178,30 +1190,30 @@ namespace Ast
 
         virtual void dump( int level, std::ostream& o ) const
         {
-            indentlevel(level, o);
-            o << "PushPrimitive op='" << desc_ << "'\n";
-        }
-
-        virtual void run( Stack& stack, const RunContext& ) const;
-    };
-
-    class ApplyPrimitive: public PushPrimitive
-    {
-    public:
-        ApplyPrimitive( const PushPrimitive* pp )
-        : PushPrimitive( *pp )
-        {}
-
-        virtual void dump( int level, std::ostream& o ) const
-        {
             if (gFailedAst == this)
                 o << "FAIL *** ";
             indentlevel(level, o);
-            o << "ApplyPrimitive op='" << desc_ << "'\n";
+            o << (apply_?"Apply":"Push") << "Primitive op='" << desc_ << "'\n";
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
+
+//     class ApplyPrimitive: public PushPrimitive
+//     {
+//     public:
+//         ApplyPrimitive( const PushPrimitive* pp )
+//         : PushPrimitive( *pp )
+//         {}
+
+//         virtual void dump( int level, std::ostream& o ) const
+//         {
+//             indentlevel(level, o);
+//             o << "ApplyPrimitive op='" << desc_ << "'\n";
+//         }
+
+//         virtual void run( Stack& stack, const RunContext& ) const;
+//     };
 
     class MakeCoroutine : public Base
     {
@@ -1305,7 +1317,7 @@ namespace Ast
     };
 
 
-    class Program : public Base
+    class Program : public Base, public IsApplicable
     {
     public:
         typedef std::vector<Ast::Base*> astList_t;
@@ -1327,10 +1339,15 @@ namespace Ast
             ast_ = newast;
         }
         
+        void setApply() {
+            IsApplicable::setApply();
+            instr_ = kApplyProgram;
+        }
+        
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << std::hex << PtrToHash(this) << std::dec << " Program\n";
+            o << std::hex << PtrToHash(this) << std::dec << ' ' << (hasApply() ? "Apply" : "") << "Program\n";
             std::for_each
             (   ast_.begin(), ast_.end(),
                 [&]( const Ast::Base* ast ) { ast->dump( level+1, o ); }
@@ -1343,28 +1360,6 @@ namespace Ast
         // 
         void run( Stack& stack, const RunContext& ) const;
     }; // end, class Ast::Program
-
-    // optimization, immediately run program rather than executing
-    // push+apply
-    class ApplyProgram : public Program
-    {
-    public:
-        ApplyProgram( const Program* pf )
-        : Program( *pf )
-        {
-            instr_ = kApplyProgram;
-        }
-
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << std::hex << PtrToHash(this) << std::dec << " ApplyProgram\n";
-            std::for_each
-            (   ast_.begin(), ast_.end(),
-                [&]( const Ast::Base* ast ) { ast->dump( level+1, o ); }
-            );
-        }
-    };
 
     class IfElse : public Base, public BoolEater
     {
@@ -1407,7 +1402,7 @@ namespace Ast
     }; // end class IfElse
 
 
-    class PushFunctionRec : public Base
+    class PushFunctionRec : public Base, public IsApplicable
     {
     protected:
     public:
@@ -1418,8 +1413,10 @@ namespace Ast
           nthparent_(boundAt)
         {}
 
-        bool hasApply() const { return instr_ == kApplyFunRec; } 
-        void setApply() { instr_ = kApplyFunRec; }
+        void setApply() {
+            IsApplicable::setApply();
+            instr_ = kApplyFunRec;
+        }
         
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -1854,7 +1851,7 @@ restartTco:
                 
                 case Ast::Base::kTCOApplyProgram:
                 {
-                    const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr); 
+                    const Ast::Program* afn = reinterpret_cast<const Ast::Program*>(pInstr); 
                     frame.rebind( TMPFACT_PROG_TO_RUNPROG(afn) );
                     goto restartTco;
                 }
@@ -1862,7 +1859,7 @@ restartTco:
 
                 case Ast::Base::kApplyProgram:
                 {
-                    const Ast::ApplyProgram* afn = reinterpret_cast<const Ast::ApplyProgram*>(pInstr);
+                    const Ast::Program* afn = reinterpret_cast<const Ast::Program*>(pInstr);
                     inprog = afn;
                     inupvalues = frame.upvalues_;
                     goto restartNonTail;
@@ -2085,12 +2082,10 @@ void Ast::PushFunctionRec::run( Stack& stack, const RunContext& rc ) const
 
 void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
 {
-    stack.push( primitive_ );
-};
-
-void Ast::ApplyPrimitive::run( Stack& stack, const RunContext& rc ) const
-{
-    primitive_( stack, rc );
+    if (apply_)
+        primitive_( stack, rc );
+    else
+        stack.push( primitive_ );
 };
 
 void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
@@ -2816,12 +2811,11 @@ public:
 
     Ast::Base* ImportParsingContext::hitEof( const Ast::CloseValue* uvchain )
     {
-//        std::cerr << "import hit eof! (continue next prog)\n";
-
         Parser p( parsecontext_, stream_, uvchain );
 
-        Ast::Program pushprog( parent_, p.programAst() );
-        return new Ast::ApplyProgram( &pushprog );
+        auto prog = new Ast::Program( parent_, p.programAst() );
+        prog->setApply();
+        return prog;
     }
     
 
@@ -2850,69 +2844,20 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
-        Ast::Base* step = ast[i];
-
-        if (1 && !dynamic_cast<const Ast::ApplyProgram*>(step))
+        Ast::Base* first = ast[i];
+        const Ast::Base* second = ast[i+1];
+        
+        Ast::IsApplicable* pup = dynamic_cast<Ast::IsApplicable*>( first );
+        
+        if (pup && !pup->hasApply() && dynamic_cast<const Ast::Apply*>( second ))
         {
-            const Ast::Program* pup = dynamic_cast<const Ast::Program*>(step);
-            if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-            {
-//                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
-                Ast::ApplyProgram* newfun = new Ast::ApplyProgram( pup );
-                ast[i] = newfun;
-                ast[i]->where_ = ast[i+1]->where_;
-                ast[i+1] = &noop;
-                // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
-                // 'reparent' or redesign this thing) ? still true??
-                ++i;
-                continue;
-            }
-        }
-
-//         if (1 && !dynamic_cast<const Ast::ApplyFunctionRec*>(step))
-         {
-             Ast::PushFunctionRec* pup = dynamic_cast<Ast::PushFunctionRec*>(step);
-            if (pup && !pup->hasApply() && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-            {
-//                std::cerr << "Replacing PushFun param=" << (pup->hasParam() ? pup->getParamName() : "-") << std::endl;
-//                Ast::ApplyFunctionRec* newfun = new Ast::ApplyFunctionRec( pup );
-//                newfun->reparentKids(pup); // ugly
-                pup->setApply();
-                ast[i]->where_ = ast[i+1]->where_;
-                ast[i+1] = &noop;
-                
-                // delete pup; // keep that guy around! (unfortunate, but needed for dynamic name lookup unless we
-                // 'reparent' or redesign this thing
-                ++i;
-                continue;
-            }
-        }
-
-        Ast::PushUpval* pup = dynamic_cast<Ast::PushUpval*>(step);
-        if (pup && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-        {
-            pup->setApply(); // = new Ast::ApplyUpval( pup );
-            ast[i]->where_ = ast[i+1]->where_;
+            pup->setApply();
+            first->where_ = second->where_;
             ast[i+1] = &noop;
-            ++i;
-            continue;
-        }
-            
-        if (!dynamic_cast<const Ast::ApplyPrimitive*>(step))
-        {
-            const Ast::PushPrimitive* pp = dynamic_cast<const Ast::PushPrimitive*>(step);
-            if (pp && dynamic_cast<const Ast::Apply*>(ast[i+1]))
-            {
-                ast[i] = new Ast::ApplyPrimitive( pp );
-                ast[i]->where_ = ast[i+1]->where_;
-                ast[i+1] = &noop;
-                delete step;
-                ++i;
-                continue;
-            }
+            ++i; // increment i an additional time to skip the incorporated Apply
         }
     }
-
+    
     delNoops();
 
     for (unsigned i = 0; i < ast.size() - 1; ++i)
