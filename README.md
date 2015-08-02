@@ -294,7 +294,7 @@ Or rebound to local upvalues as
 
 # Thoughts on Performance
 
-There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy, and Bang! typically runs somewhere between 2-5x slower than Lua.  Which isn't stellar compared to native compiled and JIT'ed languages, but it's close at times to being competitive with ruby or python, and that's not bad for a language as young as Bang!; there is still plenty of room for optimization and performance improvements.
+There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy, and on the 4 ported samples Bang! runs about 3.3x slower than Lua.  This isn't stellar compared to native compiled and JIT'ed languages, but comparing to say Ruby or Python- Python is 1.6x slower than Lua, and Ruby is 1.4x.  Closing in on 2x the speed of Python I think is not bad for a language under development by one person for less than 3 months.
 
 # Roadmap
 

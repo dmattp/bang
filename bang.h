@@ -18,7 +18,7 @@
 #define LCFG_UPVAL_SIMPLEALLOC 1
 #define LCFG_MT_SAFEISH 0
 
-static const char* const BANG_VERSION = "0.005";
+static const char* const BANG_VERSION = "0.006";
 
 #if defined(WIN32)
 # define DLLEXPORT _declspec(dllexport)

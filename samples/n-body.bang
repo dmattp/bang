@@ -7,20 +7,11 @@
 
 # 1 < ? 9000; as N -- tonumber(arg and arg[1]) or 9000 -- lua=9k runs in ~100ms
 
-
 3.141592653589793 as PI           
 365.24            as DAYS_PER_YEAR
 4 PI * PI *       as SOLAR_MASS
 
 'arraylib' crequire! as array
-
---def :make-Body = { -- as vz as vy as vx as z as y as x
---  array.from-stack! as me
---  0 as x 1 as y 2 as z 3 as vx 4 as vy 5 as vz 6 as mass
---  fun = lookup me!
---}
-
-
 'mathlib' crequire! .sqrt as sqrt
 'lib/hof.bang' require! .map as map
 'lib/iterate.bang' require! as Iter
@@ -29,12 +20,24 @@ Iter.range as range
 Iter.times as times
 
 
-def :make-Body mass = { as vz as vy as vx as z as y as x
-  fun = lookup
+'hashlib' crequire! .new as make-hash
+
+def :make-Body = {
+  make-hash! as h
+  h/set.mass
+  h/set.vz
+  h/set.vy
+  h/set.vx
+  h/set.z
+  h/set.y
+  h/set.x
+  h
 }
+
 
 def :advance dt = { as nbody as bodies
   nbody 1 - as maxbodyndx
+  
   def :each-body i = {
     i bodies! as bi
     bi.x bi.y bi.z bi.mass as bimass as biz as biy as bix
@@ -44,7 +47,7 @@ def :advance dt = { as nbody as bodies
     def! :innerloop bivx bivy bivz j = { 
       j nbody <
       ? j bodies! as bj
-        bix bj.x - as dx biy bj.y - as dy biz bj.z - as dz -- as dy as dx
+        bix bj.x - as dx biy bj.y - as dy biz bj.z - as dz
         
         dx dx * dy dy * + dz dz * + as dist2
         dt dist2 sqrt! dist2 * / as mag
@@ -52,35 +55,41 @@ def :advance dt = { as nbody as bodies
 --            i j bmj mag bimass bix biy biz bivx bivy bivz dx dy dz 'i=%s j=%s bmj=%s mag=%s bimass=%s bix=%s biy=%s biz=%s bivx=%s bivy=%s bivz=%s dx=%s dy=%s dz=%s\n' print!
         bimass mag * as bmi
         
-          bj.x bj.y bj.z 
-          bj.vx dx bmi * + 
-          bj.vy dy bmi * + 
-          bj.vz dz bmi * +
-          bj.mass
-        make-Body! j bodies/set -- update bj
+--          bj.x bj.y bj.z 
+--        bj.set as bj-set
+          bj.vx dx bmi * +  bj/set.vx
+          bj.vy dy bmi * +  bj/set.vy
+          bj.vz dz bmi * +  bj/set.vz
+
+          -- bj.rebindv!
+--        bj.mass make-Body!
+--        j bodies.set -- update bj
 
         bj.mass mag * as bmj
 
-          bivx dx bmj * -
+          bivx dx bmj * - 
           bivy dy bmj * -
           bivz dz bmj * -
           j 1 + innerloop!
           
-      : bix bivx dt * +
-        biy bivy dt * +
-        biz bivz dt * +
-        bivx bivy bivz bi.mass
-        make-Body! i bodies/set
+      : bix bivx dt * + bi/set.x
+        biy bivy dt * + bi/set.y
+        biz bivz dt * + bi/set.z
+        bivx bi/set.vx
+        bivy bi/set.vy
+        bivz bi/set.vz
+--        bivx bivy bivz bi.mass
+--        make-Body! i bodies.set
     } -- end, innerloop; should leave new "i" body 
   } -- end, each-body loop
   each-body 0 maxbodyndx range!
 }
 
 
-def :energy bodies nbody = { 
+def :energy nbody = { as bodies
 --  0 as e
   nbody 1 - as maxarrayndx
-  def :each-body energySum i = { 
+  def :each-body i = { as energySum
 --    i energySum 'each-body i=%@ energySum=%@\n' print!
     i bodies! as bi
     
@@ -92,7 +101,7 @@ def :energy bodies nbody = {
     
     vx vx * vy vy * + vz vz * + bim * 0.5 * energySum + 
 
-    def :other-body eBefore j = { 
+    def :other-body j = { as eBefore
       -- i j eBefore 'other-body i=%@ j=%@ eBefore=%@\n' print!
       j bodies! as bj
       bi.x bj.x - as dx bi.y bj.y - as dy bi.z bj.z - as dz
@@ -108,20 +117,29 @@ def :energy bodies nbody = {
 }
 
 
-def :offsetMomentum bodies nbody = { 
+def :offsetMomentum nbody = { as bodies
   0 0 0 0
-  def! :inner px py pz i = { 
+  def! :inner i = { 
+    as pz as py as px
     i nbody < 
     ? -- nbody i pz py px 'offsetMomentum nbody=%@ i=%@ pz=%@ py=%@ px=%@\n' print!
       i bodies! as bi
       bi.mass as bim
-      px bi.vx bim * + py bi.vy bim * + pz bi.vz bim * +
+      px bi.vx bim * +
+      py bi.vy bim * + 
+      pz bi.vz bim * +
       i 1 + inner!
       
-    : 0 bodies! as sun
-      sun.x sun.y sun.z
-      px -1 * SOLAR_MASS / py -1 * SOLAR_MASS / pz -1 * SOLAR_MASS /
-      sun.mass make-Body!
+    : 0 bodies! as sun -- sun.set as sun-set
+--      sun.x sun.y sun.z
+      px -1 * SOLAR_MASS / 'vx' sun/set
+      py -1 * SOLAR_MASS / 'vy' sun/set
+      pz -1 * SOLAR_MASS / 'vz' sun/set
+      -- sun.mass make-Body!
+      sun
+      
+--      0 bodies! 
+--      rebind.vz! rebind.vy! rebind.vx!
   }
 }
 
