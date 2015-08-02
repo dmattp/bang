@@ -1126,10 +1126,6 @@ namespace Ast
 //         {
 //             return srcother_ == kSrcUpval ? frame.getUpValue(uvnumberOther_) : stack.pop();
 //         }
-    // disappointing but the inline member function does not run as quickly as the macro here.
-#define pa_getOtherValue(pa, frame, stack )  \
-        (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ? frame.thread->r0_ : stack.pop())
-        
     }; // end, class ApplyThingAndValue2ValueOperator
 
 
@@ -1629,26 +1625,48 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     };
 
 
+    // disappointing but the inline member function does not run as quickly as the macro here.
+#define pa_getOtherValue(pa, frame, stack )  \
+        (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ? frame.thread->r0_ : stack.pop())
+        
     template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom { };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
-        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack ) {
-            return pa.thingliteralop_( pa.thingLiteral_, pa_getOtherValue( pa, frame, stack ) );
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
+            switch( pa.srcother_ ) {
+                case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, frame.getUpValue(pa.uvnumberOther_) );
+                case kSrcRegister: return pa.thingliteralop_( pa.thingLiteral_, pThread->r0_ );
+                default:           return pa.thingliteralop_( pa.thingLiteral_, stack.pop() );
+            }
         }
     };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcRegister> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
-            return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+//            return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+            switch( pa.srcother_ ) {
+                case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
+                case kSrcRegister: return  pThread->r0_.applyAndValue2Value( pa.openum_, pThread->r0_ );
+                default:           return  pThread->r0_.applyAndValue2Value( pa.openum_, stack.pop() );
+            }
         }
     };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcUpval> {
-        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack ) {
-            return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
+            switch( pa.srcother_ ) {
+                case kSrcUpval:    return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
+                case kSrcRegister: return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pThread->r0_ );
+                default:           return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, stack.pop() );
+            }
+            
         }
     };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcStack> {
-        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread*, RunContext& frame, Stack& stack ) {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             const Value& owner = stack.pop();
-            return owner.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
+            switch( pa.srcother_ ) {
+                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
+                case kSrcRegister: return owner.applyAndValue2Value( pa.openum_, pThread->r0_ );
+                default:           return owner.applyAndValue2Value( pa.openum_, stack.pop() );
+            }
         }
     };
 
@@ -2989,14 +3007,14 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     }
     delNoops();
 
-#if 0
+#if 1
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         Ast::ValueMaker* pfirst = dynamic_cast<Ast::ValueMaker*>(ast[i]);
         if (pfirst && pfirst->dest_ == kSrcStack)
         {
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (psecond && psecond->srcthing_ != kSrcStack)
+            if (psecond && psecond->srcother_ == kSrcStack && psecond->srcthing_ != kSrcStack)
             {
                 pfirst->setDestRegister();
                 psecond->setOtherRegister();
