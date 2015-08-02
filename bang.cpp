@@ -1065,6 +1065,7 @@ namespace Ast
             otherLiteral_ = lit;
             srcother_ = kSrcLiteral;
         }
+        void setOtherRegister() { srcother_ = kSrcRegister; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -1127,7 +1128,7 @@ namespace Ast
 //         }
     // disappointing but the inline member function does not run as quickly as the macro here.
 #define pa_getOtherValue(pa, frame, stack )  \
-    (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : stack.pop())
+        (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ? frame.thread->r0_ : stack.pop())
         
     }; // end, class ApplyThingAndValue2ValueOperator
 
@@ -2820,7 +2821,6 @@ public:
     
 
 void OptimizeAst( std::vector<Ast::Base*>& ast )
-//void OptimizeAst( Ast::Program::astList_t& ast )
 {
     class NoOp : public Ast::Base
     {
@@ -2845,7 +2845,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         Ast::Base* first = ast[i];
-        const Ast::Base* second = ast[i+1];
+        Ast::Base* second = ast[i+1];
         
         Ast::IsApplicable* pup = dynamic_cast<Ast::IsApplicable*>( first );
         
@@ -2988,6 +2988,23 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
     delNoops();
+
+#if 0
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
+    {
+        Ast::ValueMaker* pfirst = dynamic_cast<Ast::ValueMaker*>(ast[i]);
+        if (pfirst && pfirst->dest_ == kSrcStack)
+        {
+            Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
+            if (psecond && psecond->srcthing_ != kSrcStack)
+            {
+                pfirst->setDestRegister();
+                psecond->setOtherRegister();
+            }
+        }
+    }
+#endif 
+    
     
 #endif 
 
