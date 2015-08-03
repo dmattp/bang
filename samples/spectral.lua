@@ -25,6 +25,7 @@ local function AtAv(x, y, t, N)
 end
 
 local N = tonumber(arg and arg[1]) or 125
+print('n=',N)
 local u, v, t = {}, {}, {}
 for i=1,N do u[i] = 1 end
 
