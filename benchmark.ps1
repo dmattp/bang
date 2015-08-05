@@ -2,10 +2,10 @@ $minbang = 99999
 $minlua = 99999
 
 $thetest='fannkuck-redux'
-$thetest='spectral'
 $thetest='n-body'
-$thetest='binary-trees'
 $thetest='multi'
+$thetest='binary-trees'
+$thetest='spectral'
 
 for ($i=0;$i -lt 9;$i++) {
     $tbang = (measure-command  { .\bang .\samples\$thetest.bang }).totalmilliseconds

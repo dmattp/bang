@@ -931,6 +931,7 @@ namespace Ast
         : v1src_( kSrcStack ),
           v1uvnumber_( kNoParent )
         {}
+        bool srcIsStack() { return v1src_ == kSrcStack; }
         void setSrcUpval( const Ast::PushUpval* pup )
         {
             v1uvnumber_ = pup->uvnumber_;
@@ -1019,6 +1020,12 @@ namespace Ast
 #endif 
         msgStr_( msgStr )
         {}
+        
+        ApplyIndexOperator()
+        {
+            //~~~@todo: get msgStr_ from stack!
+        }
+        
         const Value& getMsgVal() const { return msgStr_; }
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -2278,7 +2285,10 @@ public:
     {
         char lastc = consumned_.back();
         if (lastc != c )
+        {
+            std::cerr << "last char=" << lastc << " regurged=" << c << std::endl;
             throw std::runtime_error("parser regurged char != last");
+        }
         consumned_.pop_back();
         stream_.regurg(c);
     }
@@ -2640,7 +2650,7 @@ class Parser
         if (isspace(c))
             return true;
         
-        auto found = strchr( ";}).!", c );
+        auto found = strchr( "];}).!", c );
         return found ? true : false;
     }
     
@@ -2947,7 +2957,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         if (plit)
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v)
+            if (pTav2v && pTav2v->srcthing_ == kSrcStack)
             {
                 pTav2v->setThingLiteral( plit->v_ );
                 ast[i] = &noop;
@@ -2960,7 +2970,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v)
+            if (pTav2v && pTav2v->srcthing_ == kSrcStack)
             {
                 pTav2v->setThingUpval( pup );
                 ast[i] = &noop;
@@ -2968,7 +2978,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 continue;
             }
             Ast::ValueEater* ve = dynamic_cast<Ast::ValueEater*>(ast[i+1]);
-            if (ve)
+            if (ve && ve->srcIsStack())
             {
                 ve->setSrcUpval( pup );
                 ast[i] = &noop;
@@ -2985,7 +2995,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v && pTav2v->thingNotStack())
+            if (pTav2v && pTav2v->thingNotStack() && pTav2v->srcother_ == kSrcStack)
             {
                 pTav2v->setOtherUpval( pup );
                 ast[i] = &noop;
@@ -2998,7 +3008,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         if (plit)
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v && pTav2v->thingNotStack())
+            if (pTav2v && pTav2v->thingNotStack() && pTav2v->srcother_ == kSrcStack)
             {
                 pTav2v->setOtherLiteral( plit->v_ );
                 ast[i] = &noop;
@@ -3440,6 +3450,35 @@ Parser::Program::Program
                 }
             }
 #endif 
+            else if (c == ']') // "Object Method / Message / Dereference / Index" operator
+            {
+                mark.accept();
+                break;
+            }
+            else if (c == '[') // "Object Method / Message / Dereference / Index" operator
+            {
+                mark.accept();
+                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
+                mark.accept();
+#if 0
+                Ast::Program* iprog = new Ast::Program( nullptr, indexProgram.ast() );
+                ast_.push_back( iprog );
+                 ast_.push_back( new Ast::Apply() );
+#else
+                const auto astop = indexProgram.ast();
+                for (auto el = astop.begin(); el != astop.end(); ++el)
+                {
+                    if ((*el)->instr_ != Ast::Base::kBreakProg)
+                        ast_.push_back( *el );
+                }
+#endif 
+
+                auto pp = new Ast::PushPrimitive( &Primitives::swap, "swap" );
+                pp->setApply();
+                ast_.push_back( pp );
+                ast_.push_back( newapplywhere(mark) );
+                continue;
+            }
             else if (c == '?')
             {
 //                std::cerr << "found if-else\n";

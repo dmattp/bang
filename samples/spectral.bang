@@ -41,7 +41,8 @@ def :Av N = {
   stack-to-array! as input
   fun i = { -- local a = 0
      0 fun j = { -- for j=1,N do a = a + x[j] * A(i, j) end
-       j 1 - input!
+       input [j 1 -]
+--       j 1 - input!
        1.0
        j i
   + 1 -   -- i (i+j-1 aka ij)
@@ -58,7 +59,7 @@ def :Atv N = {
   stack-to-array! as input
   fun i = { -- local a = 0
      0 fun j = { -- for j=1,N do a = a + x[j] * A(j, i) end
-       j 1 - input!
+       input [j 1 -]
        1.0
        i j
   + 1 -   -- i (i+j-1 aka ij)
