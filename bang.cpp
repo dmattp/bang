@@ -923,20 +923,39 @@ namespace Ast
     class ValueEater
     {
     protected:
+    public:
         ESourceDest v1src_;
         NthParent   v1uvnumber_;
         std::string v1uvname_;
+        Value       v1literal_;
     public:
         ValueEater()
         : v1src_( kSrcStack ),
           v1uvnumber_( kNoParent )
         {}
+        ESourceDest sourceType() const { return v1src_; }
         bool srcIsStack() { return v1src_ == kSrcStack; }
         void setSrcUpval( const Ast::PushUpval* pup )
         {
             v1uvnumber_ = pup->uvnumber_;
             v1uvname_ = pup->name_;
             v1src_ = kSrcUpval;
+        }
+        void setSrcLiteral( const Value& v )
+        {
+            v1literal_ = v;
+            v1src_ = kSrcLiteral;
+        }
+        void dump( std::ostream& o ) const
+        {
+            if (v1src_ == kSrcLiteral)
+            {
+                v1literal_.dump(o);
+            }
+            else if (v1src_ == kSrcUpval)
+            {
+                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_;
+            }
         }
     };
     
@@ -1011,22 +1030,25 @@ namespace Ast
 
     class ApplyIndexOperator : public Base, public ValueEater
     {
+        ValueEater indexValue_;
     public:
-        Value msgStr_; // method
         ApplyIndexOperator( const bangstring& msgStr )
-        :
 #if DOT_OPERATOR_INLINE
-        Base( kApplyIndexOperator ),
+        : Base( kApplyIndexOperator ),
 #endif 
-        msgStr_( msgStr )
-        {}
-        
-        ApplyIndexOperator()
         {
-            //~~~@todo: get msgStr_ from stack!
+            indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
         
-        const Value& getMsgVal() const { return msgStr_; }
+        ApplyIndexOperator( Ast::Program* ndxGeneratingProgram )
+        {
+            //~~~@todo:
+            // cases: no program / empty program ("thing[]")
+            // program with 1 instruction which is either upval or literal (save to indexvalue)
+            // general program
+        }
+        
+//        const Value& getMsgVal() const { return msgStr_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -1034,10 +1056,9 @@ namespace Ast
             if (v1src_ == kSrcStack)
                 o << "stack .";
             else
-            {
                 o << "upval," << v1uvnumber_.toint() << '/' << v1uvname_ << " .";
-            }
-            o << msgStr_.tostr() << ")\n";
+            indexValue_.dump(o);
+            o << ")\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
 #if DOT_OPERATOR_INLINE
@@ -2078,13 +2099,21 @@ restartTco:
             case kSrcUpval:
             {
                 const Value& owner = rc.getUpValue(v1uvnumber_);
-                owner.applyIndexOperator( msgStr_, stack, rc );
+                switch (indexValue_.sourceType())
+                {
+                    case kSrcLiteral: owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
+                    default: return;
+                }
             }
             break;
             default:
             {
                 const Value& owner = stack.pop();
-                owner.applyIndexOperator( msgStr_, stack, rc );
+                switch (indexValue_.sourceType())
+                {
+                    case kSrcLiteral: owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
+                    default: return;
+                }
             }
             break;
         }
@@ -3462,8 +3491,8 @@ Parser::Program::Program
                 mark.accept();
 #if 0
                 Ast::Program* iprog = new Ast::Program( nullptr, indexProgram.ast() );
-                ast_.push_back( iprog );
-                 ast_.push_back( new Ast::Apply() );
+                ast_.push_back( new Ast::ApplyIndexOperator(iprog) );
+                // ast_.push_back( new Ast::Apply() );
 #else
                 const auto astop = indexProgram.ast();
                 for (auto el = astop.begin(); el != astop.end(); ++el)
@@ -3471,12 +3500,12 @@ Parser::Program::Program
                     if ((*el)->instr_ != Ast::Base::kBreakProg)
                         ast_.push_back( *el );
                 }
-#endif 
-
                 auto pp = new Ast::PushPrimitive( &Primitives::swap, "swap" );
                 pp->setApply();
                 ast_.push_back( pp );
                 ast_.push_back( newapplywhere(mark) );
+#endif 
+
                 continue;
             }
             else if (c == '?')
