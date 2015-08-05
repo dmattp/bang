@@ -362,6 +362,13 @@ namespace Primitives
         s.push(double(s.size()));
     }
 
+    void isfun( Stack& s, const RunContext&)
+    {
+        const Value& v = s.loc_top();
+        bool rc = v.isfunprim() || v.isfun() || v.isboundfun();
+        // s.pop_back();
+        s.push( rc );
+    }
     void swap( Stack& s, const RunContext& ctx)
     {
         const Value& v1 = s.pop();
@@ -3675,6 +3682,7 @@ Parser::Program::Program
                 
                 if (rwPrimitive( "drop",   &Primitives::drop   ) ) continue;
                 if (rwPrimitive( "swap",   &Primitives::swap   ) ) continue;
+                if (rwPrimitive( "isafun",   &Primitives::isfun   ) ) continue;
                 if (rwPrimitive( "dup",    &Primitives::dup    ) ) continue;
                 if (rwPrimitive( "nth",    &Primitives::nth    ) ) continue;
                 if (rwPrimitive( "print",   &Primitives::print   ) ) continue;

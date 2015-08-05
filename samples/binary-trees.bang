@@ -37,16 +37,14 @@ def :BottomUpTree item depth = {
 --  'create tree+subtrees item=' item tostring! +@
   fun = item left right
   }
-: fun = item
+: item
 }
 
-def :ItemCheck tree = {
-  (tree!
+def :ItemCheck = {
+  isafun!
   -- 'exp tree size=' # tostring! + @
-   # 1 >
- ? { as tRight as tLeft
+ ? { ! as tRight as tLeft
    tLeft ItemCheck! + tRight ItemCheck! - }
-   )
 }
 
 4 as mindepth

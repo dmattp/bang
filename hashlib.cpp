@@ -93,10 +93,9 @@ namespace Hashlib
         }
     }
 
-    DLLEXPORT void BangHash::apply( Stack& s ) // , CLOSURE_CREF running )
+
+    void BangHash::indexOperator( const Bang::Value& msg, Stack& stack, const RunContext& )
     {
-        const Value& msg = s.pop();
-            
         if (msg.isstr())
         {
             const auto& key = msg.tostr();
@@ -105,9 +104,16 @@ namespace Hashlib
                 // auto hash = key.gethash();
                 auto loc = this->find( key );
                 if (loc != hash_.end())
-                    s.push( loc->second );
+                    stack.push( loc->second );
             }
         }
+    }
+    
+    DLLEXPORT void BangHash::apply( Stack& s ) // , CLOSURE_CREF running )
+    {
+        const Bang::Value& msg = s.pop();
+        Bang::RunContext* pctx = nullptr;
+        this->indexOperator( msg, s, *pctx );
     }
 
     void BangHash::customOperator( const Value& v, const bangstring& theOperator, Stack& s)

@@ -1,9 +1,9 @@
 $minbang = 99999
 $minlua = 99999
 
-$thetest='n-body'
 $thetest='fannkuck-redux'
 $thetest='spectral'
+$thetest='n-body'
 $thetest='binary-trees'
 $thetest='multi'
 
