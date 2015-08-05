@@ -949,6 +949,26 @@ namespace Ast
         void setSrcRegisterBool() { boolsrc_ = kSrcRegisterBool; }
     };
 
+    class ValueEater
+    {
+    protected:
+        ESourceDest v1src_;
+        NthParent   v1uvnumber_;
+        std::string v1uvname_;
+    public:
+        ValueEater()
+        : v1src_( kSrcStack ),
+          v1uvnumber_( kNoParent )
+        {}
+        void setSrcUpval( const Ast::PushUpval* pup )
+        {
+            v1uvnumber_ = pup->uvnumber_;
+            v1uvname_ = pup->name_;
+            v1src_ = kSrcUpval;
+        }
+    };
+    
+
     class DestableOperator
     {
     public: // protected:
@@ -1129,7 +1149,7 @@ namespace Ast
     }; // end, class ApplyThingAndValue2ValueOperator
 
 
-    class ApplyCustomOperator : public Base
+    class ApplyCustomOperator : public Base, public ValueEater
     {
     public:
         bangstring custom_ ; // method
@@ -1140,12 +1160,32 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyCustomOperator(" << custom_ << ")\n";
+            o << "ApplyCustomOperator( src=";
+            if (v1src_ == kSrcStack)
+                o << "stack ";
+            else
+            {
+                o << "upval," << v1uvnumber_.toint() << '/' << v1uvname_ << ' ';
+            }
+            o << custom_ << ")\n";
         }
-        virtual void run( Stack& stack, const RunContext& ) const
+        virtual void run( Stack& stack, const RunContext& rc ) const
         {
-            const Value& owner = stack.pop();
-            owner.applyCustomOperator( custom_, stack );
+            switch (v1src_)
+            {
+                case kSrcUpval:
+                {
+                    const Value& owner = rc.getUpValue(v1uvnumber_);
+                    owner.applyCustomOperator( custom_, stack );
+                }
+                break;
+                default:
+                {
+                    const Value& owner = stack.pop();
+                    owner.applyCustomOperator( custom_, stack );
+                }
+                break;
+            }
         }
     };
     
@@ -1626,8 +1666,8 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
 
     // disappointing but the inline member function does not run as quickly as the macro here.
-#define pa_getOtherValue(pa, frame, stack )  \
-        (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ? frame.thread->r0_ : stack.pop())
+// #define pa_getOtherValue(pa, frame, stack )  \
+//     (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ? frame.thread->r0_ : pa.srcother_ == kSrcLiteral ? pa.otherLiteral_ : stack.pop())
         
     template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom { };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
@@ -1635,6 +1675,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
             switch( pa.srcother_ ) {
                 case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, frame.getUpValue(pa.uvnumberOther_) );
                 case kSrcRegister: return pa.thingliteralop_( pa.thingLiteral_, pThread->r0_ );
+                case kSrcLiteral:  return pa.thingliteralop_( pa.thingLiteral_, pa.otherLiteral_ );
                 default:           return pa.thingliteralop_( pa.thingLiteral_, stack.pop() );
             }
         }
@@ -1645,6 +1686,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
             switch( pa.srcother_ ) {
                 case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
                 case kSrcRegister: return  pThread->r0_.applyAndValue2Value( pa.openum_, pThread->r0_ );
+                case kSrcLiteral:  return  pThread->r0_.applyAndValue2Value( pa.openum_, pa.otherLiteral_ );
                 default:           return  pThread->r0_.applyAndValue2Value( pa.openum_, stack.pop() );
             }
         }
@@ -1654,6 +1696,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
             switch( pa.srcother_ ) {
                 case kSrcUpval:    return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
                 case kSrcRegister: return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pThread->r0_ );
+                case kSrcLiteral:  return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa.otherLiteral_ );
                 default:           return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, stack.pop() );
             }
             
@@ -2919,8 +2962,16 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 pTav2v->setThingUpval( pup );
                 ast[i] = &noop;
                 ++i;
+                continue;
             }
-            continue;
+            Ast::ValueEater* ve = dynamic_cast<Ast::ValueEater*>(ast[i+1]);
+            if (ve)
+            {
+                ve->setSrcUpval( pup );
+                ast[i] = &noop;
+                ++i;
+                continue;
+            }
         }
     }
     delNoops();
@@ -2939,7 +2990,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
             continue;
         }
-#if 0        
+#if 1
         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
         if (plit)
         {
@@ -3035,7 +3086,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 bool otherstackuser = false;
                 Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[j]);
 //                std::cout << "checking j=" << j << " psecond=" << psecond << " srcother_=" << psecond->srcother_ << " srcthing_=" << psecond->srcthing_ << '\n';
-                if (psecond && (psecond->srcother_ != kSrcStack && psecond->srcthing_ != kSrcStack))
+                if (psecond && (psecond->srcother_ != kSrcStack && psecond->srcthing_ != kSrcStack && psecond->dest_ != kSrcStack))
                     continue;
                 else
                     break;
@@ -3043,11 +3094,20 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             if (j < i - 1)
             {
                 Ast::PushUpval* pthird = dynamic_cast<Ast::PushUpval*>(ast[j]);
-                if (pthird)
+                if (pthird && !pthird->hasApply())
                 {
                     pfirst->setOtherUpval( pthird );
                     ast[j] = &noop;
                     delete pthird;
+                    continue;
+                }
+                Ast::PushLiteral* pthird2 = dynamic_cast<Ast::PushLiteral*>(ast[j]);
+                if (pthird2)
+                {
+                    pfirst->setOtherLiteral( pthird2->v_ );
+                    ast[j] = &noop;
+                    delete pthird2;
+                    continue;
                 }
             }
         }

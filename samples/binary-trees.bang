@@ -1,17 +1,11 @@
 # 1 < ? 10; as N
 
+'mathlib' crequire! .pow as pow
+
 -- The Computer Language Benchmarks Game
 -- http://benchmarksgame.alioth.debian.org/
 -- contributed by David M. Placek
-def :pow2 n = {
-   1
-   def :inner remain = {
-     2 *
-     remain 1 >
-   ? remain 1 - inner!
-   }
-   n 1 > ? n inner!
-}
+def :pow2 n = { 2 n pow! }
 
 def :times = { swap! as loopFun
     def! :innerLoop remain = {
@@ -35,9 +29,9 @@ def :BottomUpTree item depth = {
 --  'BottomUpTree depth=' depth tostring! + @
   depth 0 >
 ? {
-  item item + -- as i
   depth 1 - as nextDepth
 --    local left, right = BottomUpTree(i-1, depth), BottomUpTree(i, depth)
+  item item + 
   dup! 1 - nextDepth BottomUpTree! as left
   nextDepth BottomUpTree! as right
 --  'create tree+subtrees item=' item tostring! +@
