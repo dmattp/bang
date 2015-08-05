@@ -12,12 +12,13 @@
 #endif 
 #endif
 #define HAVE_DOT_OPERATOR 1
-#define DOT_OPERATOR_INLINE 1
+#define DOT_OPERATOR_INLINE 0
 
 #define HAVE_COMPLETE_OPERATORS 0
 #define LCFG_KEEP_PROFILING_STATS 0
 
 #define LCFG_OPTIMIZE_OPVV2V_WITHLIT 1
+#define LCFG_USE_INDEX_OPERATOR 1
 
 /*
   Keywords
@@ -615,6 +616,26 @@ namespace Primitives
             case kThread: bangerr() << "custom operators not supported for threads"; break; 
         }
     }
+
+    void Value::applyIndexOperator( const Value& theIndex, Stack& s, const RunContext& ctx ) const
+    {
+        switch (type_)
+        {
+            case kNum: bangerr() << "no index num ops"; break;
+            case kStr: bangerr() << "no index string ops"; break;
+            case kFun: // fall through
+            case kBoundFun: this->tofun()->indexOperator( theIndex, s, ctx ); break;
+            case kFunPrimitive:
+            {
+                s.push( theIndex );
+                this->tofunprim()( s, ctx );
+                // bangerr() << "custom operators not supported for function primitives";
+            }
+            break; 
+            case kThread: bangerr() << "index operator not supported for threads"; break; 
+        }
+    }
+    
     
 
 
@@ -818,64 +839,7 @@ namespace Ast
         }
     };
 
-    class ApplyDotOperator : public Base
-    {
-    public:
-        Value msgStr_; // method
-        ApplyDotOperator( const bangstring& msgStr )
-        :
-#if DOT_OPERATOR_INLINE
-        Base( kApplyDotOperator ),
-#endif 
-        msgStr_( msgStr )
-        {}
-        const Value& getMsgVal() const { return msgStr_; }
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ApplyDotOperator(" << msgStr_.tostr() << ")\n";
-        }
-        virtual void run( Stack& stack, const RunContext& ) const
-#if DOT_OPERATOR_INLINE
-        { throw std::runtime_error("ApplyDotOperator::run should not be called"); }
-#else
-        ;
-#endif 
-    };
-    
 
-    class ApplyDotOperatorUpval : public Base
-    {
-    public:
-        Value msgStr_; // method
-    private:
-        NthParent uvnumber_; // index into the active Upvalues
-    public:
-        ApplyDotOperatorUpval( const bangstring& msgStr, NthParent uvnumber )
-        :
-#if DOT_OPERATOR_INLINE
-        Base( kApplyDotOperatorUpval ),
-#endif 
-        msgStr_( msgStr ),
-        uvnumber_( uvnumber )
-        {}
-        const Value& getMsgVal() const { return msgStr_; }
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ApplyDotOperatorUpval(" << uvnumber_.toint() << '/' << msgStr_.tostr() << ")\n";
-        }
-        virtual void run( Stack& stack, const RunContext& ) const
-#if DOT_OPERATOR_INLINE
-        { throw std::runtime_error("ApplyDotOperatorUpval::run should not be called"); }
-#else
-        ;
-#endif
-        const Value& getUpValue( const RunContext& rc ) const
-        {
-            return rc.getUpValue( uvnumber_ );
-        }
-    };
 
 
     static const char* op2str( EOperators which )
@@ -1035,6 +999,41 @@ namespace Ast
             }
         }
     };
+
+
+    class ApplyIndexOperator : public Base, public ValueEater
+    {
+    public:
+        Value msgStr_; // method
+        ApplyIndexOperator( const bangstring& msgStr )
+        :
+#if DOT_OPERATOR_INLINE
+        Base( kApplyIndexOperator ),
+#endif 
+        msgStr_( msgStr )
+        {}
+        const Value& getMsgVal() const { return msgStr_; }
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyIndexOperator( src=";
+            if (v1src_ == kSrcStack)
+                o << "stack .";
+            else
+            {
+                o << "upval," << v1uvnumber_.toint() << '/' << v1uvname_ << " .";
+            }
+            o << msgStr_.tostr() << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+#if DOT_OPERATOR_INLINE
+        { throw std::runtime_error("ApplyIndexOperator::run should not be called"); }
+#else
+        ;
+#endif 
+    };
+    
+    
 
     class ApplyThingAndValue2ValueOperator : public Base, public ValueMaker
     {
@@ -1981,10 +1980,10 @@ restartTco:
                 break;
 
 #if DOT_OPERATOR_INLINE
-                case Ast::Base::kApplyDotOperator:
+                case Ast::Base::kApplyIndexOperator:
                 {
                     const Value& v = stack.pop(); // the function to apply
-                    stack.push( reinterpret_cast<const Ast::ApplyDotOperator*>(pInstr)->getMsgVal() );
+                    stack.push( reinterpret_cast<const Ast::ApplyIndexOperator*>(pInstr)->getMsgVal() );
                     switch (v.type())
                     {
                         default: RunApplyValue( pInstr, v, stack, frame ); break;
@@ -1997,24 +1996,6 @@ restartTco:
                     }
                 }
                 break;
-                case Ast::Base::kApplyDotOperatorUpval:
-                {
-                    auto adoup = reinterpret_cast<const Ast::ApplyDotOperatorUpval*>(pInstr);
-                    const Value& v = adoup->getUpValue( frame ); 
-                    stack.push( adoup->getMsgVal() );
-                    switch (v.type())
-                    {
-                        default: RunApplyValue( pInstr, v, stack, frame ); break;
-                        KTHREAD_CASE
-                        case Value::kBoundFun:
-                            auto pbound = v.toboundfun();
-                            inprog = pbound->program_;
-                            inupvalues = pbound->upvalues_;
-                            goto restartNonTail;
-                    }
-                }
-                break;
-
 #endif 
                 
                 case Ast::Base::kTCOApply:
@@ -2075,30 +2056,61 @@ restartTco:
     }
 
 #if !DOT_OPERATOR_INLINE
-    void Ast::ApplyDotOperator::run( Stack& stack, const RunContext& ctx ) const
+    void Ast::ApplyIndexOperator::run( Stack& stack, const RunContext& rc ) const
+    {
+        // now apply
+        switch (v1src_)
         {
-            // now apply
-            const Value& v = stack.pop(); // the function to apply
-            stack.push( v_ );
-            switch (v.type())
+            case kSrcUpval:
             {
-                case Value::kFun: v.tofun()->apply(stack); break;
-                case Value::kFunPrimitive: v.tofunprim()( stack, ctx ); break;
-                case Value::kBoundFun:
-                {
-                    auto  bprog = v.toboundfunhold();
-//                    std::cerr << "dot operator calling boundfun upval1=" << bprog->upvalues_->upvalParseChain()->valueName() << "\n";
-                    // RunProgram( ctx.thread, bprog->program_, bprog->upvalues_ );
-                    CallIntoSuspendedCoroutine( ctx.thread, bprog );
-//                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
-                }
-                break;
-//                case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread);
-//                xferstack(pThread,other); pThread = other; goto restartThread; }
-                default:
-                    throw std::runtime_error("dot operator not supported on value type");
+                const Value& owner = rc.getUpValue(v1uvnumber_);
+                owner.applyIndexOperator( msgStr_, stack, rc );
             }
+            break;
+            default:
+            {
+                const Value& owner = stack.pop();
+                owner.applyIndexOperator( msgStr_, stack, rc );
+            }
+            break;
         }
+    }
+
+
+    void Function::indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx )
+    {
+        stack.push( theIndex );
+        this->apply( stack );
+        
+//         switch (v.type())
+//         {
+//             case Value::kFun: v.tofun()->apply(stack); break;
+//             case Value::kFunPrimitive: v.tofunprim()( stack, ctx ); break;
+// #if 1
+//             case Value::kBoundFun:
+//             {
+//                 auto  bprog = v.toboundfun();
+// //                    std::cerr << "dot operator calling boundfun upval1=" << bprog->upvalues_->upvalParseChain()->valueName() << "\n";
+//                 // RunProgram( ctx.thread, bprog->program_, bprog->upvalues_ );
+//                 CallIntoSuspendedCoroutine( ctx.thread, bprog );
+// //                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+//             }
+//             break;
+// #endif 
+// //                case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread);
+// //                xferstack(pThread,other); pThread = other; goto restartThread; }
+//             default:
+//                 throw std::runtime_error("dot operator not supported on value type");
+//         }
+    }
+
+    void BoundProgram::indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx )
+    {
+        stack.push( theIndex );
+        CallIntoSuspendedCoroutine( ctx.thread, this );
+    }
+    
+    
 #endif 
     
     
@@ -2921,22 +2933,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     
     delNoops();
 
-    for (unsigned i = 0; i < ast.size() - 1; ++i)
-    {
-        const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup && !pup->hasApply() ) // !dynamic_cast<const Ast::ApplyUpval*>(pup))
-        {
-            Ast::ApplyDotOperator* pdot = dynamic_cast<Ast::ApplyDotOperator*>(ast[i+1]);
-            if (pdot)
-            {
-                ast[i] = new Ast::ApplyDotOperatorUpval( pdot->msgStr_.tostr(), pup->uvnumber_ );
-                ast[i]->where_ = ast[i+1]->where_;
-                ast[i+1] = &noop;
-            }
-        }
-    }
-
-
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
@@ -3482,7 +3478,7 @@ Parser::Program::Program
                     mark.accept();
 
 #if HAVE_DOT_OPERATOR
-                    ast_.push_back( new Ast::ApplyDotOperator( internstring(methodName.name())) );
+                    ast_.push_back( new Ast::ApplyIndexOperator( internstring(methodName.name())) );
 #else
                     ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
                     ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );

@@ -82,6 +82,7 @@ namespace Bang
         DLLEXPORT static void invalidOperator (const Value& v, Stack& );
         DLLEXPORT static Value opThingAndValue2Value_noop( const Value& thing, const Value& other );
         void (*customOperator)( const Value& v, const bangstring& theOperator, Stack& );
+//        void (*indexOperator)( const Value& v, const Value& theKey, Stack& );
         union
         {
             struct
@@ -735,6 +736,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value applyAndValue2Value( EOperators which, const Value& other ) const;
         tfn_opThingAndValue2Value getOperator( EOperators which ) const;
         void applyCustomOperator( const bangstring& theOperator, Stack& ) const;
+        void applyIndexOperator( const Value& theIndex, Stack&, const RunContext& ) const;
     }; // end, class Value
 
     class NthParent {
@@ -956,6 +958,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         DLLEXPORT Function();
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
+        virtual void indexOperator( const Value& theIndex, Stack&, const RunContext& );
     };
 
     
@@ -1076,6 +1079,7 @@ DLLEXPORT void RunProgram
         BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues );
         void dump( std::ostream & out );
         virtual void apply( Stack& s );
+        virtual void indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx );
     };
 
 
