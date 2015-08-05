@@ -3022,6 +3022,40 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
 #endif 
+
+#if 1
+    for (unsigned i = 2; i < ast.size(); ++i)
+    {
+        Ast::ApplyThingAndValue2ValueOperator* pfirst = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
+        if (pfirst && pfirst->srcother_ == kSrcStack && pfirst->thingNotStack())
+        {
+            unsigned j = i - 1;
+            for (; j > 0; --j)
+            {
+                bool otherstackuser = false;
+                Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[j]);
+//                std::cout << "checking j=" << j << " psecond=" << psecond << " srcother_=" << psecond->srcother_ << " srcthing_=" << psecond->srcthing_ << '\n';
+                if (psecond && (psecond->srcother_ != kSrcStack && psecond->srcthing_ != kSrcStack))
+                    continue;
+                else
+                    break;
+            }
+            if (j < i - 1)
+            {
+                Ast::PushUpval* pthird = dynamic_cast<Ast::PushUpval*>(ast[j]);
+                if (pthird)
+                {
+                    pfirst->setOtherUpval( pthird );
+                    ast[j] = &noop;
+                    delete pthird;
+                }
+            }
+        }
+    }
+    delNoops();
+#endif 
+
+
     
     
 #endif 

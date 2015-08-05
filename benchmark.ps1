@@ -1,9 +1,13 @@
 $minbang = 99999
 $minlua = 99999
 
+$thetest='multi'
+$thetest='n-body'
+$thetest='fannkuck-redux'
+
 for ($i=0;$i -lt 9;$i++) {
-    $tbang = (measure-command  { .\bang .\samples\multi.bang }).totalmilliseconds
-    $tlua = (measure-command  { lua523r .\samples\multi.lua }).totalmilliseconds
+    $tbang = (measure-command  { .\bang .\samples\$thetest.bang }).totalmilliseconds
+    $tlua = (measure-command  { lua523r .\samples\$thetest.lua }).totalmilliseconds
     if ($tbang -lt $minbang) { $minbang = $tbang }
     if ($tlua -lt $minlua) { $minlua = $tlua }
     echo "bang=$tbang lua=$tlua"

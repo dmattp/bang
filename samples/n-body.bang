@@ -5,7 +5,7 @@
 -- modified by Mario Pernici
 -- Translated to Bang! by David Placek
 
-# 1 < ? 9000; as N -- tonumber(arg and arg[1]) or 9000 -- lua=9k runs in ~100ms
+# 1 < ? 13000; as N -- tonumber(arg and arg[1]) or 9000 -- lua=9k runs in ~100ms
 
 3.141592653589793 as PI           
 365.24            as DAYS_PER_YEAR
@@ -37,8 +37,9 @@ def :make-Body = {
 
 def :advance dt = { as nbody as bodies
   nbody 1 - as maxbodyndx
-  
-  def :each-body i = {
+
+  0
+  def! :each-body i = {
     i bodies! as bi
     bi.x bi.y bi.z bi.mass as bimass as biz as biy as bix
 
@@ -49,7 +50,7 @@ def :advance dt = { as nbody as bodies
       ? j bodies! as bj
         bix bj.x - as dx biy bj.y - as dy biz bj.z - as dz
         
-        dx dx * dy dy * + dz dz * + as dist2
+        dx dx * dy dy * dz dz * + + as dist2
         dt dist2 sqrt! dist2 * / as mag
         
 --            i j bmj mag bimass bix biy biz bivx bivy bivz dx dy dz 'i=%s j=%s bmj=%s mag=%s bimass=%s bix=%s biy=%s biz=%s bivx=%s bivy=%s bivz=%s dx=%s dy=%s dz=%s\n' print!
@@ -80,9 +81,10 @@ def :advance dt = { as nbody as bodies
         bivz bi/set.vz
 --        bivx bivy bivz bi.mass
 --        make-Body! i bodies.set
-    } -- end, innerloop; should leave new "i" body 
+    } -- end, innerloop; should leave new "i" body
+    i maxbodyndx < ? i 1 + each-body!
   } -- end, each-body loop
-  each-body 0 maxbodyndx range!
+--  each-body 0 maxbodyndx range!
 }
 
 
