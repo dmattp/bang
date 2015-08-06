@@ -791,10 +791,10 @@ const Ast::Base* gFailedAst = nullptr;
         static const char* sd2str( ESourceDest sd )
         {
             return
-            ( sd == kSrcStack ? "Stack"
+            ( sd == kSrcStack ? "$stk"
             : sd == kSrcLiteral ? "Literal"
             : sd == kSrcUpval ? "Upval"
-            : sd == kSrcRegister ? "Register"
+            : sd == kSrcRegister ? "$reg"
             : sd == kSrcRegisterBool ? "RegisterBool"
             : sd == kSrcCloseValue ? "CloseValue"
             : "Unknown-source/dest"
@@ -946,6 +946,10 @@ namespace Ast
             v1literal_ = v;
             v1src_ = kSrcLiteral;
         }
+        void setSrcRegister()
+        {
+            v1src_ = kSrcRegister;
+        }
         void dump( std::ostream& o ) const
         {
             if (v1src_ == kSrcLiteral)
@@ -955,6 +959,14 @@ namespace Ast
             else if (v1src_ == kSrcUpval)
             {
                 o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_;
+            }
+            else if (v1src_ == kSrcRegister)
+            {
+                o << "$reg";
+            }
+            else if (v1src_ == kSrcStack)
+            {
+                o << "$stk";
             }
         }
     };
@@ -1039,13 +1051,39 @@ namespace Ast
         {
             indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
+
+        bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
+        void setIndexValueSrcRegister() { return indexValue_.setSrcRegister(); }
         
-        ApplyIndexOperator( Ast::Program* ndxGeneratingProgram )
+        ApplyIndexOperator( const std::vector<Ast::Base*>& ast )
         {
             //~~~@todo:
             // cases: no program / empty program ("thing[]")
             // program with 1 instruction which is either upval or literal (save to indexvalue)
             // general program
+//             if (!ndxGeneratingProgram) 
+//                 return;
+
+            //astList_t ast = ndxGeneratingProgram->getAst();
+            if (ast[0]->instr_ == Ast::Base::kBreakProg)
+                return; // no program; indexValue_ source remains set to stack.
+
+            if (ast[1]->instr_ == Ast::Base::kBreakProg) // single instruction program
+            {
+                const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[0]);
+                if (pup && !pup->hasApply())
+                {
+                    indexValue_.setSrcUpval( pup );
+                    return;
+                }
+
+                const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[0]);
+                if (plit)
+                {
+                    indexValue_.setSrcLiteral( plit->v_ );
+                    return;
+                }
+            }
         }
         
 //        const Value& getMsgVal() const { return msgStr_; }
@@ -1054,11 +1092,11 @@ namespace Ast
             indentlevel(level, o);
             o << "ApplyIndexOperator( src=";
             if (v1src_ == kSrcStack)
-                o << "stack .";
+                o << "stack [";
             else
-                o << "upval," << v1uvnumber_.toint() << '/' << v1uvname_ << " .";
+                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << " [";
             indexValue_.dump(o);
-            o << ")\n";
+            o << "] )\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
 #if DOT_OPERATOR_INLINE
@@ -1133,7 +1171,7 @@ namespace Ast
             }
             else if (srcother_ == kSrcUpval)
             {
-                o << ',' << uvnumberOther_.toint() << '/' << otheruvname_;
+                o << '#' << uvnumberOther_.toint() << ',' << otheruvname_;
             }
 
             o << " s2=" << sd2str(srcthing_) ;
@@ -1144,7 +1182,7 @@ namespace Ast
             }
             else if (srcthing_ == kSrcUpval)
             {
-                o << ',' << uvnumber_.toint() << '/' << thinguvname_;
+                o << '#' << uvnumber_.toint() << ',' << thinguvname_;
             }
             
             o << " op=" << openum_ << "(" << op2str(openum_) << ')';
@@ -1199,7 +1237,7 @@ namespace Ast
                 o << "stack ";
             else
             {
-                o << "upval," << v1uvnumber_.toint() << '/' << v1uvname_ << ' ';
+                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << ' ';
             }
             o << custom_ << ")\n";
         }
@@ -2101,7 +2139,10 @@ restartTco:
                 const Value& owner = rc.getUpValue(v1uvnumber_);
                 switch (indexValue_.sourceType())
                 {
-                    case kSrcLiteral: owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
+                    case kSrcLiteral:  owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
+                    case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, rc ); return;
+                    case kSrcUpval:    owner.applyIndexOperator( rc.getUpValue(indexValue_.v1uvnumber_), stack, rc ); return;
+                    case kSrcRegister: owner.applyIndexOperator( rc.thread->r0_, stack, rc ); return;
                     default: return;
                 }
             }
@@ -2111,7 +2152,10 @@ restartTco:
                 const Value& owner = stack.pop();
                 switch (indexValue_.sourceType())
                 {
-                    case kSrcLiteral: owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
+                    case kSrcLiteral:  owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
+                    case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, rc ); return;
+                    case kSrcUpval:    owner.applyIndexOperator( rc.getUpValue(indexValue_.v1uvnumber_), stack, rc ); return;
+                    case kSrcRegister: owner.applyIndexOperator( rc.thread->r0_, stack, rc ); return;
                     default: return;
                 }
             }
@@ -3056,7 +3100,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
         Ast::ValueMaker* pfirst = dynamic_cast<Ast::ValueMaker*>(ast[i]);
-        if (pfirst)
+        if (pfirst && pfirst->dest_ == kSrcStack)
         {
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (psecond)
@@ -3083,6 +3127,17 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     {
                         pfirst->setDestRegisterBool();
                         psecond->setSrcRegisterBool();
+                    }
+                    else
+                    {
+#if 1                        
+                        Ast::ApplyIndexOperator* psecond = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
+                        if (psecond && psecond->indexValueSrcIsStack() && !psecond->srcIsStack())
+                        {
+                            pfirst->setDestRegister();
+                            psecond->setIndexValueSrcRegister();
+                        }
+#endif 
                     }
                 }
             }
@@ -3489,9 +3544,8 @@ Parser::Program::Program
                 mark.accept();
                 Program indexProgram( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
                 mark.accept();
-#if 0
-                Ast::Program* iprog = new Ast::Program( nullptr, indexProgram.ast() );
-                ast_.push_back( new Ast::ApplyIndexOperator(iprog) );
+#if 1
+                ast_.push_back( new Ast::ApplyIndexOperator( indexProgram.ast() ) );
                 // ast_.push_back( new Ast::Apply() );
 #else
                 const auto astop = indexProgram.ast();

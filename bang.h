@@ -958,7 +958,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         DLLEXPORT Function();
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
-        virtual void indexOperator( const Value& theIndex, Stack&, const RunContext& );
+        DLLEXPORT virtual void indexOperator( const Value& theIndex, Stack&, const RunContext& );
     };
 
     

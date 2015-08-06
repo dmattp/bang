@@ -40,14 +40,14 @@ def :advance dt = { as nbody as bodies
 
   0
   def! :each-body i = {
-    i bodies! as bi
+    bodies[i] as bi
     bi.x bi.y bi.z bi.mass as bimass as biz as biy as bix
 
     bi.vx bi.vy bi.vz
     i 1 + 
     def! :innerloop bivx bivy bivz j = { 
       j nbody <
-      ? j bodies! as bj
+      ? bodies[j] as bj
         bix bj.x - as dx biy bj.y - as dy biz bj.z - as dz
         
         dx dx * dy dy * dz dz * + + as dist2
@@ -93,7 +93,7 @@ def :energy nbody = { as bodies
   nbody 1 - as maxarrayndx
   def :each-body i = { as energySum
 --    i energySum 'each-body i=%@ energySum=%@\n' print!
-    i bodies! as bi
+    bodies[i] as bi
     
     bi.vx as vx
     -- bi vx i energySum 'bi=%@ vx=%@ each-body i=%@ energySum=%@\n' print!
@@ -105,7 +105,7 @@ def :energy nbody = { as bodies
 
     def :other-body j = { as eBefore
       -- i j eBefore 'other-body i=%@ j=%@ eBefore=%@\n' print!
-      j bodies! as bj
+      bodies[j] as bj
       bi.x bj.x - as dx bi.y bj.y - as dy bi.z bj.z - as dz
       dx dx * dy dy * + dz dz * + sqrt! as distance
       eBefore
@@ -125,14 +125,14 @@ def :offsetMomentum nbody = { as bodies
     as pz as py as px
     i nbody < 
     ? -- nbody i pz py px 'offsetMomentum nbody=%@ i=%@ pz=%@ py=%@ px=%@\n' print!
-      i bodies! as bi
+      bodies[i] as bi
       bi.mass as bim
       px bi.vx bim * +
       py bi.vy bim * + 
       pz bi.vz bim * +
       i 1 + inner!
       
-    : 0 bodies! as sun -- sun.set as sun-set
+    : bodies[0] as sun -- sun.set as sun-set
 --      sun.x sun.y sun.z
       px -1 * SOLAR_MASS / 'vx' sun/set
       py -1 * SOLAR_MASS / 'vy' sun/set

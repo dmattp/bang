@@ -49,14 +49,20 @@ namespace Array
         // because if I'm invoked through a shared_ptr, I never have access to the
         // shared reference counted, but I sort of need that, e.g., to "Clone()" or
         // to do something that takes another reference to me. 
+        virtual void indexOperator( const Bang::Value& msg, Stack& stack, const RunContext& )
+        {
+            if (msg.isnum())
+            {
+                stack.push( stack_[int(msg.tonum())] );
+            }
+        }
         virtual void apply( Stack& s ) // , CLOSURE_CREF running )
         {
             const Value& msg = s.pop();
-            if (msg.isnum())
-            {
-                s.push( stack_[int(msg.tonum())] );
-            }
+            RunContext* pctx;
+            this->indexOperator( msg, s, *pctx );
         }
+        
         void customOperator( const Value& v, const bangstring& str, Stack& s)
         {
             const static Bang::bangstring opSize("/#");

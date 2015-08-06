@@ -21,29 +21,29 @@ def :fannkuch n = {
       ? i 1 + j 1 - iloopy!
    }
 
-   fun i = i p! i q/set; as setqfromp
+   fun i = p[i] i q/set; as setqfromp
 
-   fun j = { j 1 + p! j p/set } as setjfromplus1
+   fun j = { j 1 + p[] j p/set } as setjfromplus1
 
    def :setjfromplus1x top = {
      1
      def! :inner9 j = {
-       j 1 + p! j p/set
-       j top < j 1 + inner9!
+       j 1 + p[] j p/set
+       j top < ? j 1 + inner9!
      }
 --     1 inner9!
    }
 
    def :permute-loop i = {
-       i s! as sx
+       s[i] as sx
        sx 1 = 
        ? {
            i n <
            ? {
               i i s/set
-              1 p! as t
-              setjfromplus1 1 i range!
---              i setjfromplus1x!
+              p[1] as t
+--              setjfromplus1 1 i range!
+              i setjfromplus1x!
               t i 1 +  p/set
               i 1 + permute-loop!
            }
@@ -54,7 +54,7 @@ def :fannkuch n = {
 
    def :flipper-loop sum maxflips sign = { 
       def! :inner-flipper q1 flips = { 
-        q1 q! as qq
+        q[q1] as qq
         qq 1 =
         ? { sum sign flips * + 
             flips maxflips > ? flips : maxflips 
@@ -69,7 +69,7 @@ def :fannkuch n = {
 
    0 0 1
    def! :inner-mainloop sum maxflips sign = { 
-     1 p! as q1
+     p[1] as q1
      q1 1 = ? sum maxflips : {
         setqfromp 2 n range!  -- MUTATION
         q1 1 sum maxflips sign flipper-loop!
