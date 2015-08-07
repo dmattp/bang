@@ -1072,6 +1072,8 @@ DLLEXPORT void RunProgram
     
     class BoundProgram : public Function
     {
+//        struct UVC { const Value* v; unsigned hash; UVC() : hash(0) {} } uvcache[16];
+            
     public:
         const Ast::Program* program_;
         SHAREDUPVALUE upvalues_;

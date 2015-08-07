@@ -5,6 +5,9 @@
 
 #include "bang.h"
 
+ #define kDefaultScript "c:/m/n2proj/bang/test/opt-01-multiops-upval.bang";
+
+
 using namespace Bang;
 
 namespace {

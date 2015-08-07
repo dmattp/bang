@@ -13,6 +13,10 @@ all:: hashlib$(EXT_SO)
 CPPOPTLEVEL ?= -O2
 CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
 
+# CPPFLAGS += -march=i686
+
+# -fomit-frame-pointer
+
 ifeq (1,$(USE_GC))
  LDFLAGS_GC=-L$(DIR_BOEHM_LIB) -lgc
  CPPFLAGS_GC=-D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)

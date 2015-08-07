@@ -75,8 +75,6 @@ And there are primitives, until a better library / module system is in place.
 #endif
 
 
-// #define kDefaultScript "c:/m/n2proj/bang/test/prog-01-quicksort.bang";
-
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 
@@ -636,7 +634,6 @@ namespace Primitives
             {
                 s.push( theIndex );
                 this->tofunprim()( s, ctx );
-                // bangerr() << "custom operators not supported for function primitives";
             }
             break; 
             case kThread: bangerr() << "index operator not supported for threads"; break; 
@@ -749,6 +746,24 @@ namespace Ast
             }
         }
     }
+
+//     const Value& Upvalue::getUpValueFull( const bangstring& uvName ) const
+//     {
+//         if (uvName == closer_->valueName())
+//         {
+//             return v_;
+//         }
+//         else
+//         {
+//             if (parent_)
+//                 return parent_->getUpValue( uvName );
+//             else
+//             {
+//                 bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
+//                 // throw std::runtime_error("Could not find dynamic upval");
+//             }
+//         }
+//     }
     
 
 const Ast::Base* gFailedAst = nullptr;
@@ -1261,7 +1276,7 @@ namespace Ast
         }
     };
     
-    class ApplyCustomOperatorDotted : public Base
+    class ApplyCustomOperatorDotted : public Base, public ValueEater
     {
     public:
         bangstring custom_ ; // method
@@ -1274,13 +1289,33 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "ApplyCustomOperatorDotted(" << custom_ << ',' << dotted_ << ")\n";
+            o << "ApplyCustomOperatorDotted( src=" << sd2str(v1src_);
+            if (v1src_ == kSrcUpval)
+            {
+                o << '#' << v1uvnumber_.toint() << ',' << v1uvname_;
+            }
+            o << custom_ << " ." << dotted_ << ")\n";
         }
-        virtual void run( Stack& stack, const RunContext& ) const
+        virtual void run( Stack& stack, const RunContext& rc ) const
         {
-            const Value& owner = stack.pop();
-            stack.push( dotted_ );
-            owner.applyCustomOperator( custom_, stack );
+            switch (v1src_)
+            {
+                case kSrcUpval:
+                {
+                    const Value& owner = rc.getUpValue(v1uvnumber_);
+                    stack.push( dotted_ );
+                    owner.applyCustomOperator( custom_, stack );
+                }
+                break;
+                
+                default:
+                {
+                    const Value& owner = stack.pop();
+                    stack.push( dotted_ );
+                    owner.applyCustomOperator( custom_, stack );
+                }
+                break;
+            }
         }
     };
     
@@ -1642,7 +1677,10 @@ namespace Primitives {
         BoundProgram::BoundProgram( const Ast::Program* program, SHAREDUPVALUE_CREF upvalues )
         : // Function(true),
           program_( program ), upvalues_( upvalues )
-        {}
+        {
+//             for (int i = 0; i < 16; ++i)
+//                 uvcache[i].v = nullptr;
+        }
     
         void BoundProgram::dump( std::ostream & out )
         {
@@ -1835,6 +1873,8 @@ restartReturn:
 restartTco:
     try
     {
+        //const Ast::Base* const ** pppInstr = &(frame.ppInstr);
+        //for ( ;true; ++*pppInstr)
         while (true)
         {
             const Ast::Base* pInstr = *(frame.ppInstr++);
@@ -2193,8 +2233,35 @@ restartTco:
 
     void BoundProgram::indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx )
     {
-        stack.push( theIndex );
-        CallIntoSuspendedCoroutine( ctx.thread, this );
+        //stack.push( theIndex );
+        //CallIntoSuspendedCoroutine( ctx.thread, this );
+        
+        if (!theIndex.isstr())
+            bangerr() << "PushUpvalByName (lookup) name is not string";
+
+        const auto& bs = theIndex.tostr();
+#if 0
+        const unsigned hash = bs.gethash();
+        const unsigned ndx = hash & 0xf;
+        if (uvcache[ndx].hash == hash)
+        {
+            // std::cerr << "got matching hash=" << hash << std::endl;
+//            const auto& hashv = 
+//            const auto& uv = upvalues_->getUpValue( bs );
+            stack.push( *(uvcache[ndx].v) );
+//             if (uv.tonum() != hashv.tonum())
+//                 std::cerr << "mismatch" << std::endl;
+        }
+        else
+        {
+            const auto& uv = upvalues_->getUpValue( bs );
+            uvcache[ndx].v = &uv;
+            uvcache[ndx].hash = hash;
+            stack.push( uv );
+        }
+#else
+        stack.push( upvalues_->getUpValue(bs) );
+#endif 
     }
     
     
@@ -3132,11 +3199,19 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     {
 #if 1                        
                         Ast::ApplyIndexOperator* psecond = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
-                        if (psecond && psecond->indexValueSrcIsStack() && !psecond->srcIsStack())
+                        if (psecond)
                         {
-                            pfirst->setDestRegister();
-                            psecond->setIndexValueSrcRegister();
+                            if (psecond->indexValueSrcIsStack() && !psecond->srcIsStack())
+                            {
+                                pfirst->setDestRegister();
+                                psecond->setIndexValueSrcRegister();
+                            }
                         }
+//                         else
+//                         {
+//                             Ast::ApplyIndexOperator* psecond = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
+//                             if (psecond)
+//                         }
 #endif 
                     }
                 }

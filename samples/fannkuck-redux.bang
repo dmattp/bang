@@ -23,16 +23,16 @@ def :fannkuch n = {
 
    fun i = p[i] i q/set; as setqfromp
 
-   fun j = { j 1 + p[] j p/set } as setjfromplus1
-
-   def :setjfromplus1x top = {
-     1
-     def! :inner9 j = {
-       j 1 + p[] j p/set
-       j top < ? j 1 + inner9!
-     }
---     1 inner9!
-   }
+---    fun j = { j 1 + p[] j p/set } as setjfromplus1
+--- 
+---    def :setjfromplus1x top = {
+--- --     1 inner9!
+---      1
+---      def! :inner9 j = {
+---        j 1 + p[] j p/set
+---        j top < ? j 1 + inner9!
+---      }
+---    }
 
    def :permute-loop i = {
        s[i] as sx
@@ -42,8 +42,13 @@ def :fannkuch n = {
            ? {
               i i s/set
               p[1] as t
+
 --              setjfromplus1 1 i range!
-              i setjfromplus1x!
+     1 def! :inner9 jpr = {
+       jpr 1 + p[] jpr p/set
+       jpr i < ? jpr 1 + inner9!
+     }
+
               t i 1 +  p/set
               i 1 + permute-loop!
            }
