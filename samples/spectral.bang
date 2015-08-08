@@ -40,7 +40,8 @@ def :range last = {
 def :Av N = {
   stack-to-array! as input
   fun i = { -- local a = 0
-     0 fun j = { -- for j=1,N do a = a + x[j] * A(i, j) end
+     0 1 def! :inner j = { -- for j=1,N do a = a + x[j] * A(i, j) end
+     -- 0 fun j = { -- for j=1,N do a = a + x[j] * A(i, j) end
        j 1 - input []
 --       j 1 - input!
        1.0
@@ -51,14 +52,16 @@ def :Av N = {
   / -- 1.0 (earlier) / ...
 
        * +
-     } 1 N range!     
+       j N < ? j 1 + inner!
+     } -- 1 N range!     
   } 1 N range!
 }
 
 def :Atv N = {
   stack-to-array! as input
   fun i = { -- local a = 0
-     0 fun j = { -- for j=1,N do a = a + x[j] * A(j, i) end
+     0 1 def! :inner j = { -- for j=1,N do a = a + x[j] * A(i, j) end
+     -- 0 fun j = { -- for j=1,N do a = a + x[j] * A(j, i) end
        j 1 - input []
 --       input [j 1 -]
        1.0
@@ -71,7 +74,8 @@ def :Atv N = {
 --A!
 
 * +
-     } 1 N range!     
+       j N < ? j 1 + inner!
+     } -- 1 N range!     
   } 1 N range!
 }
 
