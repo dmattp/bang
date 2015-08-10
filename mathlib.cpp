@@ -51,6 +51,16 @@ namespace Math
     void sin  ( Bang::Stack& s, const Bang::RunContext& ) { math1numXform( s, &::sin );   }
     void sqrt ( Bang::Stack& s, const Bang::RunContext& ) { math1numXform( s, &::sqrt );  }
 
+    void innerspectral( Bang::Stack& s, const Bang::RunContext& )
+    {
+        // this is a quick cheat to get an idea of how much complete inner-loop optimization could impact benchmark timing
+        const double j = s.pop().tonum();
+        const double i = s.loc_top().tonum();
+        const double ij = i + j - 1;
+        const double result = 1.0 / (ij* (ij-1) *0.5 + i);
+        s.loc_topMutate() = result;
+//        s.push( result );
+    }
     void lookup( Bang::Stack& s, const Bang::RunContext& ctx)
     {
         const Bang::Value& v = s.pop();
@@ -72,6 +82,7 @@ namespace Math
             :  str == "random" ? &random
             :  str == "sin"    ? &sin
             :  str == "sqrt"   ? &sqrt
+            :  str == "innerspectral"   ? &sqrt
             :  nullptr
             );
 
