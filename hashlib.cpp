@@ -116,45 +116,43 @@ namespace Hashlib
         this->indexOperator( msg, s, *pctx );
     }
 
-    void BangHash::customOperator( const Value& v, const bangstring& theOperator, Stack& s)
+    void BangHash::customOperator( const bangstring& theOperator, Stack& s)
     {
         const static Bang::bangstring opHas("/has");
         const static Bang::bangstring opKeys("/keys");
         const static Bang::bangstring opSet("/set");
 
-        BangHash& self = reinterpret_cast<BangHash&>(*v.tofun());
-
         if (theOperator == opSet)
         {
-            self.set(s);
+            this->set(s);
         }
         else if (theOperator == opHas)
         {
-            self.has(s);
+            this->has(s);
         }
         else if (theOperator == opKeys)
         {
-            self.keys(s);
+            this->keys(s);
         }
         else if (theOperator[0] == '>' && theOperator[1] == '>')
         {
             bangstring key( &theOperator.front(), theOperator.size()-2 );
             const Value& v = s.pop();
-            self.set( key, v );
+            this->set( key, v );
         }
     }
 
-    struct HashOps : public Bang::Operators
-    {
-        HashOps()
-        {
-            customOperator = &BangHash::customOperator;
-        }
-    } gHashOperators;
+//     struct HashOps : public Bang::Operators
+//     {
+//         HashOps()
+//         {
+//             customOperator = &BangHash::customOperator;
+//         }
+//     } gHashOperators;
     
     DLLEXPORT BangHash::BangHash()
     {
-        operators = &gHashOperators;
+//        operators = &gHashOperators;
     }
 
     void hashNew( Stack& s, const RunContext& rc )

@@ -616,7 +616,7 @@ namespace Primitives
             case kNum: bangerr() << "no custom num ops"; break;
             case kStr: bangerr() << "no custom string ops"; break;
             case kFun: // fall through
-            case kBoundFun: this->tofun()->operators->customOperator( *this, theOperator, s ); break;
+            case kBoundFun: this->tofun()->customOperator( theOperator, s ); break;
             case kFunPrimitive: bangerr() << "custom operators not supported for function primitives"; break; 
             case kThread: bangerr() << "custom operators not supported for threads"; break; 
         }
@@ -2203,6 +2203,11 @@ restartTco:
         }
     }
 
+    
+    void Function::customOperator( const bangstring& theOperator, Stack& s)
+    {
+        bangerr() << "Vanilla Function does not support customOperator=" << theOperator;
+    }
 
     void Function::indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx )
     {
@@ -2233,14 +2238,27 @@ restartTco:
 
     void BoundProgram::indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx )
     {
-        //stack.push( theIndex );
-        //CallIntoSuspendedCoroutine( ctx.thread, this );
-        
+#if 1        
+        stack.push( theIndex );
+        CallIntoSuspendedCoroutine( ctx.thread, this );
+#else
+        /* I dont like the go-to index because i can't do:
+           
+           def :hello say-to = { say-to 'Hello, %@!' format! }
+
+           hello.world
+           hello.Jim
+
+           I think a better solution is a custom "UPVALUES" keyword+object, like/derived from function, but with the below
+           code for his indexOperator.  That keeps things speedy without interpreted/BoundProgram doing index lookup
+           and allows the existing "x.y -> y x!" behavior for use of dot operator with bound programs
+        */
+           
         if (!theIndex.isstr())
             bangerr() << "PushUpvalByName (lookup) name is not string";
 
         const auto& bs = theIndex.tostr();
-#if 0
+# if 0
         const unsigned hash = bs.gethash();
         const unsigned ndx = hash & 0xf;
         if (uvcache[ndx].hash == hash)
@@ -2259,8 +2277,9 @@ restartTco:
             uvcache[ndx].hash = hash;
             stack.push( uv );
         }
-#else
+# else
         stack.push( upvalues_->getUpValue(bs) );
+# endif 
 #endif 
     }
     

@@ -20,16 +20,7 @@ def :quicksort-inner = {
 -- cord
 def :qs-stack-coro low hi theArray cord = {
   # low hi theArray 'qs-stack-coro #=%@ lo=%@ hi=%@ theArray=%@\n' print!
-  (theArray low hi iterate.range!
-  quicksort-inner
-  cord.asthread
-  !) --  cord.asthread!
-}
-
-def :qs-some = { -- low hi array = {
-  -- low hi array
---  false qs-stack-coro!
-  qs-stack-coro nylon.cord! as theCord
+  (theArray low hi iterate.range! quicksort-inner cord.asthread!)
 }
 
 
@@ -42,7 +33,7 @@ def :quicksort = {
   def! :sortsome initplace = {
      initplace nvalues < ?
      initplace one-fourth + as nextplace
-     initplace nextplace 1 - values qs-some!
+     initplace nextplace 1 - values qs-stack-coro nylon.cord! as theCord
      nextplace sortsome!
   }
 }

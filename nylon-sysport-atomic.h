@@ -5,16 +5,48 @@
 
 namespace Atomic {
     template< class T >
-    T nylon_sysport_cmpxchg( volatile T* var, T oldval, T newval )
+    inline T nylon_sysport_cmpxchg( volatile T* var, T oldval, T newval )
     {
 //        char this_is_not_acceptable_you_must_provide_implementation[-1];
         throw std::runtime_error("what??");
     }
 
+
+static inline unsigned
+hpl_cmpxchg__cpp__
+(
+   volatile long *ptr,
+   long old,
+   long newval
+)
+{
+}
+    
+
     template<>
-    long nylon_sysport_cmpxchg<long>( volatile long* var, long oldval, long newval )
+    inline long nylon_sysport_cmpxchg<long>( volatile long* var, long old, long newval )
     {
-        return InterlockedCompareExchange( var, newval, oldval );
+#if 0
+        if (*var == oldval)
+        {
+            *var = newval;
+            return oldval;
+        }
+        else
+            return *var;
+#elif __GNUC__
+        return __sync_val_compare_and_swap( var, old, newval );
+// # define LOCK_PREFIX "\n\tlock; "
+// 	long prev;
+//    __asm__ __volatile__( LOCK_PREFIX "cmpxchgl %1,%2"
+//       : "=a"(prev)
+//       : "r"(newval), "m"(*ptr), "0"(old)
+//       : "memory");
+//    return prev;
+//        return hpl_cmpxchg__cpp__( var, oldval, newval );
+#else
+        return InterlockedCompareExchange( var, newval, old );
+#endif 
     }
 
     // This is a bit frustrating, because VS2010 is compiling this function

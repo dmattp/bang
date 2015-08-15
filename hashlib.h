@@ -38,7 +38,7 @@ namespace Hashlib
         void has( Bang::Stack& s );
         void set( Bang::Stack& s );
         void keys( Bang::Stack& s );
-        static void customOperator( const Bang::Value& v, const Bang::bangstring& theOperator, Bang::Stack& s);
+        virtual void customOperator( const Bang::bangstring& theOperator, Bang::Stack& s);
         virtual void indexOperator( const Bang::Value& theIndex, Bang::Stack&, const Bang::RunContext& );
         
     public:

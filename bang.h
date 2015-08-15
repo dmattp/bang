@@ -16,7 +16,7 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 0
+#define LCFG_MT_SAFEISH 1
 
 static const char* const BANG_VERSION = "0.006";
 
@@ -959,6 +959,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         virtual ~Function() {}
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
         DLLEXPORT virtual void indexOperator( const Value& theIndex, Stack&, const RunContext& );
+        DLLEXPORT virtual void customOperator( const bangstring& theOperator, Stack& s);
     };
 
     

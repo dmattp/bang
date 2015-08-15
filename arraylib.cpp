@@ -63,7 +63,7 @@ namespace Array
             this->indexOperator( msg, s, *pctx );
         }
         
-        void customOperator( const Value& v, const bangstring& str, Stack& s)
+        void customOperator( const bangstring& str, Stack& s)
         {
             const static Bang::bangstring opSize("/#");
             const static Bang::bangstring opToStack("/to-stack");
@@ -72,6 +72,8 @@ namespace Array
             const static Bang::bangstring opInsert("/insert");
             const static Bang::bangstring opErase("/erase");
             const static Bang::bangstring opAppend("/append");
+            const static Bang::bangstring opPush("/push");
+            const static Bang::bangstring opDequeue("/dequeue");
         
             if (str == opSize)
                 s.push( double(stack_.size()) );
@@ -111,27 +113,36 @@ namespace Array
             {
                 this->appendStack(s);
             }
+            else if (str == opPush)
+            {
+                stack_.push_back( s.pop() );
+            }
+            else if (str == opDequeue)
+            {
+                s.push( stack_.front() );
+                stack_.erase( stack_.begin() );
+            }
 #endif 
         }
-        static void customOperator_static( const Value& v, const bangstring& theOperator, Stack& s)
-        {
-            FunctionStackToArray& self = reinterpret_cast<FunctionStackToArray&>(*v.tofun());
-            self.customOperator( v, theOperator, s );
-        }
+//         static void customOperator_static( const Value& v, const bangstring& theOperator, Stack& s)
+//         {
+//             FunctionStackToArray& self = reinterpret_cast<FunctionStackToArray&>(*v.tofun());
+//             self.customOperator( v, theOperator, s );
+//         }
     }; // end, FunctionStackToArray class
 
-    struct ArrayOperators : public Operators
-    {
-        ArrayOperators()
-        {
-            customOperator = &FunctionStackToArray::customOperator_static;
-        }
-    }
-    gArrayOperators;
+//     struct ArrayOperators : public Operators
+//     {
+//         ArrayOperators()
+//         {
+//             customOperator = &FunctionStackToArray::customOperator_static;
+//         }
+//     }
+//     gArrayOperators;
 
     FunctionStackToArray::FunctionStackToArray( Stack& s )
     {
-        operators = &gArrayOperators;
+//        operators = &gArrayOperators;
     }
     
     void stackToArray( Stack& s, const RunContext& rc )

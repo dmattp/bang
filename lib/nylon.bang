@@ -2,50 +2,72 @@
 --   should exit.
 
 'arraylib' crequire! as array
+-- 'hashlib' crequire! as hash
 'bangnylon' crequire! as nsys
 
 nsys.asthread as asthread
 
 
 def :cord cordfun = {
-    array.new! as msg-queue
+  array.new! as msg-queue
+  array.new! as cordstate
+  0 cordstate/push
+--     false as cordstate
+--     false as cordstate
 
-    def :the-startup-coroutine-wrapper xcord = {
-      xcord.coro nsys.register-thread!
-      xcord.coro nsys.schedule!
-      save-stack! as ss
-      yield-nil!
-      ss! xcord cordfun!
-      xcord.coro nsys.unregister-thread!
-    }
-    
-    the-startup-coroutine-wrapper coroutine! as coro
+  def :the-startup-coroutine-wrapper xcord = {
+    xcord.coro nsys.register-thread!
+    xcord.coro nsys.schedule!
+    save-stack! as ss
+    yield-nil!
+    ss! xcord cordfun!
+    xcord.coro nsys.unregister-thread!
+  }
+  
+  the-startup-coroutine-wrapper coroutine! as coro
 --    cordfun coroutine! as coro
 
-    def :schedule = coro nsys.schedule!;
+  def :schedule = coro nsys.schedule!;
 
-    def :sleep seconds = {
---        seconds 'starting timer callback after %s seconds\n' print!
-        fun = {
---            seconds 'got timer callback after %s seconds\n' print!
-            coro nsys.schedule!
-        } seconds nsys.addOneShot!
+  def :sleep seconds = {
+--      seconds 'starting timer callback after %s seconds\n' print!
+      fun = {
+--          seconds 'got timer callback after %s seconds\n' print!
+          coro nsys.schedule!
+      } seconds nsys.addOneShot!
 
-        yield!
---        seconds 'coroutine woke up after %s seconds\n' print!
+      yield!
+--      seconds 'coroutine woke up after %s seconds\n' print!
+  }
+
+  def :asthread torun = {
+      torun coro nsys.asthread! yield-nil!
+  }
+
+  def :getmsg = {
+    msg-queue/# as nMsgs
+    -- nMsgs 'getmsg, q#=%@\n' print! 
+    nMsgs 1 < ? {
+      true 0 cordstate/set
+      yield-nil!
     }
+    msg-queue/dequeue
+  }
 
-    def :asthread torun = {
-        torun coro nsys.asthread! yield-nil!
-    }
+  def :msg = {
+    msg-queue /push
+    cordstate[0] ?
+      false 0 cordstate/set
+      coro nsys.schedule!
+  }
 
-    fun = lookup; as f-lookup
+  fun = lookup; as f-lookup
 
---    'calling coroutine\n' print!
-    
-    f-lookup coro!
+--  'calling coroutine\n' print!
+  
+  f-lookup coro!
 
-    f-lookup
+  f-lookup
 }
 
 nsys.waitforthread as waitforthread
