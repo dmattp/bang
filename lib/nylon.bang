@@ -6,6 +6,7 @@
 'bangnylon' crequire! as nsys
 
 nsys.asthread as asthread
+nsys.uptime as uptime
 
 
 def :cord cordfun = {
@@ -79,7 +80,7 @@ def :runloop = {
     have-any ? 
       waitforthread! as thread
 --      # thread 'stk=%s nylon mainloop got thread=%s\n' print!
-      thread!
+      (thread!)
       runloop!
 }
 

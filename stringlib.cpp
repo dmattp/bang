@@ -428,7 +428,7 @@ static int push_captures (MatchState *ms, const char *s, const char *e) {
             return; //  1;
         }
 
-        std::cerr << "s=" << s << " p=" << p <<std::endl;
+//        std::cerr << "s=" << s << " p=" << p <<std::endl;
         
         /* explicit request or no special characters? */
         if (find && (nospecials_arg || nospecials(p, lp))) {
