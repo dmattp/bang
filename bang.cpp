@@ -8,6 +8,7 @@
 
 #if HAVE_MUTATION
 # if __GNUC__
+// "Making something variable is easy. Controlling duration of constancy is the trick" - Alan Perlis
 # warning Mutation enabled: You have strayed from the true and blessed path.
 #endif 
 #endif
@@ -34,19 +35,28 @@ Well, with the "module/object" system, there is now a second:
 And there are some built-in operators:
 
   Operators
-     ! -- applyn
-     ? -- conditional apply
+     ! -- apply
+     ? -- conditional / if
+     : -- conditional / else
+     ~ /not      -- logical not
+     + - * /     -- the usual suspects for numbers
+     < > = <= >= -- comparison- less than, greater than, equal, lte, gte, ne
+     =~ <>       -- not equal
+     <~ >~       -- gte (less than not), lte (greater than not)
+     #           -- get stack length
+     /and /or    -- logical and / or
+     . []        -- Index operator / Object message
+ 
+  Delimiters
+     ; -- close current program scope
+     {} -- open / close matched program scope
 
 And syntactic sugar
 
-     . -- Object message
 
 And there are primitives, until a better library / module system is in place.
      
   Primitives
-    + - * / < > =   -- the usual suspects for numbers and booleans
-    #               -- get stack length
-    not! and! or! 
     drop! swap! dup! nth! save-stack!
     floor! random! -- these really belong in a math library
     
