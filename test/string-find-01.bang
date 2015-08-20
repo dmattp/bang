@@ -1,0 +1,18 @@
+'stringlib' crequire! as string
+
+'abcdefghijklmnopqrstuvwxyz' as haystack
+-- 'a' haystack string.find!
+'^abc%a' haystack string.find!
+
+'foo bar 1234 gaba hey' as haystack
+'bar (%d+) gaba' haystack string.find!
+
+'Bang' 'Hello Bang User' string.find!
+
+'(%d+ %a+) (%w+)' 'I have 22 questions for you' string.match!
+
+
+
+
+
+

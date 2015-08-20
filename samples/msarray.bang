@@ -1,0 +1,57 @@
+# 1 < ? 10; as N
+
+'arraylib' crequire! as Array
+
+def :mergesort min max a = {
+  max min - 1 + as n
+--  min max n 'enter min=%@ max=%@ n=%@\n' print!
+  n 3 < ? { -- array 2 elements or less
+    a[min] as amin
+    n 2 < -- only one element
+    ? (amin Array.from-stack!)
+    : amin a[max] < ? (amin a[max] Array.from-stack!)
+                    : (a[max] amin Array.from-stack!)
+  } :
+  n 2 / min + as mid
+  min mid a mergesort! as left left/# as nleft
+  mid 1 + max a mergesort! as right right/# as nright
+  (
+  0 0 def! :merge il ir = {
+--    il nleft ir nright 'merge il=%@ nleft=%@ ir=%@ nright=%@\n' print!
+    il nleft < as haveLeft ir nright < as haveRight
+    haveLeft ? {
+      haveRight ? {
+        left[il] right[ir] < ? {
+          left[il]  il 1 + ir merge!
+        } : {
+          right[ir] il ir 1 + merge!
+        }
+      } : left[il] il 1 + ir merge!
+    } : {
+      haveRight ? right[ir] il ir 1 + merge!
+    }
+  }
+  Array.from-stack!)
+}
+
+
+'lib/iterate.bang' require! .times as times
+'./mathlib' crequire! as math
+math.random as random
+
+Array.new! as arr
+
+def :testSort numItems = { 
+  fun=random! arr/push; numItems times!
+  0 numItems 1 - arr mergesort! as sorted
+  numItems 499 > ? : sorted/to-stack
+--  '-- orig --' arr/to-stack
+}
+
+-- 
+
+fun=
+N testSort!
+;1 times!
+
+-- with GC 1.2s

@@ -1,0 +1,92 @@
+# 1 < ? 19000; as N
+
+'lib/hof.bang' require! .filter as filter
+
+'lib/nylon.bang' require! as nylon
+'arraylib' crequire! as Array
+
+
+'lib/iterate.bang' require! as iterate
+
+-- cord
+def :qs-stack-coro low hi theArray cord = {
+
+def :mergesort min max a = {
+  max min - 1 + as n
+--  min max n 'enter min=%@ max=%@ n=%@\n' print!
+  n 3 < ? { -- array 2 elements or less
+    n 2 < -- only one element
+    ? (a[min] Array.from-stack!)
+    : a[min] a[max] < ? (a[min] a[max] Array.from-stack!)
+    :                   (a[max] a[min] Array.from-stack!)
+  } :
+  n 2 / min + as mid
+  min mid a mergesort! as left left/# as nleft
+  mid 1 + max a mergesort! as right right/# as nright
+  (
+  0 0 def! :merge il ir = {
+--    il nleft ir nright 'merge il=%@ nleft=%@ ir=%@ nright=%@\n' print!
+    il nleft < as haveLeft ir nright < as haveRight
+    haveLeft ? {
+      haveRight ? {
+        left[il] right[ir] < ? {
+          left[il]  il 1 + ir merge!
+        } : {
+          right[ir] il ir 1 + merge!
+        }
+      } : left[il] il 1 + ir merge!
+    } : {
+      haveRight ? right[ir] il ir 1 + merge!
+    }
+  }
+  Array.from-stack!)
+}
+
+
+    # low hi theArray 'ms-stack-coro #=%@ lo=%@ hi=%@ theArray=%@\n' print!
+
+  (theArray low hi iterate.range! Array.from-stack! as a
+  fun= {
+    0 hi low - a mergesort!
+  }
+  cord.asthread
+  !
+  )
+  as sorted sorted/to-stack
+}
+
+
+def :quicksort = {
+  # as nvalues
+  nvalues 4 / as one-fourth
+  Array.from-stack! as values
+
+  0 
+  def! :sortsome initplace = {
+     initplace nvalues < ?
+     initplace one-fourth + as nextplace
+     initplace nextplace 1 - values qs-stack-coro nylon.cord! as theCord
+     nextplace sortsome!
+  }
+}
+
+
+'./mathlib' crequire! .random as random
+
+def :testQuicksort numItems = { 
+  random numItems iterate.times!
+  quicksort!
+}
+
+-- 
+
+fun=
+N testQuicksort!
+;1 iterate.times!
+
+nylon.runloop!
+
+
+N 9499 > ? { save-stack! drop! }
+
+-- with GC 1.2s

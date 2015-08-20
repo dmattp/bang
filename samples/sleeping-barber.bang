@@ -1,0 +1,59 @@
+
+
+
+
+'lib/nylon.bang' require! as nylon
+'arraylib' crequire! as Array
+'mathlib' crequire! as math
+
+4 as maxSeats
+Array.new! as freeSeats
+
+def :cut-hair cid barber-cord = {
+-- ... long process runs as thread
+  math.random! 10 % 5 + as t
+  cid t 'barber cutting customer%@ hair for %@s\n' print!
+  t barber-cord.sleep!
+}
+
+
+def :barber cord = {
+  'enter barber\n' print!
+  def! :innerloop = {
+    cord.getmsg! as _
+    freeSeats/dequeue as nextCustomer
+    nextCustomer.id cord cut-hair! --  cord.asthread!
+    nextCustomer.id freeSeats/# 'barber done with customer%@, nqueued=%@\n' print!
+    nextCustomer.cord.msg.hairIsCut
+    innerloop!
+  }
+}
+
+barber nylon.cord! as theBarber
+
+def :customer id cord = {
+    freeSeats/# as nwaiting
+    id nwaiting 'customer%@ arrived, nwaiting=%@\n' print!
+    nwaiting maxSeats < ?
+    fun=lookup; freeSeats/push
+    theBarber.msg.customerArrived
+    -- wait for haircut
+    cord.getmsg! as _
+    id 'customer%@ is done, leaving\n' print!
+}
+
+def :send-customers cord = {
+    'enter send-customers\n' print!
+    1 def! :inner id = {
+        id customer nylon.cord! as _
+        math.random! 10 % 5 + as t
+        t 'send-customers sleeping for %@s\n' print!
+        t cord.sleep!
+        id 1 + inner!
+     }
+}
+
+send-customers nylon.cord! as _
+
+nylon.runloop!
+
