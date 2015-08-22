@@ -13,7 +13,7 @@
 #endif 
 #endif
 #define HAVE_DOT_OPERATOR 1
-#define DOT_OPERATOR_INLINE 0
+#define DOT_OPERATOR_INLINE 1
 
 #define HAVE_COMPLETE_OPERATORS 0
 #define LCFG_KEEP_PROFILING_STATS 0
@@ -87,6 +87,8 @@ And there are primitives, until a better library / module system is in place.
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
+#define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
+
 
 #include "bang.h"
 
@@ -1452,6 +1454,7 @@ namespace Ast
 
     class ApplyIndexOperator : public Base, public ValueEater
     {
+        FRIENDOF_RUNPROG
         ValueEater indexValue_;
         Program* pProg_;
         void runAst( Stack& stack, const RunContext& ) const;
@@ -1465,11 +1468,11 @@ namespace Ast
         {
             indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
+        ApplyIndexOperator( const std::vector<Ast::Base*>& ast );
 
         bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
         void setIndexValueSrcRegister() { return indexValue_.setSrcRegister(); }
         
-        ApplyIndexOperator( const std::vector<Ast::Base*>& ast );
         
 //        const Value& getMsgVal() const { return msgStr_; }
         virtual void dump( int level, std::ostream& o ) const
@@ -1491,14 +1494,18 @@ namespace Ast
         }
         virtual void run( Stack& stack, const RunContext& ) const
 #if DOT_OPERATOR_INLINE
-        { throw std::runtime_error("ApplyIndexOperator::run should not be called"); }
+        { bangerr() <<"ApplyIndexOperator::run should not be called"; }
 #else
         ;
 #endif 
     };
     
     ApplyIndexOperator::ApplyIndexOperator( const std::vector<Ast::Base*>& ast )
-    : pProg_(nullptr)
+    :
+#if DOT_OPERATOR_INLINE
+      Base( kApplyIndexOperator ),
+#endif 
+      pProg_(nullptr)
     {
         //~~~@todo:
         // cases: no program / empty program ("thing[]")
@@ -1577,9 +1584,10 @@ namespace Ast
     class PushFunctionRec : public Base, public IsApplicable
     {
     protected:
-    public:
+        FRIENDOF_RUNPROG
         Ast::Program* pRecFun_;
         NthParent nthparent_;
+    public:
         PushFunctionRec( Ast::Program* other, NthParent boundAt )
         : pRecFun_( other ),
           nthparent_(boundAt)
@@ -2123,20 +2131,58 @@ restartTco:
 #if DOT_OPERATOR_INLINE
                 case Ast::Base::kApplyIndexOperator:
                 {
-                    const Value& v = stack.pop(); // the function to apply
-                    stack.push( reinterpret_cast<const Ast::ApplyIndexOperator*>(pInstr)->getMsgVal() );
-                    switch (v.type())
+                    auto op = reinterpret_cast<const Ast::ApplyIndexOperator*>(pInstr);
+                    auto rc = frame;
+                    
+                    // now apply
+                    switch (op->v1src_)
                     {
-                        default: RunApplyValue( pInstr, v, stack, frame ); break;
-                        KTHREAD_CASE
-                        case Value::kBoundFun:
-                            auto pbound = v.toboundfun();
-                            inprog = pbound->program_;
-                            inupvalues = pbound->upvalues_;
-                            goto restartNonTail;
+                        case kSrcUpval:
+                        {
+                            const Value& owner = frame.getUpValue(op->v1uvnumber_);
+//                             std::cerr << "kApplyIndexOperator, owner=";
+//                             owner.dump(std::cerr);
+//                             std::cerr << " indexV st=" << op->indexValue_.sourceType() << std::endl;
+                            switch (op->indexValue_.sourceType())
+                            {
+                                case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
+                                case kSrcStack:    if (op->pProg_) op->runAst(stack,frame); owner.applyIndexOperator( stack.pop(), stack, frame ); break;
+                                case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
+                                case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
+                                default: break;
+                            }
+                        }
+                        break;
+                        default:
+                        {
+                            const Value& owner = stack.pop();
+                            switch (op->indexValue_.sourceType())
+                            {
+                                case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
+                                case kSrcStack:    if (op->pProg_) op->runAst(stack,frame); owner.applyIndexOperator( stack.pop(), stack, frame ); break;
+                                case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
+                                case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
+                                default: break;
+                            }
+                        }
+                        break;
                     }
                 }
                 break;
+//                 {
+//                     const Value& v = stack.pop(); // the function to apply
+//                     switch (v.type())
+//                     {
+//                         default: RunApplyValue( pInstr, v, stack, frame ); break;
+//                         KTHREAD_CASE
+//                         case Value::kBoundFun:
+//                             auto pbound = v.toboundfun();
+//                             inprog = pbound->program_;
+//                             inupvalues = pbound->upvalues_;
+//                             goto restartNonTail;
+//                     }
+//                 }
+//                 break;
 #endif 
                 
                 case Ast::Base::kTCOApply:
@@ -2216,40 +2262,10 @@ restartTco:
         FromCStackRunProgramInCurrentContext( rc, pProg_ );
     }
     
-#if !DOT_OPERATOR_INLINE
-    void Ast::ApplyIndexOperator::run( Stack& stack, const RunContext& rc ) const
-    {
-        // now apply
-        switch (v1src_)
-        {
-            case kSrcUpval:
-            {
-                const Value& owner = rc.getUpValue(v1uvnumber_);
-                switch (indexValue_.sourceType())
-                {
-                    case kSrcLiteral:  owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
-                    case kSrcStack:    if (pProg_) this->runAst(stack,rc); owner.applyIndexOperator( stack.pop(), stack, rc ); return;
-                    case kSrcUpval:    owner.applyIndexOperator( rc.getUpValue(indexValue_.v1uvnumber_), stack, rc ); return;
-                    case kSrcRegister: owner.applyIndexOperator( rc.thread->r0_, stack, rc ); return;
-                    default: return;
-                }
-            }
-            break;
-            default:
-            {
-                const Value& owner = stack.pop();
-                switch (indexValue_.sourceType())
-                {
-                    case kSrcLiteral:  owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
-                    case kSrcStack:    if (pProg_) this->runAst(stack,rc); owner.applyIndexOperator( stack.pop(), stack, rc ); return;
-                    case kSrcUpval:    owner.applyIndexOperator( rc.getUpValue(indexValue_.v1uvnumber_), stack, rc ); return;
-                    case kSrcRegister: owner.applyIndexOperator( rc.thread->r0_, stack, rc ); return;
-                    default: return;
-                }
-            }
-            break;
-        }
-    }
+//     void Ast::ApplyIndexOperator::run( Stack& stack, const RunContext& rc ) const
+//     {
+//         bangerr() << "ApplyIndexOperator should not run";
+//     }
 
     
     void Function::customOperator( const bangstring& theOperator, Stack& s)
@@ -2307,32 +2323,29 @@ restartTco:
 
         const auto& bs = theIndex.tostr();
 # if 0
-        const unsigned hash = bs.gethash();
-        const unsigned ndx = hash & 0xf;
-        if (uvcache[ndx].hash == hash)
-        {
-            // std::cerr << "got matching hash=" << hash << std::endl;
-//            const auto& hashv = 
-//            const auto& uv = upvalues_->getUpValue( bs );
-            stack.push( *(uvcache[ndx].v) );
-//             if (uv.tonum() != hashv.tonum())
-//                 std::cerr << "mismatch" << std::endl;
-        }
-        else
-        {
-            const auto& uv = upvalues_->getUpValue( bs );
-            uvcache[ndx].v = &uv;
-            uvcache[ndx].hash = hash;
-            stack.push( uv );
-        }
+//         const unsigned hash = bs.gethash();
+//         const unsigned ndx = hash & 0xf;
+//         if (uvcache[ndx].hash == hash)
+//         {
+//             // std::cerr << "got matching hash=" << hash << std::endl;
+// //            const auto& hashv = 
+// //            const auto& uv = upvalues_->getUpValue( bs );
+//             stack.push( *(uvcache[ndx].v) );
+// //             if (uv.tonum() != hashv.tonum())
+// //                 std::cerr << "mismatch" << std::endl;
+//         }
+//         else
+//         {
+//             const auto& uv = upvalues_->getUpValue( bs );
+//             uvcache[ndx].v = &uv;
+//             uvcache[ndx].hash = hash;
+//             stack.push( uv );
+//         }
 # else
         stack.push( upvalues_->getUpValue(bs) );
-# endif 
-#endif 
+# endif
+#endif        
     }
-    
-    
-#endif 
     
     
     void BoundProgram::apply( Stack& s )

@@ -18,6 +18,7 @@
 #define LCFG_UPVAL_SIMPLEALLOC 1
 #define LCFG_MT_SAFEISH 1
 
+
 static const char* const BANG_VERSION = "0.006";
 
 #if defined(WIN32)
@@ -983,8 +984,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kApplyFunRec,
                 kApplyThingAndValue2ValueOperator,
 #if DOT_OPERATOR_INLINE            
-                kApplyDotOperator,
-                kApplyDotOperatorUpval,
+                kApplyIndexOperator,
+//                kApplyDotOperatorUpval,
 #endif 
                 kIfElse,
                 kTCOApply,
