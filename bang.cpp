@@ -3494,29 +3494,27 @@ namespace Primitives {
 
     //~~~ okay, why parse to BoundProgram if we know there are no upvals?  Why not just
     // parse to Ast::Program and go with that?
-    DLLEXPORT Ast::Program* RequireKeyword::parseToProgramNoUpvals( ParsingContext& ctx, bool bDump )
+
+    DLLEXPORT Ast::Program* RequireKeyword::parseToProgramWithUpvals( ParsingContext& ctx, const Ast::CloseValue* uvchain, bool bDump )
     {
         Ast::Program* fun;
 
-//         if (stdin_)
-//         {
-//             RegurgeStdinRepl strmStdin;
-//             fun = ParseToProgram( ctx, strmStdin, bDump, nullptr );
-//         }
-//         else
+        RegurgeFile strmFile( fileName_ );
+        try
         {
-            RegurgeFile strmFile( fileName_ );
-            try
-            {
-                fun = ParseToProgram( ctx, strmFile, bDump, nullptr );
-            }
-            catch( const ParseFail& e )
-            {
-                bangerr(ParseFail) << "e01a Parsing: " <<  e.what();
-            }
+            fun = ParseToProgram( ctx, strmFile, bDump, uvchain );
+        }
+        catch( const ParseFail& e )
+        {
+            bangerr(ParseFail) << "e01a Parsing: " <<  e.what();
         }
 
         return fun;
+    }
+    
+    DLLEXPORT Ast::Program* RequireKeyword::parseToProgramNoUpvals( ParsingContext& ctx, bool bDump )
+    {
+        return parseToProgramWithUpvals( ctx, nullptr, bDump );
     }
 
 
@@ -3946,7 +3944,7 @@ Parser::Program::Program
                     RequireKeyword requireImport( who->v_.tostr().c_str() );
                     delete prev;
                     // bah, really need to pass in parent's upvalue chain here
-                    auto prog = requireImport.parseToProgramNoUpvals( importContext, gDumpMode ); // DUMP
+                    auto prog = requireImport.parseToProgramWithUpvals( importContext, upvalueChain, gDumpMode ); // DUMP
                     //~~~ bah, a mess
                     auto importAst = prog->getAst();
                     std::copy( importAst->begin(), importAst->end(), std::back_inserter(ast_));

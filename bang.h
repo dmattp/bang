@@ -1245,8 +1245,7 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
         }
 
         DLLEXPORT Ast::Program* parseToProgramNoUpvals( ParsingContext& ctx, bool bDump );
-//        std::shared_ptr<BoundProgram> parseToBoundProgramNoUpvals( ParsingContext& ctx, bool bDump );
-//        DLLEXPORT void parseAndRun( ParsingContext& ctx, Thread& thread, bool bDump);
+        DLLEXPORT Ast::Program* parseToProgramWithUpvals( ParsingContext& ctx, const Ast::CloseValue* uvchain, bool bDump );
     }; // end, class RequireKeyword
     
     DLLEXPORT void dumpProfilingStats();
