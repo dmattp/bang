@@ -1065,71 +1065,6 @@ namespace Ast
     };
 
 
-    class ApplyIndexOperator : public Base, public ValueEater
-    {
-        ValueEater indexValue_;
-    public:
-        ApplyIndexOperator( const bangstring& msgStr )
-#if DOT_OPERATOR_INLINE
-        : Base( kApplyIndexOperator ),
-#endif 
-        {
-            indexValue_.setSrcLiteral( Bang::Value(msgStr) );
-        }
-
-        bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
-        void setIndexValueSrcRegister() { return indexValue_.setSrcRegister(); }
-        
-        ApplyIndexOperator( const std::vector<Ast::Base*>& ast )
-        {
-            //~~~@todo:
-            // cases: no program / empty program ("thing[]")
-            // program with 1 instruction which is either upval or literal (save to indexvalue)
-            // general program
-//             if (!ndxGeneratingProgram) 
-//                 return;
-
-            //astList_t ast = ndxGeneratingProgram->getAst();
-            if (ast[0]->instr_ == Ast::Base::kBreakProg)
-                return; // no program; indexValue_ source remains set to stack.
-
-            if (ast[1]->instr_ == Ast::Base::kBreakProg) // single instruction program
-            {
-                const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[0]);
-                if (pup && !pup->hasApply())
-                {
-                    indexValue_.setSrcUpval( pup );
-                    return;
-                }
-
-                const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[0]);
-                if (plit)
-                {
-                    indexValue_.setSrcLiteral( plit->v_ );
-                    return;
-                }
-            }
-        }
-        
-//        const Value& getMsgVal() const { return msgStr_; }
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "ApplyIndexOperator( src=";
-            if (v1src_ == kSrcStack)
-                o << "stack [";
-            else
-                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << " [";
-            indexValue_.dump(o);
-            o << "] )\n";
-        }
-        virtual void run( Stack& stack, const RunContext& ) const
-#if DOT_OPERATOR_INLINE
-        { throw std::runtime_error("ApplyIndexOperator::run should not be called"); }
-#else
-        ;
-#endif 
-    };
     
     
 
@@ -1515,6 +1450,89 @@ namespace Ast
         void run( Stack& stack, const RunContext& ) const;
     }; // end, class Ast::Program
 
+    class ApplyIndexOperator : public Base, public ValueEater
+    {
+        ValueEater indexValue_;
+        Program* pProg_;
+        void runAst( Stack& stack, const RunContext& ) const;
+    public:
+        ApplyIndexOperator( const bangstring& msgStr )
+        :
+#if DOT_OPERATOR_INLINE
+          Base( kApplyIndexOperator ),
+#endif 
+          pProg_( nullptr )
+        {
+            indexValue_.setSrcLiteral( Bang::Value(msgStr) );
+        }
+
+        bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
+        void setIndexValueSrcRegister() { return indexValue_.setSrcRegister(); }
+        
+        ApplyIndexOperator( const std::vector<Ast::Base*>& ast );
+        
+//        const Value& getMsgVal() const { return msgStr_; }
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "ApplyIndexOperator( src=";
+            if (v1src_ == kSrcStack)
+                o << "stack [";
+            else
+                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << " [";
+            indexValue_.dump(o);
+            if (pProg_) {
+                o << "\n";
+                pProg_->dump( level + 1, o );
+                o << "\n";
+                indentlevel( level, o );
+            }
+            o << "] )\n";
+        }
+        virtual void run( Stack& stack, const RunContext& ) const
+#if DOT_OPERATOR_INLINE
+        { throw std::runtime_error("ApplyIndexOperator::run should not be called"); }
+#else
+        ;
+#endif 
+    };
+    
+    ApplyIndexOperator::ApplyIndexOperator( const std::vector<Ast::Base*>& ast )
+    : pProg_(nullptr)
+    {
+        //~~~@todo:
+        // cases: no program / empty program ("thing[]")
+        // program with 1 instruction which is either upval or literal (save to indexvalue)
+        // general program
+//             if (!ndxGeneratingProgram) 
+//                 return;
+
+        //astList_t ast = ndxGeneratingProgram->getAst();
+        if (ast[0]->instr_ == Ast::Base::kBreakProg)
+        {
+            return; // no program; indexValue_ source remains set to stack.
+        }
+
+        if (ast[1]->instr_ == Ast::Base::kBreakProg) // single instruction program
+        {
+            const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[0]);
+            if (pup && !pup->hasApply())
+            {
+                indexValue_.setSrcUpval( pup );
+                return;
+            }
+
+            const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[0]);
+            if (plit)
+            {
+                indexValue_.setSrcLiteral( plit->v_ );
+                return;
+            }
+        }
+
+        pProg_ = new Program( nullptr, ast ); // hasAst_ = true;
+    }
+    
     class IfElse : public Base, public BoolEater
     {
         Ast::Program* if_;
@@ -2178,6 +2196,26 @@ restartTco:
         bthread->callframe = prevcf;
     }
 
+
+    DLLEXPORT void FromCStackRunProgramInCurrentContext( const RunContext& rc, const Ast::Program* prog )
+    {
+        Bang::Thread* bthread = rc.thread;
+        // this is an awful mess.
+        auto prevcaller = bthread->pCaller;
+        auto prevcf = bthread->callframe;
+        bthread->pCaller = nullptr;
+        bthread->callframe = nullptr;
+        // auto bprog = v->toboundfun(); 
+        Bang::RunProgram( bthread, prog, rc.upvalues_ );
+        bthread->pCaller = prevcaller;
+        bthread->callframe = prevcf;
+    }
+    
+    void Ast::ApplyIndexOperator::runAst( Stack& stack, const RunContext& rc ) const
+    {
+        FromCStackRunProgramInCurrentContext( rc, pProg_ );
+    }
+    
 #if !DOT_OPERATOR_INLINE
     void Ast::ApplyIndexOperator::run( Stack& stack, const RunContext& rc ) const
     {
@@ -2190,7 +2228,7 @@ restartTco:
                 switch (indexValue_.sourceType())
                 {
                     case kSrcLiteral:  owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
-                    case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, rc ); return;
+                    case kSrcStack:    if (pProg_) this->runAst(stack,rc); owner.applyIndexOperator( stack.pop(), stack, rc ); return;
                     case kSrcUpval:    owner.applyIndexOperator( rc.getUpValue(indexValue_.v1uvnumber_), stack, rc ); return;
                     case kSrcRegister: owner.applyIndexOperator( rc.thread->r0_, stack, rc ); return;
                     default: return;
@@ -2203,7 +2241,7 @@ restartTco:
                 switch (indexValue_.sourceType())
                 {
                     case kSrcLiteral:  owner.applyIndexOperator( indexValue_.v1literal_, stack, rc ); return;
-                    case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, rc ); return;
+                    case kSrcStack:    if (pProg_) this->runAst(stack,rc); owner.applyIndexOperator( stack.pop(), stack, rc ); return;
                     case kSrcUpval:    owner.applyIndexOperator( rc.getUpValue(indexValue_.v1uvnumber_), stack, rc ); return;
                     case kSrcRegister: owner.applyIndexOperator( rc.thread->r0_, stack, rc ); return;
                     default: return;
@@ -3510,6 +3548,7 @@ Parser::Program::Program
     try
     {
         bool bHasOpenBracket = false;
+        bool bHasOpenIndex = false;
         
         while (true)
         {
@@ -3614,7 +3653,7 @@ Parser::Program::Program
                     mark.accept(); 
                 break;
             }
-
+            
             //////////////////////////////////////////////////////////////////
             // Single character operators
             //////////////////////////////////////////////////////////////////
@@ -3640,11 +3679,17 @@ Parser::Program::Program
 #endif 
             else if (c == ']') // "Object Method / Message / Dereference / Index" operator
             {
-                mark.accept();
-                break;
+                if (bHasOpenIndex)
+                {
+                    mark.accept();
+                    continue;
+                }
+                else
+                    break;
             }
             else if (c == '[') // "Object Method / Message / Dereference / Index" operator
             {
+                bHasOpenIndex = true;
                 mark.accept();
                 Program indexProgram( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
                 mark.accept();
