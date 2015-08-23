@@ -9,6 +9,7 @@ all:: mathlib$(EXT_SO)
 all:: arraylib$(EXT_SO)
 all:: stringlib$(EXT_SO)
 all:: hashlib$(EXT_SO)
+all:: iolib$(EXT_SO)
 
 CPPOPTLEVEL ?= -O2
 CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
@@ -39,6 +40,9 @@ stringlib$(EXT_SO): stringlib.cpp bang.h
 
 hashlib$(EXT_SO): hashlib.cpp hashlib.h bang.h 
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
+
+iolib$(EXT_SO): iolib.cpp bang.h
+	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
 
 
 ifeq (1,0)
