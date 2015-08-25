@@ -32,7 +32,7 @@ bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
 mathlib$(EXT_SO): mathlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
 
-arraylib$(EXT_SO): arraylib.cpp bang.h
+arraylib$(EXT_SO): arraylib.cpp arraylib.h bang.h
 	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
 
 stringlib$(EXT_SO): stringlib.cpp bang.h

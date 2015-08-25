@@ -89,7 +89,7 @@
   </ItemDefinitionGroup>
   
   <ItemGroup>
-    <ClCompile Include="arraylib.cpp" />
+    <ClCompile Include="iolib.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

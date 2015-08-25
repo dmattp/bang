@@ -24,8 +24,8 @@
   (append bang-font-lock-keywords-1
      (list
       '("\\<\\(as\\|def\\|f\\(?:alse\\|un!?\\)\\|true\\)\\>" . font-lock-keyword-face)
-      '("\\([!?]\\)" . font-lock-dmp-subdued-keyword-face)
-      '("\\([{}:;]\\)" . font-lock-function-name-face)
+      '("\\([!?:;]\\)" . font-lock-dmp-subdued-keyword-face)
+      '("\\([{}]\\)" . font-lock-function-name-face)
       ))
   "scope / block delimiters for Bang! mode")
 
@@ -46,11 +46,16 @@
     st
     ))
 
+(defcustom bang-indent-level 2
+  "Amount by which Bang! subexpressions are indented."
+  :type 'integer
+  :group 'lua)
 
 (defun bang-indent-line ()
   "Indent current line as Bang! code"
   (interactive)
   (beginning-of-line)
+;  (if (bobp) (indent-line-to 0))
 )
 
 (defun bang-mode ()

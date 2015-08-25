@@ -16,7 +16,7 @@ def :make-point y_ = {
        dx dx * dy dy * +
    }
 
-   fun = lookup
+   save-bindings!
 }
 
 1 2 make-point! as aPoint

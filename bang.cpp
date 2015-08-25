@@ -15,7 +15,6 @@
 #define HAVE_DOT_OPERATOR 1
 #define DOT_OPERATOR_INLINE 1
 
-#define HAVE_COMPLETE_OPERATORS 0
 #define LCFG_KEEP_PROFILING_STATS 0
 
 #define LCFG_OPTIMIZE_OPVV2V_WITHLIT 1
@@ -562,11 +561,21 @@ namespace Primitives
             opPlus = &plus;
         }
     } gStringOperators;
-    
-    Bang::Operators gFunctionOperators;
 
+    struct FunctionOps : public Bang::Operators
+    {
+        static Bang::Value eq( const Bang::Value& sThing, const Bang::Value& sOther )
+        {
+            return Value ( *(sOther.tofun()) == *(sThing.tofun()) );
+        }
+        FunctionOps()
+        {
+            opEq = &eq;
+        }
+    } gFunctionOperators;
+    
     DLLEXPORT Bang::Function:: Function()
-    : operators( &gFunctionOperators )
+    //    : operators( &gFunctionOperators )
     {}
 
 #if LCFG_KEEP_PROFILING_STATS    
@@ -583,6 +592,8 @@ namespace Primitives
 #endif
     }
 
+
+
     tfn_opThingAndValue2Value Value::getOperator( EOperators which ) const
     {
         Bang::Operators* op;
@@ -592,7 +603,7 @@ namespace Primitives
             case kBool: op = &gBoolOperators;   break;
             case kStr:  op = &gStringOperators; break;
             case kFun: // fall through
-            case kBoundFun: // fall through
+            case kBoundFun: op = &gFunctionOperators; break;// fall through
             case kFunPrimitive: // fall through
             case kThread: bangerr() << "thingAndValue2Value operators not supported for type=" << type_;
         }
@@ -1606,26 +1617,37 @@ namespace Ast
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-
-//     class ApplyFunctionRec : public PushFunctionRec
-//     {
-//     public:
-//         ApplyFunctionRec( const Ast::PushFunctionRec* pfr )
-//         : PushFunctionRec( *pfr )
-//         {
-//             instr_ = kApplyFunRec;
-//         }
-
-//         virtual void dump( int level, std::ostream& o ) const
-//         {
-//             indentlevel(level, o);
-//             o << "ApplyFunctionRec:" << instr_ << "[" << std::hex << PtrToHash(pRecFun_) << std::dec << "/" << nthparent_ .toint() << "]" << std::endl;
-//         }
-//     };
     
 } // end, namespace Ast
 
 
+
+class DynamicLookup : public Function
+{
+    SHAREDUPVALUE upvalues_;
+    void indexOperatorNoCtx( const Value& theIndex, Stack& stack )
+    {
+        const auto& str = theIndex.tostr();
+        stack.push( upvalues_->getUpValue( str ) );
+    }
+public:
+    DynamicLookup( SHAREDUPVALUE_CREF upvalues )
+    : upvalues_( upvalues )
+    {
+    }
+
+    SHAREDUPVALUE_CREF upvalues() const { return upvalues_; }
+    
+    DLLEXPORT virtual void indexOperator( const Value& theIndex, Stack& stack, const RunContext& )
+    {
+        this->indexOperatorNoCtx( theIndex, stack );
+    }
+    virtual void apply( Stack& s )
+    {
+        this->indexOperatorNoCtx( s.pop(), s ); // obtain index from stack
+    }
+};
+    
 
 class FunctionRestoreStack : public Function
 {
@@ -1676,17 +1698,42 @@ namespace Primitives {
         s.push( STATIC_CAST_TO_BANGFUN(restoreFunction) );
 #endif 
     }
+
+    void savebindings( Stack& s, const RunContext& rc )
+    {
+        const auto& bindings = NEW_BANGFUN(DynamicLookup, rc.upvalues() );
+        s.push( STATIC_CAST_TO_BANGFUN(bindings) );
+    }
+
     void rebindvalues( Stack& s, const Value& v, const Value& vbindname, const Value& newval )
     {
-        if (!v.isboundfun())
-            throw std::runtime_error("rebind-fun: not a bound function");
-        auto bprog = v.toboundfunhold();
         const auto& bindname = vbindname.tostr();
+        
+        if (v.isboundfun())
+        {
+            auto bprog = v.toboundfunhold();
 
-        SHAREDUPVALUE newchain = replace_upvalue( bprog->upvalues_, bindname, newval );
+            SHAREDUPVALUE newchain = replace_upvalue( bprog->upvalues_, bindname, newval );
 
-        const auto& newfun = NEW_BANGFUN(BoundProgram, bprog->program_, newchain );
-        s.push( newfun );
+            const auto& newfun = NEW_BANGFUN(BoundProgram, bprog->program_, newchain );
+            s.push( newfun );
+            return;
+        }
+        else if (v.isfun())
+        {
+            DynamicLookup* pLookup = dynamic_cast<DynamicLookup*>( v.tofun().get() );
+            if (pLookup)
+            {
+                SHAREDUPVALUE newchain = replace_upvalue( pLookup->upvalues(), bindname, newval );
+                const auto& bindings = NEW_BANGFUN( DynamicLookup, newchain );
+                s.push( STATIC_CAST_TO_BANGFUN(bindings) );
+            }
+            else
+                throw std::runtime_error("rebind-fun: not a bound function");
+        }
+        else
+            throw std::runtime_error("rebind-fun: not a bound function");
+
     }
     void rebindOuterFunction( Stack& s, const RunContext& rc )
     {
@@ -2442,7 +2489,6 @@ void Ast::PushUpvalByName::run( Stack& stack, const RunContext& rc) const
 }
 
 
-
 bool iseof(int c)
 {
     return c == EOF;
@@ -2996,7 +3042,7 @@ class Parser
             const Ast::CloseValue* upvalueChain,
             // const Ast::PushFun* pParentFun,
             ParsingRecursiveFunStack* pRecParsing
-        )
+              )
         :  postApply_(false),
            pNewProgram_(nullptr)
         {
@@ -3970,6 +4016,7 @@ Parser::Program::Program
                 if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
                 if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
+                if (rwPrimitive( "save-bindings",    &Primitives::savebindings    ) ) continue;
                 if (rwPrimitive( "rebind",    &Primitives::rebindFunction    ) ) continue;
                 if (rwPrimitive( "rebind-outer",    &Primitives::rebindOuterFunction    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;

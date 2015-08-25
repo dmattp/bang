@@ -410,8 +410,8 @@ static int push_captures (MatchState *ms, const char *s, const char *e) {
     
     void str_find_aux( Bang::Stack& stack, int find )
     {
-        const auto v_s = stack.pop();
-         const auto v_p = stack.pop();
+        const auto v_s = stack.pop(); // string  / haystack
+        const auto v_p = stack.pop(); // pattern / needle
         const bool nospecials_arg = false;
         
         const char *s = v_s.tostr().c_str(); // luaL_checklstring(L, 1, &ls);

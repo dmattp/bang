@@ -954,10 +954,15 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Function& operator=(const Function&);
     private:
     public:
-        Operators* operators;
+//        Operators* operators;
 //        std::weak_ptr<Function> self_;
         DLLEXPORT Function();
         virtual ~Function() {}
+        // only sensible / default comparison always is, is this the same object?
+        // perhaps at some time, this will be made virtual.  Maybe all the ops will
+        // be made virtual; i don't think it really costs much.  We already have a
+        // vtable.
+        bool operator==( const Function& rhs ) { return this == &rhs; }
         virtual void apply( Stack& s ) = 0; // CLOSURE_CREF runningOrMyself ) = 0;
         DLLEXPORT virtual void indexOperator( const Value& theIndex, Stack&, const RunContext& );
         DLLEXPORT virtual void customOperator( const bangstring& theOperator, Stack& s);
