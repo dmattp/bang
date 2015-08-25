@@ -1488,15 +1488,13 @@ namespace Ast
     {
         FRIENDOF_RUNPROG
         ValueEater indexValue_;
-        Program* pProg_;
-        void runAst( Stack& stack, const RunContext& ) const;
+//        void runAst( Stack& stack, const RunContext& ) const;
     public:
         ApplyIndexOperator( const bangstring& msgStr )
         :
 #if DOT_OPERATOR_INLINE
-          Base( kApplyIndexOperator ),
+          Base( kApplyIndexOperator )
 #endif 
-          pProg_( nullptr )
         {
             indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
@@ -1504,9 +1502,8 @@ namespace Ast
         ApplyIndexOperator()
         :
 #if DOT_OPERATOR_INLINE
-          Base( kApplyIndexOperator ),
+          Base( kApplyIndexOperator )
 #endif 
-          pProg_( nullptr )
         {
             // indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
@@ -1528,12 +1525,6 @@ namespace Ast
             else
                 o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << " [";
             indexValue_.dump(o);
-            if (pProg_) {
-                o << "\n";
-                pProg_->dump( level + 1, o );
-                o << "\n";
-                indentlevel( level, o );
-            }
             o << "] )\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
@@ -1543,46 +1534,6 @@ namespace Ast
         ;
 #endif 
     }; // end, ApplyIndexOperator class
-    
-    ApplyIndexOperator::ApplyIndexOperator( const std::vector<Ast::Base*>& ast )
-    :
-#if DOT_OPERATOR_INLINE
-      Base( kApplyIndexOperator ),
-#endif 
-      pProg_(nullptr)
-    {
-        //~~~@todo:
-        // cases: no program / empty program ("thing[]")
-        // program with 1 instruction which is either upval or literal (save to indexvalue)
-        // general program
-//             if (!ndxGeneratingProgram) 
-//                 return;
-
-        //astList_t ast = ndxGeneratingProgram->getAst();
-        if (ast[0]->instr_ == Ast::Base::kBreakProg)
-        {
-            return; // no program; indexValue_ source remains set to stack.
-        }
-
-        if (ast[1]->instr_ == Ast::Base::kBreakProg) // single instruction program
-        {
-            const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[0]);
-            if (pup && !pup->hasApply())
-            {
-                indexValue_.setSrcUpval( pup );
-                return;
-            }
-
-            const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[0]);
-            if (plit)
-            {
-                indexValue_.setSrcLiteral( plit->v_ );
-                return;
-            }
-        }
-
-        pProg_ = new Program( nullptr, ast ); // hasAst_ = true;
-    }
     
     class IfElse : public Base, public BoolEater
     {
@@ -2226,7 +2177,7 @@ restartTco:
                             switch (op->indexValue_.sourceType())
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
-                                case kSrcStack:    if (op->pProg_) op->runAst(stack,frame); owner.applyIndexOperator( stack.pop(), stack, frame ); break;
+                                case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, frame ); break;
                                 case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
                                 case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
                                 default: break;
@@ -2240,7 +2191,7 @@ restartTco:
                             switch (op->indexValue_.sourceType())
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
-                                case kSrcStack:    if (op->pProg_) op->runAst(stack,frame); owner.applyIndexOperator( stack.pop(), stack, frame ); break;
+                                case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, frame ); break;
                                 case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
                                 case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
                                 default: break;
@@ -2254,7 +2205,7 @@ restartTco:
                             switch (op->indexValue_.sourceType())
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
-                                case kSrcStack:    if (op->pProg_) op->runAst(stack,frame); owner.applyIndexOperator( stack.pop(), stack, frame ); break;
+                                case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, frame ); break;
                                 case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
                                 case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
                                 default: break;
@@ -2338,24 +2289,24 @@ restartTco:
     }
 
 
-    DLLEXPORT void FromCStackRunProgramInCurrentContext( const RunContext& rc, const Ast::Program* prog )
-    {
-        Bang::Thread* bthread = rc.thread;
-        // this is an awful mess.
-        auto prevcaller = bthread->pCaller;
-        auto prevcf = bthread->callframe;
-        bthread->pCaller = nullptr;
-        bthread->callframe = nullptr;
-        // auto bprog = v->toboundfun(); 
-        Bang::RunProgram( bthread, prog, rc.upvalues_ );
-        bthread->pCaller = prevcaller;
-        bthread->callframe = prevcf;
-    }
+//     DLLEXPORT void FromCStackRunProgramInCurrentContext( const RunContext& rc, const Ast::Program* prog )
+//     {
+//         Bang::Thread* bthread = rc.thread;
+//         // this is an awful mess.
+//         auto prevcaller = bthread->pCaller;
+//         auto prevcf = bthread->callframe;
+//         bthread->pCaller = nullptr;
+//         bthread->callframe = nullptr;
+//         // auto bprog = v->toboundfun(); 
+//         Bang::RunProgram( bthread, prog, rc.upvalues_ );
+//         bthread->pCaller = prevcaller;
+//         bthread->callframe = prevcf;
+//     }
     
-    void Ast::ApplyIndexOperator::runAst( Stack& stack, const RunContext& rc ) const
-    {
-        FromCStackRunProgramInCurrentContext( rc, pProg_ );
-    }
+//     void Ast::ApplyIndexOperator::runAst( Stack& stack, const RunContext& rc ) const
+//     {
+//         FromCStackRunProgramInCurrentContext( rc, pProg_ );
+//     }
     
 //     void Ast::ApplyIndexOperator::run( Stack& stack, const RunContext& rc ) const
 //     {
