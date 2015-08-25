@@ -1159,6 +1159,7 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
     {
     public:
         Bang::Stack stack;
+        Bang::Stack altstack;
         RunContext* callframe;
         Thread* pCaller;
         BANGFUNPTR boundProg_; // probably should have distinct type, BANGBOUNDPROGPTR or something

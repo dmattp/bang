@@ -820,6 +820,7 @@ const Ast::Base* gFailedAst = nullptr;
 
     enum ESourceDest {
         kSrcStack,
+        kSrcAltStack,
         kSrcLiteral,
         kSrcUpval,
         kSrcRegister,
@@ -830,6 +831,7 @@ const Ast::Base* gFailedAst = nullptr;
         {
             return
             ( sd == kSrcStack ? "$stk"
+            : sd == kSrcAltStack ? "$altstk"
             : sd == kSrcLiteral ? "Literal"
             : sd == kSrcUpval ? "Upval"
             : sd == kSrcRegister ? "$reg"
@@ -915,6 +917,25 @@ namespace Ast
         virtual void setApply() { apply_ = true; }
     };
 
+    class StackToAltstack : public Base
+    {
+    public:
+        StackToAltstack()
+        {
+        }
+        
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "StackToAltstack\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& rc ) const
+        {
+            rc.thread->altstack.push( stack.pop() );
+        }
+    };
+
     class PushUpval : public Base, public IsApplicable
     {
     protected:
@@ -979,6 +1000,10 @@ namespace Ast
             v1uvname_ = pup->name_;
             v1src_ = kSrcUpval;
         }
+        void setSrcAltstack()
+        {
+            v1src_ = kSrcAltStack;
+        }
         void setSrcLiteral( const Value& v )
         {
             v1literal_ = v;
@@ -998,13 +1023,9 @@ namespace Ast
             {
                 o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_;
             }
-            else if (v1src_ == kSrcRegister)
+            else
             {
-                o << "$reg";
-            }
-            else if (v1src_ == kSrcStack)
-            {
-                o << "$stk";
+                o << sd2str( v1src_ );
             }
         }
     };
@@ -1479,6 +1500,16 @@ namespace Ast
         {
             indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
+
+        ApplyIndexOperator()
+        :
+#if DOT_OPERATOR_INLINE
+          Base( kApplyIndexOperator ),
+#endif 
+          pProg_( nullptr )
+        {
+            // indexValue_.setSrcLiteral( Bang::Value(msgStr) );
+        }
         ApplyIndexOperator( const std::vector<Ast::Base*>& ast );
 
         bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
@@ -1491,7 +1522,9 @@ namespace Ast
             indentlevel(level, o);
             o << "ApplyIndexOperator( src=";
             if (v1src_ == kSrcStack)
-                o << "stack [";
+                o << "$stk [";
+            else if (v1src_ == kSrcAltStack)
+                o << "$altstack [";
             else
                 o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << " [";
             indexValue_.dump(o);
@@ -1509,7 +1542,7 @@ namespace Ast
 #else
         ;
 #endif 
-    };
+    }; // end, ApplyIndexOperator class
     
     ApplyIndexOperator::ApplyIndexOperator( const std::vector<Ast::Base*>& ast )
     :
@@ -2200,9 +2233,24 @@ restartTco:
                             }
                         }
                         break;
-                        default:
+                        
+                        case kSrcStack:
                         {
                             const Value& owner = stack.pop();
+                            switch (op->indexValue_.sourceType())
+                            {
+                                case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
+                                case kSrcStack:    if (op->pProg_) op->runAst(stack,frame); owner.applyIndexOperator( stack.pop(), stack, frame ); break;
+                                case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
+                                case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
+                                default: break;
+                            }
+                        }
+                        break;
+                        
+                        case kSrcAltStack:
+                        {
+                            const Value& owner = pThread->altstack.pop();
                             switch (op->indexValue_.sourceType())
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
@@ -3750,20 +3798,26 @@ Parser::Program::Program
                 mark.accept();
                 Program indexProgram( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
                 mark.accept();
-#if 1
+#if 0
                 ast_.push_back( new Ast::ApplyIndexOperator( indexProgram.ast() ) );
                 // ast_.push_back( new Ast::Apply() );
 #else
+                ast_.push_back( new Ast::StackToAltstack() );
+                
                 const auto astop = indexProgram.ast();
                 for (auto el = astop.begin(); el != astop.end(); ++el)
                 {
                     if ((*el)->instr_ != Ast::Base::kBreakProg)
                         ast_.push_back( *el );
                 }
-                auto pp = new Ast::PushPrimitive( &Primitives::swap, "swap" );
-                pp->setApply();
-                ast_.push_back( pp );
-                ast_.push_back( newapplywhere(mark) );
+//                 auto pp = new Ast::PushPrimitive( &Primitives::swap, "swap" );
+//                 pp->setApply();
+//                 ast_.push_back( pp );
+//                 ast_.push_back( newapplywhere(mark) );
+                auto aio = new Ast::ApplyIndexOperator();
+                aio->setSrcAltstack();
+                ast_.push_back( aio );
+                
 #endif 
 
                 continue;
