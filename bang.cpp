@@ -835,7 +835,7 @@ const Ast::Base* gFailedAst = nullptr;
             : sd == kSrcLiteral ? "Literal"
             : sd == kSrcUpval ? "Upval"
             : sd == kSrcRegister ? "$reg"
-            : sd == kSrcRegisterBool ? "RegisterBool"
+            : sd == kSrcRegisterBool ? "$reg_bool"
             : sd == kSrcCloseValue ? "CloseValue"
             : "Unknown-source/dest"
             );
@@ -994,6 +994,7 @@ namespace Ast
         {}
         ESourceDest sourceType() const { return v1src_; }
         bool srcIsStack() { return v1src_ == kSrcStack; }
+        bool srcIsAltStack() { return v1src_ == kSrcAltStack; }
         void setSrcUpval( const Ast::PushUpval* pup )
         {
             v1uvnumber_ = pup->uvnumber_;
@@ -1003,6 +1004,10 @@ namespace Ast
         void setSrcAltstack()
         {
             v1src_ = kSrcAltStack;
+        }
+        void setSrcStack()
+        {
+            v1src_ = kSrcStack;
         }
         void setSrcLiteral( const Value& v )
         {
@@ -1511,6 +1516,8 @@ namespace Ast
 
         bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
         void setIndexValueSrcRegister() { return indexValue_.setSrcRegister(); }
+        void setIndexValueLiteral( const Value& v ) { return indexValue_.setSrcLiteral( v ); }
+        void setIndexValueUpval( const Ast::PushUpval* pup ) { return indexValue_.setSrcUpval( pup ); }
         
         
 //        const Value& getMsgVal() const { return msgStr_; }
@@ -3215,6 +3222,54 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     
     delNoops();
 
+    // fix up index operator by moving literals into ApplyIndexOperator
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
+    {
+        Ast::ApplyIndexOperator* pIndex  = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
+        if (pIndex)
+        {
+            const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
+            if (plit && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
+            {
+                pIndex->setIndexValueLiteral( plit->v_ );
+                ast[i] = &noop;
+                ++i;
+            }
+            else
+            {
+                const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
+                if (pup && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
+                {
+                    pIndex->setIndexValueUpval( pup );
+                    ast[i] = &noop;
+                    ++i;
+                }
+            }
+            continue;
+        }
+    }
+    delNoops();
+
+    // fix up index operators by removing use of altstack where possible
+    for (unsigned i = 0; i < ast.size() - 1; ++i)
+    {
+        const Ast::StackToAltstack* pAlt = dynamic_cast<const Ast::StackToAltstack*>(ast[i]);
+        if (pAlt)
+        {
+            Ast::ApplyIndexOperator* pIndex  = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
+            if (pIndex && pIndex->srcIsAltStack())
+            {
+                pIndex->setSrcStack();
+                ast[i] = &noop;
+                ++i;
+            }
+            continue;
+        }
+    }
+    delNoops();
+    
+    
+
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
@@ -3253,6 +3308,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
     delNoops();
+
 
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
@@ -3369,7 +3425,9 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
         }
     }
-#endif 
+#endif
+
+    
 
 #if 1
     for (unsigned i = 2; i < ast.size(); ++i)

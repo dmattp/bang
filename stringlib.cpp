@@ -549,6 +549,21 @@ static int push_captures (MatchState *ms, const char *s, const char *e) {
         }
         s.push( created );
     }
+
+    void replace( Bang::Stack& s, const Bang::RunContext& ctx)
+    {
+        const std::string sNew = s.pop().tostr();
+        const std::string sOld = s.pop().tostr();
+        std::string sStr = s.pop().tostr();
+        const auto rc = sStr.find( sOld );
+        if (rc == std::string::npos)
+            s.push_bs( sStr );
+        else
+        {
+            sStr.replace( rc, sOld.length(), sNew );
+            s.push_bs( sStr );
+        }
+    }
     
     void lookup( Bang::Stack& s, const Bang::RunContext& ctx)
     {
@@ -564,6 +579,7 @@ static int push_captures (MatchState *ms, const char *s, const char *e) {
             :  str == "to-bytes"   ? &to_bytes
             :  str == "find"       ? &str_find
             :  str == "match"      ? &str_match
+            :  str == "replace"    ? &replace
             :  str == "from-bytes" ? &from_bytes
             :  nullptr
             );
