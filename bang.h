@@ -991,11 +991,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kApplyThingAndValue2ValueOperator,
 #if DOT_OPERATOR_INLINE            
                 kApplyIndexOperator,
-//                kApplyDotOperatorUpval,
 #endif 
                 kIfElse,
                 kTCOApply,
-                kTCOMove,
                 kTCOApplyProgram,
                 kTCOApplyFunRec,
                 kTCOIfElse,
@@ -1019,7 +1017,6 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                     case kApplyFunRec:  instr_ = kTCOApplyFunRec;  break;
                     case kIfElse:       instr_ = kTCOIfElse;       break;
                     case kApplyProgram: instr_ = kTCOApplyProgram; break;
-//                    case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
                     case kApply:        instr_ = kTCOApply;        break;
                 }
             }

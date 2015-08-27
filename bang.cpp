@@ -21,7 +21,6 @@
 #define LCFG_USE_INDEX_OPERATOR 1
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
-#define LCFG_FULLY_CONVERTED_PUSHUPVAL 0
 
 /*
   Keywords
@@ -351,11 +350,6 @@ namespace Ast { class Base; }
     : thread(nullptr), prev(nullptr), ppInstr(nullptr)
     {}
     
-//     void rebind( const Ast::Program* inprog )
-//     {
-//         ppInstr = TMPFACT_PROG_TO_RUNPROG(inprog);
-//     }
-
     void RunContext::rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv )
     {
         ppInstr = inppInstr;
@@ -789,24 +783,6 @@ namespace Ast
         bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
     }
     
-//     const Value& Upvalue::getUpValueFull( const bangstring& uvName ) const
-//     {
-//         if (uvName == closer_->valueName())
-//         {
-//             return v_;
-//         }
-//         else
-//         {
-//             if (parent_)
-//                 return parent_->getUpValue( uvName );
-//             else
-//             {
-//                 bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
-//                 // throw std::runtime_error("Could not find dynamic upval");
-//             }
-//         }
-//     }
-    
 
 const Ast::Base* gFailedAst = nullptr;
 
@@ -882,31 +858,6 @@ namespace Ast
         indentlevel(level, o);
         o << "<<< EOF >>>\n";
     }
-//     class PushLiteral : public Base
-//     {
-//     public:
-//         Value v_;
-//     public:
-//         virtual void dump( int level, std::ostream& o ) const
-//         {
-//             indentlevel(level, o);
-//             o << "PushLiteral v=";
-//             v_.dump( o );
-//             o << "\n";
-//         }
-        
-//         PushLiteral( const Value& v )
-//         : v_(v)
-//         {}
-
-//         virtual void run( Stack& stack, const RunContext& ) const
-//         {
-//             stack.push( v_ );
-//         }
-//     };
-
-
-
 
     static const char* op2str( EOperators which )
     {
@@ -955,42 +906,6 @@ namespace Ast
         }
     };
 
-    class PushUpval
-    {
-    };
-
-//     class XPushUpval : public Base, public IsApplicable
-//     {
-//     protected:
-//     public:
-//         std::string name_;
-//         NthParent uvnumber_; // index into the active Upvalues
-//         PushUpval( const std::string& name, NthParent uvnumber )
-//         : name_( name ),
-//           uvnumber_( uvnumber )
-//         {
-//         }
-
-//         void setApply() {
-//             IsApplicable::setApply();
-//             instr_ = kApplyUpval;
-//         }
-
-//         virtual void dump( int level, std::ostream& o ) const
-//         {
-//             indentlevel(level, o);
-//             o << (hasApply() ? "Apply" : "Push") << "Upval #" << uvnumber_.toint()
-//               << " name='" << name_ << "'\n";
-//         }
-
-//         virtual void run( Stack& stack, const RunContext& ) const;
-
-//         const Value& getUpValue( const RunContext& rc ) const
-//         {
-//             return rc.getUpValue( uvnumber_ );
-//         }
-//     };
-
     class BoolEater
     {
     protected:
@@ -1020,12 +935,6 @@ namespace Ast
         bool srcIsAltStack() const     { return v1src_ == kSrcAltStack; }
         bool srcisstr() const          { return v1src_ == kSrcLiteral && v1literal_.isstr(); }
         const Value& literal() const { return v1literal_; }
-//         void setSrcUpval( const Ast::PushUpval* pup )
-//         {
-//             v1uvnumber_ = pup->uvnumber_;
-//             v1uvname_ = pup->name_;
-//             v1src_ = kSrcUpval;
-//         }
         const bangstring& tostr() { return v1literal_.tostr(); }
         void setSrcUpval( const std::string& name, NthParent uvnumber )
         {
@@ -1150,10 +1059,6 @@ namespace Ast
         }
 
         virtual void run( Stack& stack, const RunContext& ) const;
-//         const Value& getUpValue( const RunContext& rc ) const
-//         {
-//             return rc.getUpValue( uvnumber_ );
-//         }
     };
     
 
@@ -1233,11 +1138,6 @@ namespace Ast
 
         bool firstValueNotStack() { return srcthing_ != kSrcStack; }
 
-//         ESourceDest srcother_;
-//         Value otherLiteral_; // when srcthing_ == kSrcLiteral
-//         NthParent uvnumberOther_;
-//         std::string otheruvname_;
-        
         ApplyThingAndValue2ValueOperator( EOperators openum )
         : Base( kApplyThingAndValue2ValueOperator ),
           openum_( openum ),
@@ -1249,19 +1149,6 @@ namespace Ast
 
         void setThingRegister() { srcthing_ = kSrcRegister; }
 
-//         void setThingLiteral( const Bang::Value& thinglit )
-//         {
-//             thingLiteral_ = thinglit;
-//             thingliteralop_ = thinglit.getOperator( openum_ );
-//             srcthing_ = kSrcLiteral;
-//         }
-
-//         void setThingUpval( const ValueEaterAst::PushUpval* pup )
-//         {
-//             uvnumber_ = pup->uvnumber_;
-//             thinguvname_ = pup->name_;
-//             srcthing_ = kSrcUpval;
-//         }
         void setThingVeSrc( const ValueEater& other )
         {
             srcthing_ = other.v1src_;
@@ -1276,21 +1163,6 @@ namespace Ast
                 thinguvname_ = other.v1uvname_;
             }
         }
-//         void setOtherSource( const ValueEater& other )
-//         {
-//             bangerr() << "need to implement setThingValueEater";
-//         }
-//         void setOtherUpval( const Ast::PushUpval* pup )
-//         {
-//             uvnumberOther_ = pup->uvnumber_;
-//             otheruvname_ = pup->name_;
-//             srcother_ = kSrcUpval;
-//         }
-//         void setOtherLiteral( const Bang::Value& lit )
-//         {
-//             otherLiteral_ = lit;
-//             srcother_ = kSrcLiteral;
-//         }
         void setOtherRegister() { secondsrc_.setSrcRegister(); }
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -1322,28 +1194,7 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& rc ) const
         {
             bangerr() << "ApplyThingAndValue2ValueOperator::run() should not be called";
-//             switch (srcthing_)
-//             {
-//                 case kSrcLiteral:
-//                     stack.push( thingLiteral_.applyAndValue2Value( openum_,
-//                             srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
-//                     break;
-//                 case kSrcUpval:
-//                     stack.push( rc.getUpValue( uvnumber_ ).applyAndValue2Value( openum_,
-//                             srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
-//                     break;
-//                 case kSrcStack:
-//                     const Value& owner = stack.pop();
-//                     stack.push( owner.applyAndValue2Value( openum_,
-//                             srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
-//                     break;
-//             }
         }
-
-//         inline Bang::Value getOtherValue( const RunContext& frame, Stack& stack ) const
-//         {
-//             return srcother_ == kSrcUpval ? frame.getUpValue(uvnumberOther_) : stack.pop();
-//         }
     }; // end, class ApplyThingAndValue2ValueOperator
 
 
@@ -1453,22 +1304,6 @@ namespace Ast
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-
-//     class ApplyPrimitive: public PushPrimitive
-//     {
-//     public:
-//         ApplyPrimitive( const PushPrimitive* pp )
-//         : PushPrimitive( *pp )
-//         {}
-
-//         virtual void dump( int level, std::ostream& o ) const
-//         {
-//             indentlevel(level, o);
-//             o << "ApplyPrimitive op='" << desc_ << "'\n";
-//         }
-
-//         virtual void run( Stack& stack, const RunContext& ) const;
-//     };
 
     class MakeCoroutine : public Base
     {
@@ -2108,7 +1943,7 @@ restartTco:
             const Ast::Base* pInstr = *(frame.ppInstr++);
             switch (pInstr->instr_)
             {
-                default:
+                case Ast::Base::kUnk:
                     pInstr->run( stack, frame );
                     break;
 
@@ -2272,42 +2107,6 @@ restartTco:
                 case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread); xferstack(pThread,other); pThread = other; goto restartThread; }
                 
                 /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL               
-                case Ast::Base::kTCOApplyUpval:
-                {
-                    const Value& v = reinterpret_cast<const Ast::PushUpval*>(pInstr)->getUpValue( frame );
-                    switch (v.type())
-                    {
-                        default: RunApplyValue( pInstr, v, stack, frame ); break;
-                        KTHREAD_CASE
-                        case Value::kBoundFun:
-                        {
-                            auto pbound = v.toboundfunhold();
-                            frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
-                            goto restartTco;
-                        }
-                
-                    }
-                }
-                break;
-                
-                /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
-                case Ast::Base::kApplyUpval:
-                {
-                    const Value& v = reinterpret_cast<const Ast::PushUpval*>(pInstr)->getUpValue( frame );
-                    switch (v.type())
-                    {
-                        default: RunApplyValue( pInstr, v, stack, frame ); break;
-                        KTHREAD_CASE
-                        case Value::kBoundFun:
-                            auto pbound = v.toboundfun();
-                            inprog = pbound->program_;
-                            inupvalues = pbound->upvalues_;
-                            goto restartNonTail;
-                    }
-                }
-                break;
-#endif
 
                 case Ast::Base::kApplyThingAndValue2ValueOperator:
                 {
@@ -2378,20 +2177,6 @@ restartTco:
                     }
                 }
                 break;
-//                 {
-//                     const Value& v = stack.pop(); // the function to apply
-//                     switch (v.type())
-//                     {
-//                         default: RunApplyValue( pInstr, v, stack, frame ); break;
-//                         KTHREAD_CASE
-//                         case Value::kBoundFun:
-//                             auto pbound = v.toboundfun();
-//                             inprog = pbound->program_;
-//                             inupvalues = pbound->upvalues_;
-//                             goto restartNonTail;
-//                     }
-//                 }
-//                 break;
 #endif 
                 
                 case Ast::Base::kTCOApply:
@@ -2512,16 +2297,6 @@ restartTco:
 //         bthread->callframe = prevcf;
 //     }
     
-//     void Ast::ApplyIndexOperator::runAst( Stack& stack, const RunContext& rc ) const
-//     {
-//         FromCStackRunProgramInCurrentContext( rc, pProg_ );
-//     }
-    
-//     void Ast::ApplyIndexOperator::run( Stack& stack, const RunContext& rc ) const
-//     {
-//         bangerr() << "ApplyIndexOperator should not run";
-//     }
-
     
     void Function::customOperator( const bangstring& theOperator, Stack& s)
     {
@@ -2532,74 +2307,12 @@ restartTco:
     {
         stack.push( theIndex );
         this->apply( stack );
-        
-//         switch (v.type())
-//         {
-//             case Value::kFun: v.tofun()->apply(stack); break;
-//             case Value::kFunPrimitive: v.tofunprim()( stack, ctx ); break;
-// #if 1
-//             case Value::kBoundFun:
-//             {
-//                 auto  bprog = v.toboundfun();
-// //                    std::cerr << "dot operator calling boundfun upval1=" << bprog->upvalues_->upvalParseChain()->valueName() << "\n";
-//                 // RunProgram( ctx.thread, bprog->program_, bprog->upvalues_ );
-//                 CallIntoSuspendedCoroutine( ctx.thread, bprog );
-// //                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
-//             }
-//             break;
-// #endif 
-// //                case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread);
-// //                xferstack(pThread,other); pThread = other; goto restartThread; }
-//             default:
-//                 throw std::runtime_error("dot operator not supported on value type");
-//         }
     }
 
     void BoundProgram::indexOperator( const Value& theIndex, Stack& stack, const RunContext& ctx )
     {
-#if 1        
         stack.push( theIndex );
         CallIntoSuspendedCoroutine( ctx.thread, this );
-#else
-        /* I dont like the go-to index because i can't do:
-           
-           def :hello say-to = { say-to 'Hello, %@!' format! }
-
-           hello.world
-           hello.Jim
-
-           I think a better solution is a custom "UPVALUES" keyword+object, like/derived from function, but with the below
-           code for his indexOperator.  That keeps things speedy without interpreted/BoundProgram doing index lookup
-           and allows the existing "x.y -> y x!" behavior for use of dot operator with bound programs
-        */
-           
-        if (!theIndex.isstr())
-            bangerr() << "PushUpvalByName (lookup) name is not string";
-
-        const auto& bs = theIndex.tostr();
-# if 0
-//         const unsigned hash = bs.gethash();
-//         const unsigned ndx = hash & 0xf;
-//         if (uvcache[ndx].hash == hash)
-//         {
-//             // std::cerr << "got matching hash=" << hash << std::endl;
-// //            const auto& hashv = 
-// //            const auto& uv = upvalues_->getUpValue( bs );
-//             stack.push( *(uvcache[ndx].v) );
-// //             if (uv.tonum() != hashv.tonum())
-// //                 std::cerr << "mismatch" << std::endl;
-//         }
-//         else
-//         {
-//             const auto& uv = upvalues_->getUpValue( bs );
-//             uvcache[ndx].v = &uv;
-//             uvcache[ndx].hash = hash;
-//             stack.push( uv );
-//         }
-# else
-        stack.push( upvalues_->getUpValue(bs) );
-# endif
-#endif        
     }
     
     
@@ -3594,7 +3307,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     }
                     else
                     {
-#if 1                        
                         Ast::ApplyIndexOperator* psecond = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
                         if (psecond)
                         {
@@ -3604,12 +3316,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                                 psecond->setIndexValueSrcRegister();
                             }
                         }
-//                         else
-//                         {
-//                             Ast::ApplyIndexOperator* psecond = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
-//                             if (psecond)
-//                         }
-#endif 
                     }
                 }
             }
@@ -3889,7 +3595,6 @@ Parser::Program::Program
                 ParseLiteral aLiteral(stream);
 //                std::cerr << "got literal:"; aLiteral.value().tostring(std::cerr); std::cerr << "\n";
                 ast_.push_back( new Ast::Move(aLiteral.value()) );
-//                ast_.push_back( new Ast::PushLiteral(aLiteral.value()) );
                 continue;
             } catch ( const ErrorNoMatch& ) {}
 
