@@ -882,28 +882,28 @@ namespace Ast
         indentlevel(level, o);
         o << "<<< EOF >>>\n";
     }
-    class PushLiteral : public Base
-    {
-    public:
-        Value v_;
-    public:
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << "PushLiteral v=";
-            v_.dump( o );
-            o << "\n";
-        }
+//     class PushLiteral : public Base
+//     {
+//     public:
+//         Value v_;
+//     public:
+//         virtual void dump( int level, std::ostream& o ) const
+//         {
+//             indentlevel(level, o);
+//             o << "PushLiteral v=";
+//             v_.dump( o );
+//             o << "\n";
+//         }
         
-        PushLiteral( const Value& v )
-        : v_(v)
-        {}
+//         PushLiteral( const Value& v )
+//         : v_(v)
+//         {}
 
-        virtual void run( Stack& stack, const RunContext& ) const
-        {
-            stack.push( v_ );
-        }
-    };
+//         virtual void run( Stack& stack, const RunContext& ) const
+//         {
+//             stack.push( v_ );
+//         }
+//     };
 
 
 
@@ -1016,14 +1016,17 @@ namespace Ast
           v1uvnumber_( kNoParent )
         {}
         ESourceDest sourceType() const { return v1src_; }
-        bool srcIsStack() { return v1src_ == kSrcStack; }
-        bool srcIsAltStack() { return v1src_ == kSrcAltStack; }
+        bool srcIsStack() const        { return v1src_ == kSrcStack; }
+        bool srcIsAltStack() const     { return v1src_ == kSrcAltStack; }
+        bool srcisstr() const          { return v1src_ == kSrcLiteral && v1literal_.isstr(); }
+        const Value& literal() const { return v1literal_; }
 //         void setSrcUpval( const Ast::PushUpval* pup )
 //         {
 //             v1uvnumber_ = pup->uvnumber_;
 //             v1uvname_ = pup->name_;
 //             v1src_ = kSrcUpval;
 //         }
+        const bangstring& tostr() { return v1literal_.tostr(); }
         void setSrcUpval( const std::string& name, NthParent uvnumber )
         {
             v1uvnumber_ = uvnumber;
@@ -1033,6 +1036,10 @@ namespace Ast
         void setSrcAltstack()
         {
             v1src_ = kSrcAltStack;
+        }
+        void setSrcOther( const ValueEater& other )
+        {
+            *this = other;
         }
         void setSrcStack()
         {
@@ -1118,6 +1125,18 @@ namespace Ast
             src_.setSrcUpval( name, uvnumber );
         }
 
+        Move( const Value& v )
+        {
+            src_.setSrcLiteral(v);
+        }
+
+        bool srcIsStr()
+        {
+            return src_.srcisstr();
+        }
+        const bangstring& tostr() { return src_.tostr(); }
+
+        
         const ValueEater& source() const { return src_; }
 
         virtual void dump( int level, std::ostream& o ) const
@@ -2577,6 +2596,7 @@ void Ast::Move::run( Stack& stack, const RunContext& rc) const
             switch (src_.v1src_)
             {
                 case kSrcUpval: stack.push( rc.getUpValue( src_.v1uvnumber_ ) ); break;
+                case kSrcLiteral: stack.push( src_.literal() ); break;
             }
             break;
         }
@@ -2587,6 +2607,7 @@ void Ast::Move::run( Stack& stack, const RunContext& rc) const
             switch (src_.v1src_)
             {
                 case kSrcUpval: rc.thread->r0_ = rc.getUpValue( src_.v1uvnumber_ ); break;
+                case kSrcLiteral: rc.thread->r0_ = src_.literal(); break;
             }
             break;
         }
@@ -2597,6 +2618,7 @@ void Ast::Move::run( Stack& stack, const RunContext& rc) const
             switch (src_.v1src_)
             {
                 case kSrcUpval: rc.thread->rb0_ = rc.getUpValue( src_.v1uvnumber_ ).tobool(); break;
+                case kSrcLiteral: rc.thread->rb0_ = src_.literal().tobool(); break;
             }
             break;
         }
@@ -2607,6 +2629,7 @@ void Ast::Move::run( Stack& stack, const RunContext& rc) const
             switch (src_.v1src_)
             {
                 case kSrcUpval: const_cast<RunContext&>(rc).upvalues_ = NEW_UPVAL( cv_, rc.upvalues_, rc.getUpValue( src_.v1uvnumber_ ) ); break;
+                case kSrcLiteral: const_cast<RunContext&>(rc).upvalues_ = NEW_UPVAL( cv_, rc.upvalues_, src_.literal() ); break;
             }
             break;
         }
@@ -3393,6 +3416,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         Ast::ApplyIndexOperator* pIndex  = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
         if (pIndex)
         {
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL            
             const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
             if (plit && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
             {
@@ -3401,6 +3425,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 ++i;
             }
             else
+#endif 
             {
                 const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
                 if (pmove && pmove->destIsStack() && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
@@ -3438,6 +3463,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
         if (plit)
         {
@@ -3450,12 +3476,13 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
             continue;
         }
+#endif 
 
 
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
-        const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
+        const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
+        if (pmove && pmove->destIsStack())
         {
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (pTav2v && pTav2v->srcthing_ == kSrcStack)
             {
@@ -3464,16 +3491,16 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 ++i;
                 continue;
             }
+#endif 
             Ast::ValueEater* ve = dynamic_cast<Ast::ValueEater*>(ast[i+1]);
             if (ve && ve->srcIsStack())
             {
-                ve->setSrcUpval( pup );
+                ve->setSrcOther( pmove->source() );
                 ast[i] = &noop;
                 ++i;
                 continue;
             }
         }
-#endif 
     }
     delNoops();
 
@@ -3493,9 +3520,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
             continue;
         }
-#endif
-        
-#if 1
         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
         if (plit)
         {
@@ -3628,7 +3652,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     delete pthird;
                     continue;
                 }
-#endif 
                 Ast::PushLiteral* pthird2 = dynamic_cast<Ast::PushLiteral*>(ast[j]);
                 if (pthird2)
                 {
@@ -3637,6 +3660,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     delete pthird2;
                     continue;
                 }
+#endif 
             }
         }
     }
@@ -3855,7 +3879,8 @@ Parser::Program::Program
             {
                 ParseLiteral aLiteral(stream);
 //                std::cerr << "got literal:"; aLiteral.value().tostring(std::cerr); std::cerr << "\n";
-                ast_.push_back( new Ast::PushLiteral(aLiteral.value()) );
+                ast_.push_back( new Ast::Move(aLiteral.value()) );
+//                ast_.push_back( new Ast::PushLiteral(aLiteral.value()) );
                 continue;
             } catch ( const ErrorNoMatch& ) {}
 
@@ -4226,15 +4251,15 @@ Parser::Program::Program
                     mark.accept();
                     Ast::Base* prev = ast_.back();
                     ast_.pop_back();
-                    Ast::PushLiteral* who = dynamic_cast<Ast::PushLiteral*>(prev);
-                    if (!who || !who->v_.isstr())
+                    Ast::Move* who = dynamic_cast<Ast::Move*>(prev);
+                    if (!who || !who->srcIsStr())
                         throw std::runtime_error("import requires a preceding string");
                     ImportParsingContext importContext
                     (   parsecontext, stream,
                         parent, upvalueChain,
                         pRecParsing
                     );
-                    RequireKeyword requireImport( who->v_.tostr().c_str() );
+                    RequireKeyword requireImport( who->tostr().c_str() );
                     delete prev;
                     // bah, really need to pass in parent's upvalue chain here
                     auto prog = requireImport.parseToProgramWithUpvals( importContext, upvalueChain, gDumpMode ); // DUMP
