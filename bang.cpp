@@ -1208,81 +1208,97 @@ namespace Ast
         }
         virtual void run( Stack& s, const RunContext& rc ) const;
     };
-    
 
-    class ApplyThingAndValue2ValueOperator : public Base, public ValueMaker
+
+    class SecondValueEater
+    {
+    public:
+        ValueEater secondsrc_;
+        ValueEater& secondValueSrc() { return secondsrc_; }
+        const ValueEater& secondValueSrc() const { return secondsrc_; }
+        void setSecondSrcOther( const ValueEater& other ) { secondsrc_.setSrcOther( other ); }
+        bool secondValueIsStack() const { return secondsrc_.srcIsStack(); }
+        virtual bool firstValueNotStack() = 0;
+    };
+
+    class ApplyThingAndValue2ValueOperator : public Base, public ValueMaker, public SecondValueEater
     {
     public:
         EOperators openum_ ; // method
         ESourceDest srcthing_;
-        ESourceDest srcother_;
         Value thingLiteral_; // when srcthing_ == kSrcLiteral
-        Value otherLiteral_; // when srcthing_ == kSrcLiteral
         tfn_opThingAndValue2Value thingliteralop_;
         NthParent uvnumber_; // when srcthing_ == kSrcLiteral
         std::string thinguvname_;
-        NthParent uvnumberOther_;
-        std::string otheruvname_;
+
+        bool firstValueNotStack() { return srcthing_ != kSrcStack; }
+
+//         ESourceDest srcother_;
+//         Value otherLiteral_; // when srcthing_ == kSrcLiteral
+//         NthParent uvnumberOther_;
+//         std::string otheruvname_;
+        
         ApplyThingAndValue2ValueOperator( EOperators openum )
         : Base( kApplyThingAndValue2ValueOperator ),
           openum_( openum ),
           srcthing_( kSrcStack ),
-          srcother_( kSrcStack ),
-          uvnumber_( kNoParent ),
-          uvnumberOther_( kNoParent )
+          uvnumber_( kNoParent )
         {}
 
         bool thingNotStack() { return srcthing_ != kSrcStack; }
 
         void setThingRegister() { srcthing_ = kSrcRegister; }
 
-        void setThingLiteral( const Bang::Value& thinglit )
-        {
-            thingLiteral_ = thinglit;
-            thingliteralop_ = thinglit.getOperator( openum_ );
-            srcthing_ = kSrcLiteral;
-        }
+//         void setThingLiteral( const Bang::Value& thinglit )
+//         {
+//             thingLiteral_ = thinglit;
+//             thingliteralop_ = thinglit.getOperator( openum_ );
+//             srcthing_ = kSrcLiteral;
+//         }
+
 //         void setThingUpval( const ValueEaterAst::PushUpval* pup )
 //         {
 //             uvnumber_ = pup->uvnumber_;
 //             thinguvname_ = pup->name_;
 //             srcthing_ = kSrcUpval;
 //         }
-        void setThingSource( const ValueEater& other )
+        void setThingVeSrc( const ValueEater& other )
         {
-            bangerr() << "need to implement setThingValueEater";
+            srcthing_ = other.v1src_;
+            if (srcthing_ == kSrcLiteral)
+            {
+                thingLiteral_ = other.v1literal_;
+                thingliteralop_ = thingLiteral_.getOperator( openum_ );
+            }
+            else
+            {
+                uvnumber_ = other.v1uvnumber_;
+                thinguvname_ = other.v1uvname_;
+            }
         }
-        void setOtherSource( const ValueEater& other )
-        {
-            bangerr() << "need to implement setThingValueEater";
-        }
+//         void setOtherSource( const ValueEater& other )
+//         {
+//             bangerr() << "need to implement setThingValueEater";
+//         }
 //         void setOtherUpval( const Ast::PushUpval* pup )
 //         {
 //             uvnumberOther_ = pup->uvnumber_;
 //             otheruvname_ = pup->name_;
 //             srcother_ = kSrcUpval;
 //         }
-        void setOtherLiteral( const Bang::Value& lit )
-        {
-            otherLiteral_ = lit;
-            srcother_ = kSrcLiteral;
-        }
-        void setOtherRegister() { srcother_ = kSrcRegister; }
+//         void setOtherLiteral( const Bang::Value& lit )
+//         {
+//             otherLiteral_ = lit;
+//             srcother_ = kSrcLiteral;
+//         }
+        void setOtherRegister() { secondsrc_.setSrcRegister(); }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "ApplyThingAndValue2ValueOperator( ";
 
-            o << " s1=" << sd2str(srcother_);
-            if (srcother_ == kSrcLiteral)
-            {
-                o << ',';
-                otherLiteral_.dump( o );
-            }
-            else if (srcother_ == kSrcUpval)
-            {
-                o << '#' << uvnumberOther_.toint() << ',' << otheruvname_;
-            }
+            o << " s1=";
+            secondsrc_.dump(o);
 
             o << " s2=" << sd2str(srcthing_) ;
             if (srcthing_ == kSrcLiteral)
@@ -1306,22 +1322,22 @@ namespace Ast
         virtual void run( Stack& stack, const RunContext& rc ) const
         {
             bangerr() << "ApplyThingAndValue2ValueOperator::run() should not be called";
-            switch (srcthing_)
-            {
-                case kSrcLiteral:
-                    stack.push( thingLiteral_.applyAndValue2Value( openum_,
-                            srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
-                    break;
-                case kSrcUpval:
-                    stack.push( rc.getUpValue( uvnumber_ ).applyAndValue2Value( openum_,
-                            srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
-                    break;
-                case kSrcStack:
-                    const Value& owner = stack.pop();
-                    stack.push( owner.applyAndValue2Value( openum_,
-                            srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
-                    break;
-            }
+//             switch (srcthing_)
+//             {
+//                 case kSrcLiteral:
+//                     stack.push( thingLiteral_.applyAndValue2Value( openum_,
+//                             srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
+//                     break;
+//                 case kSrcUpval:
+//                     stack.push( rc.getUpValue( uvnumber_ ).applyAndValue2Value( openum_,
+//                             srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
+//                     break;
+//                 case kSrcStack:
+//                     const Value& owner = stack.pop();
+//                     stack.push( owner.applyAndValue2Value( openum_,
+//                             srcother_ == kSrcUpval ? rc.getUpValue(uvnumberOther_) : stack.pop() ) );
+//                     break;
+//             }
         }
 
 //         inline Bang::Value getOtherValue( const RunContext& frame, Stack& stack ) const
@@ -1992,10 +2008,10 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom { };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
-            switch( pa.srcother_ ) {
-                case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, frame.getUpValue(pa.uvnumberOther_) );
+            switch( pa.secondsrc_.v1src_ ) {
+                case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
                 case kSrcRegister: return pa.thingliteralop_( pa.thingLiteral_, pThread->r0_ );
-                case kSrcLiteral:  return pa.thingliteralop_( pa.thingLiteral_, pa.otherLiteral_ );
+                case kSrcLiteral:  return pa.thingliteralop_( pa.thingLiteral_, pa.secondsrc_.v1literal_ );
                 default:           return pa.thingliteralop_( pa.thingLiteral_, stack.pop() );
             }
         }
@@ -2003,20 +2019,20 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcRegister> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
 //            return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
-            switch( pa.srcother_ ) {
-                case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
+            switch( pa.secondsrc_.v1src_ ) {
+                case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
                 case kSrcRegister: return  pThread->r0_.applyAndValue2Value( pa.openum_, pThread->r0_ );
-                case kSrcLiteral:  return  pThread->r0_.applyAndValue2Value( pa.openum_, pa.otherLiteral_ );
+                case kSrcLiteral:  return  pThread->r0_.applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
                 default:           return  pThread->r0_.applyAndValue2Value( pa.openum_, stack.pop() );
             }
         }
     };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcUpval> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
-            switch( pa.srcother_ ) {
-                case kSrcUpval:    return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
+            switch( pa.secondsrc_.v1src_ ) {
+                case kSrcUpval:    return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
                 case kSrcRegister: return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pThread->r0_ );
-                case kSrcLiteral:  return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa.otherLiteral_ );
+                case kSrcLiteral:  return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
                 default:           return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, stack.pop() );
             }
             
@@ -2025,8 +2041,8 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcStack> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             const Value& owner = stack.pop();
-            switch( pa.srcother_ ) {
-                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.uvnumberOther_) );
+            switch( pa.secondsrc_.v1src_ ) {
+                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
                 case kSrcRegister: return owner.applyAndValue2Value( pa.openum_, pThread->r0_ );
                 default:           return owner.applyAndValue2Value( pa.openum_, stack.pop() );
             }
@@ -3416,24 +3432,12 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         Ast::ApplyIndexOperator* pIndex  = dynamic_cast<Ast::ApplyIndexOperator*>(ast[i+1]);
         if (pIndex)
         {
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL            
-            const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
-            if (plit && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
+            const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
+            if (pmove && pmove->destIsStack() && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
             {
-                pIndex->setIndexValueLiteral( plit->v_ );
+                pIndex->setIndexValueSource( pmove->source() );
                 ast[i] = &noop;
                 ++i;
-            }
-            else
-#endif 
-            {
-                const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
-                if (pmove && pmove->destIsStack() && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
-                {
-                    pIndex->setIndexValueSource( pmove->source() );
-                    ast[i] = &noop;
-                    ++i;
-                }
             }
             continue;
         }
@@ -3463,35 +3467,18 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 #if LCFG_OPTIMIZE_OPVV2V_WITHLIT
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
-        const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
-        if (plit)
-        {
-            Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v && pTav2v->srcthing_ == kSrcStack)
-            {
-                pTav2v->setThingLiteral( plit->v_ );
-                ast[i] = &noop;
-                ++i;
-            }
-            continue;
-        }
-#endif 
-
-
         const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
         if (pmove && pmove->destIsStack())
         {
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (pTav2v && pTav2v->srcthing_ == kSrcStack)
             {
-                pTav2v->setThingUpval( pup );
+                pTav2v->setThingVeSrc( pmove->source() );
                 ast[i] = &noop;
                 ++i;
                 continue;
             }
-#endif 
+            
             Ast::ValueEater* ve = dynamic_cast<Ast::ValueEater*>(ast[i+1]);
             if (ve && ve->srcIsStack())
             {
@@ -3507,32 +3494,18 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
-        const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-        if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
+        const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
+        if (pmove && pmove->destIsStack())
         {
-            Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v && pTav2v->thingNotStack() && pTav2v->srcother_ == kSrcStack)
+            Ast::SecondValueEater* sve = dynamic_cast<Ast::SecondValueEater*>(ast[i+1]);
+            if (sve && sve->firstValueNotStack() && sve->secondValueIsStack())
             {
-                pTav2v->setOtherUpval( pup );
+                sve->setSecondSrcOther( pmove->source() );
                 ast[i] = &noop;
                 ++i;
             }
             continue;
         }
-        const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
-        if (plit)
-        {
-            Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v && pTav2v->thingNotStack() && pTav2v->srcother_ == kSrcStack)
-            {
-                pTav2v->setOtherLiteral( plit->v_ );
-                ast[i] = &noop;
-                ++i;
-            }
-            continue;
-        }
-#endif 
     }
 
     delNoops();
@@ -3613,7 +3586,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         if (pfirst && pfirst->dest_ == kSrcStack)
         {
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (psecond && psecond->srcother_ == kSrcStack && psecond->srcthing_ != kSrcStack)
+            if (psecond && psecond->secondValueIsStack() && psecond->srcthing_ != kSrcStack)
             {
                 pfirst->setDestRegister();
                 psecond->setOtherRegister();
@@ -3624,11 +3597,11 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
     
 
-#if 1
+#if 1 // LCFG_FULLY_CONVERTED_PUSHUPVAL       
     for (unsigned i = 2; i < ast.size(); ++i)
     {
         Ast::ApplyThingAndValue2ValueOperator* pfirst = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
-        if (pfirst && pfirst->srcother_ == kSrcStack && pfirst->thingNotStack())
+        if (pfirst && pfirst->secondValueIsStack() && pfirst->thingNotStack())
         {
             unsigned j = i - 1;
             for (; j > 0; --j)
@@ -3636,31 +3609,21 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 bool otherstackuser = false;
                 Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[j]);
 //                std::cout << "checking j=" << j << " psecond=" << psecond << " srcother_=" << psecond->srcother_ << " srcthing_=" << psecond->srcthing_ << '\n';
-                if (psecond && (psecond->srcother_ != kSrcStack && psecond->srcthing_ != kSrcStack && psecond->dest_ != kSrcStack))
+                if (psecond && (!psecond->secondValueIsStack() && psecond->firstValueNotStack() && psecond->dest_ != kSrcStack))
                     continue;
                 else
                     break;
             }
             if (j < i - 1)
             {
-#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
-                Ast::PushUpval* pthird = dynamic_cast<Ast::PushUpval*>(ast[j]);
-                if (pthird && !pthird->hasApply())
+                Ast::Move* pmove = dynamic_cast<Ast::Move*>(ast[j]);
+                if (pmove && pmove->destIsStack())
                 {
-                    pfirst->setOtherUpval( pthird );
+                    pfirst->setSecondSrcOther( pmove->source() );
                     ast[j] = &noop;
-                    delete pthird;
+                    delete pmove;
                     continue;
                 }
-                Ast::PushLiteral* pthird2 = dynamic_cast<Ast::PushLiteral*>(ast[j]);
-                if (pthird2)
-                {
-                    pfirst->setOtherLiteral( pthird2->v_ );
-                    ast[j] = &noop;
-                    delete pthird2;
-                    continue;
-                }
-#endif 
             }
         }
     }
