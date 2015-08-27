@@ -16,7 +16,7 @@ def :make-point y_ = {
        dx dx * dy dy * +
    }
 
-   save-bindings!
+   ^bind
 }
 
 1 2 make-point! as aPoint

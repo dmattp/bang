@@ -800,6 +800,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         // lookup by string / name is expensive; used for experimental object
         // system.  obviously if it's "a hit" you can optimize out much of this cost
         const Value& getUpValue( const bangstring& uvName ) const;
+        const Value& getUpValue( const bangstring& uvName, const Ast::CloseValue* upperBound ) const;
 
         SHAREDUPVALUE_CREF nthParent( const NthParent uvnumber ) const
         {

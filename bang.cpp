@@ -20,6 +20,8 @@
 #define LCFG_OPTIMIZE_OPVV2V_WITHLIT 1
 #define LCFG_USE_INDEX_OPERATOR 1
 
+#define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
+
 /*
   Keywords
     fun fun! as def
@@ -758,18 +760,34 @@ namespace Ast
         {
             return v_;
         }
-        else
+        else if (parent_)
         {
-            if (parent_)
-                return parent_->getUpValue( uvName );
-            else
-            {
-                bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
-                // throw std::runtime_error("Could not find dynamic upval");
-            }
+            return parent_->getUpValue( uvName );
         }
+        
+        bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
     }
 
+    const Value& Upvalue::getUpValue( const bangstring& uvName, const Ast::CloseValue* const upperBound ) const
+    {
+//         std::cerr << "Searching upvalue=" << uvName
+//                   << " level.closer=" << std::hex << PtrToHash(closer_) << std::dec
+//                   << " upperBound=" << std::hex << PtrToHash(upperBound) << std::dec << "\n";
+            
+        if (closer_ == upperBound)
+            ;
+        else if (uvName == closer_->valueName())
+        {
+            return v_;
+        }
+        else if (parent_)
+        {
+            return parent_->getUpValue( uvName, upperBound );
+        }
+        
+        bangerr() << "Could not find dynamic upval=\"" << uvName << "\"\n";
+    }
+    
 //     const Value& Upvalue::getUpValueFull( const bangstring& uvName ) const
 //     {
 //         if (uvName == closer_->valueName())
@@ -1103,8 +1121,23 @@ namespace Ast
         }
     };
 
-
-    
+    class OperatorBindings : public Base
+    {
+        const CloseValue* upperBound_;
+    public:
+        OperatorBindings( const CloseValue* upperBound )
+        : upperBound_( upperBound )
+        {}
+        OperatorBindings()
+        : upperBound_( nullptr )
+        {}
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "OperatorBindings( " << std::hex << PtrToHash(upperBound_) << std::dec << ")\n";
+        }
+        virtual void run( Stack& s, const RunContext& rc ) const;
+    };
     
 
     class ApplyThingAndValue2ValueOperator : public Base, public ValueMaker
@@ -1570,7 +1603,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "If (" << (boolsrc_ == kSrcStack ? "Stack" : "RegisterBool" ) << ')';
+            o << "If (" << sd2str(boolsrc_) << ')';
             
             if_->dump( level, o );
             if (else_)
@@ -1616,17 +1649,28 @@ namespace Ast
 class DynamicLookup : public Function
 {
     SHAREDUPVALUE upvalues_;
+    const Ast::CloseValue* upperBound_;
     void indexOperatorNoCtx( const Value& theIndex, Stack& stack )
     {
         const auto& str = theIndex.tostr();
-        stack.push( upvalues_->getUpValue( str ) );
+        if (upperBound_)
+            stack.push( upvalues_->getUpValue( str, upperBound_ ) );
+        else
+            stack.push( upvalues_->getUpValue( str ) );
     }
 public:
     DynamicLookup( SHAREDUPVALUE_CREF upvalues )
-    : upvalues_( upvalues )
+    : upvalues_( upvalues ),
+      upperBound_( nullptr )
     {
     }
 
+    DynamicLookup( SHAREDUPVALUE_CREF upvalues, const Ast::CloseValue* upperBound )
+    : upvalues_( upvalues ),
+      upperBound_( upperBound )
+    {
+    }
+    
     SHAREDUPVALUE_CREF upvalues() const { return upvalues_; }
     
     DLLEXPORT virtual void indexOperator( const Value& theIndex, Stack& stack, const RunContext& )
@@ -1638,6 +1682,14 @@ public:
         this->indexOperatorNoCtx( s.pop(), s ); // obtain index from stack
     }
 };
+
+/*virtual*/ void
+Ast::OperatorBindings::run( Stack& s, const RunContext& rc ) const
+{
+    const auto& bindings = NEW_BANGFUN(DynamicLookup, rc.upvalues(), upperBound_);
+    s.push( STATIC_CAST_TO_BANGFUN(bindings) );
+}
+    
     
 
 class FunctionRestoreStack : public Function
@@ -1690,11 +1742,13 @@ namespace Primitives {
 #endif 
     }
 
+#if LCFG_HAVE_SAVE_BINDINGS                
     void savebindings( Stack& s, const RunContext& rc )
     {
         const auto& bindings = NEW_BANGFUN(DynamicLookup, rc.upvalues() );
         s.push( STATIC_CAST_TO_BANGFUN(bindings) );
     }
+#endif
 
     void rebindvalues( Stack& s, const Value& v, const Value& vbindname, const Value& newval )
     {
@@ -2791,7 +2845,8 @@ class Parser
     {
         Ast::Program::astList_t ast_;
     public:
-        Program( ParsingContext& pc, StreamMark&, const Ast::Program* parent, const Ast::CloseValue* upvalueChain,
+        Program( ParsingContext& pc, StreamMark&, const Ast::Program* parent,
+            const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
             ParsingRecursiveFunStack* pRecParsing );
 
         const Ast::Program::astList_t& ast() { return ast_; }
@@ -3078,10 +3133,11 @@ class Parser
             // pNewFun_ =  new Ast::PushFun( pParentFun );
 
             Ast::Program::astList_t functionAst;
+            const Ast::CloseValue* const entryUvChain = upvalueChain;
             upvalueChain = getParamBindings( mark, functionAst, upvalueChain );
 
             //~~~ programParent??
-            Program program( parsectx, mark, nullptr, upvalueChain, pRecParsing );
+            Program program( parsectx, mark, nullptr, upvalueChain, entryUvChain, pRecParsing );
             const auto& subast = program.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
             pNewProgram_ = new Ast::Program( nullptr, functionAst );
@@ -3137,12 +3193,13 @@ class Parser
             }
 
             Ast::Program::astList_t functionAst;
+            const Ast::CloseValue* const entryUvChain = upvalueChain;
             upvalueChain = getParamBindings( mark, functionAst, upvalueChain );
 
             // std::string defFunName = pWithDefFun_->getParamName();
             pDefProg_ = new Ast::Program(nullptr);
             ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, lastParentUpvalue, *defname_ ); // , pWithDefFun_);
-            Program progdef( parsectx, mark, nullptr, upvalueChain, &recursiveStack ); // pDefFun_, &recursiveStack );
+            Program progdef( parsectx, mark, nullptr, upvalueChain, entryUvChain, &recursiveStack ); // pDefFun_, &recursiveStack );
             const auto& subast = progdef.ast();
             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
             pDefProg_->setAst( functionAst );
@@ -3158,12 +3215,12 @@ class Parser
 public:
     Parser( ParsingContext& ctx, StreamMark& mark, const Ast::Program* parent )
     {
-        program_ = new Program( ctx, mark, parent, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+        program_ = new Program( ctx, mark, parent, nullptr, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
     }
 
     Parser( ParsingContext& ctx, StreamMark& mark, const Ast::CloseValue* upvalchain )
     {
-        program_ = new Program( ctx, mark, nullptr /*parent*/, upvalchain, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+        program_ = new Program( ctx, mark, nullptr /*parent*/, upvalchain, upvalchain, nullptr ); // 0,0,0 = no upvalues, no recursive chain
     }
     
     const Ast::Program::astList_t& programAst()
@@ -3654,11 +3711,12 @@ Parser::Program::Program
 (   ParsingContext& parsecontext,
     StreamMark& stream,
     const Ast::Program* parent,
-    const Ast::CloseValue* upvalueChain,
+    const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
     ParsingRecursiveFunStack* pRecParsing
 )
 {
 //    std::cerr << "enter Program parent=" << parent << " uvchain=" << upvalueChain << "\n";
+//    const Ast::CloseValue* const entryUvChain = upvalueChain;
     try
     {
         bool bHasOpenBracket = false;
@@ -3805,7 +3863,7 @@ Parser::Program::Program
             {
                 bHasOpenIndex = true;
                 mark.accept();
-                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
+                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
                 mark.accept();
 #if 0
                 ast_.push_back( new Ast::ApplyIndexOperator( indexProgram.ast() ) );
@@ -3838,7 +3896,7 @@ Parser::Program::Program
                 mark.accept();
                 try
                 {
-                    Program ifBranch( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
+                    Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
                     Ast::Program* ifProg = new Ast::Program( nullptr, ifBranch.ast() );
                     Ast::Program* elseProg = nullptr;
                     eatwhitespace(stream);
@@ -3851,7 +3909,7 @@ Parser::Program::Program
                     {
                         mark.accept();
 //                        std::cerr << "  found else clause\n";
-                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, pRecParsing );
+                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
                         elseProg = new Ast::Program( nullptr, elseBranch.ast() );
                     }
                         
@@ -3943,6 +4001,16 @@ Parser::Program::Program
                 else if (token == "/or")
                 {
                     ast_.push_back( new Ast::ApplyThingAndValue2ValueOperator( kOpOr ) ); 
+                    continue;
+                }
+                else if (token == "^bind")
+                {
+                    ast_.push_back( new Ast::OperatorBindings( entryUvChain ) );
+                    continue;
+                }
+                else if (token == "^^bind") // not limited to current program scope
+                {
+                    ast_.push_back( new Ast::OperatorBindings() );
                     continue;
                 }
                 
@@ -4079,7 +4147,9 @@ Parser::Program::Program
                 if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
                 if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
                 if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
+#if LCFG_HAVE_SAVE_BINDINGS                
                 if (rwPrimitive( "save-bindings",    &Primitives::savebindings    ) ) continue;
+#endif 
                 if (rwPrimitive( "rebind",    &Primitives::rebindFunction    ) ) continue;
                 if (rwPrimitive( "rebind-outer",    &Primitives::rebindOuterFunction    ) ) continue;
                 if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
