@@ -1557,14 +1557,16 @@ namespace Ast
     };
 
     
-    class Apply : public Base
+    class Apply : public Base, public ValueEater
     {
     public:
         Apply() : Base( kApply ) {}
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "Apply " << where_ ;
+            o << "Apply (src=";
+            ValueEater::dump(o);
+            o << ") " << where_ ;
             if (gFailedAst == this)
                 o << " ***                                 <== *** FAILED *** ";
             o << std::endl;
@@ -2394,32 +2396,78 @@ restartTco:
                 
                 case Ast::Base::kTCOApply:
                 {
-                    const Value& v = stack.pop();
-                    switch (v.type())
+                    auto op = reinterpret_cast<const Ast::Apply*>(pInstr);
+                    switch( op->v1src_ )
                     {
-                        default: RunApplyValue( pInstr, v, stack, frame ); break;
-                        //~~~ should this setcallin? as with KTHREAD_CASE? or is it intentionally different
-                        case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
-                        case Value::kBoundFun:
-                            auto pbound = v.toboundfunhold();
-                            frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
-                            goto restartTco;
+                        case kSrcStack:
+                        {
+                            const Value& v = stack.pop();
+                            switch (v.type())
+                            {
+                                default: RunApplyValue( pInstr, v, stack, frame ); break;
+                                    //~~~ should this setcallin? as with KTHREAD_CASE? or is it intentionally different
+                                case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
+                                case Value::kBoundFun:
+                                    auto pbound = v.toboundfunhold();
+                                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+                                    goto restartTco;
+                            }
+                        }
+                        break;
+                        case kSrcUpval:
+                        {
+                            const Value& v = frame.getUpValue(op->v1uvnumber_);
+                            switch (v.type())
+                            {
+                                default: RunApplyValue( pInstr, v, stack, frame ); break;
+                                    //~~~ should this setcallin? as with KTHREAD_CASE? or is it intentionally different
+                                case Value::kThread: { auto other = v.tothread().get(); xferstack(pThread,other); pThread = other; goto restartThread; }
+                                case Value::kBoundFun:
+                                    auto pbound = v.toboundfunhold();
+                                    frame.rebind( TMPFACT_PROG_TO_RUNPROG(pbound->program_), pbound->upvalues_ );
+                                    goto restartTco;
+                            }
+                        }
+                        break;
                     }
                 }
                 break;
 
                 case Ast::Base::kApply:
                 {
-                    const Value& v = stack.pop();
-                    switch (v.type())
+                    auto op = reinterpret_cast<const Ast::Apply*>(pInstr);
+                    switch( op->v1src_ )
                     {
-                        default: RunApplyValue( pInstr, v, stack, frame ); break;
-                        KTHREAD_CASE    
-                        case Value::kBoundFun:
-                            auto pbound = v.toboundfun();
-                            inprog = pbound->program_;
-                            inupvalues = pbound->upvalues_;
-                            goto restartNonTail;
+                        case kSrcStack:
+                        {
+                            const Value& v = stack.pop();
+                            switch (v.type())
+                            {
+                                default: RunApplyValue( pInstr, v, stack, frame ); break;
+                                    KTHREAD_CASE    
+                                case Value::kBoundFun:
+                                auto pbound = v.toboundfun();
+                                inprog = pbound->program_;
+                                inupvalues = pbound->upvalues_;
+                                goto restartNonTail;
+                            }
+                        }
+                        break;
+                        case kSrcUpval:
+                        {
+                            const Value& v = frame.getUpValue(op->v1uvnumber_);
+                            switch (v.type())
+                            {
+                                default: RunApplyValue( pInstr, v, stack, frame ); break;
+                                    KTHREAD_CASE    
+                                case Value::kBoundFun:
+                                auto pbound = v.toboundfun();
+                                inprog = pbound->program_;
+                                inupvalues = pbound->upvalues_;
+                                goto restartNonTail;
+                            }
+                        }
+                        break;
                     }
                 }
                 break;
@@ -3597,7 +3645,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
     
 
-#if 1 // LCFG_FULLY_CONVERTED_PUSHUPVAL       
     for (unsigned i = 2; i < ast.size(); ++i)
     {
         Ast::ApplyThingAndValue2ValueOperator* pfirst = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
@@ -3628,7 +3675,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         }
     }
     delNoops();
-#endif 
 
 
     
