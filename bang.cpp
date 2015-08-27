@@ -21,6 +21,7 @@
 #define LCFG_USE_INDEX_OPERATOR 1
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
+#define LCFG_FULLY_CONVERTED_PUSHUPVAL 0
 
 /*
   Keywords
@@ -954,37 +955,41 @@ namespace Ast
         }
     };
 
-    class PushUpval : public Base, public IsApplicable
+    class PushUpval
     {
-    protected:
-    public:
-        std::string name_;
-        NthParent uvnumber_; // index into the active Upvalues
-        PushUpval( const std::string& name, NthParent uvnumber )
-        : name_( name ),
-          uvnumber_( uvnumber )
-        {
-        }
-
-        void setApply() {
-            IsApplicable::setApply();
-            instr_ = kApplyUpval;
-        }
-
-        virtual void dump( int level, std::ostream& o ) const
-        {
-            indentlevel(level, o);
-            o << (hasApply() ? "Apply" : "Push") << "Upval #" << uvnumber_.toint()
-              << " name='" << name_ << "'\n";
-        }
-
-        virtual void run( Stack& stack, const RunContext& ) const;
-
-        const Value& getUpValue( const RunContext& rc ) const
-        {
-            return rc.getUpValue( uvnumber_ );
-        }
     };
+
+//     class XPushUpval : public Base, public IsApplicable
+//     {
+//     protected:
+//     public:
+//         std::string name_;
+//         NthParent uvnumber_; // index into the active Upvalues
+//         PushUpval( const std::string& name, NthParent uvnumber )
+//         : name_( name ),
+//           uvnumber_( uvnumber )
+//         {
+//         }
+
+//         void setApply() {
+//             IsApplicable::setApply();
+//             instr_ = kApplyUpval;
+//         }
+
+//         virtual void dump( int level, std::ostream& o ) const
+//         {
+//             indentlevel(level, o);
+//             o << (hasApply() ? "Apply" : "Push") << "Upval #" << uvnumber_.toint()
+//               << " name='" << name_ << "'\n";
+//         }
+
+//         virtual void run( Stack& stack, const RunContext& ) const;
+
+//         const Value& getUpValue( const RunContext& rc ) const
+//         {
+//             return rc.getUpValue( uvnumber_ );
+//         }
+//     };
 
     class BoolEater
     {
@@ -1013,10 +1018,16 @@ namespace Ast
         ESourceDest sourceType() const { return v1src_; }
         bool srcIsStack() { return v1src_ == kSrcStack; }
         bool srcIsAltStack() { return v1src_ == kSrcAltStack; }
-        void setSrcUpval( const Ast::PushUpval* pup )
+//         void setSrcUpval( const Ast::PushUpval* pup )
+//         {
+//             v1uvnumber_ = pup->uvnumber_;
+//             v1uvname_ = pup->name_;
+//             v1src_ = kSrcUpval;
+//         }
+        void setSrcUpval( const std::string& name, NthParent uvnumber )
         {
-            v1uvnumber_ = pup->uvnumber_;
-            v1uvname_ = pup->name_;
+            v1uvnumber_ = uvnumber;
+            v1uvname_ = name;
             v1src_ = kSrcUpval;
         }
         void setSrcAltstack()
@@ -1052,6 +1063,8 @@ namespace Ast
             }
         }
     };
+
+    
     
 
     class DestableOperator
@@ -1085,7 +1098,45 @@ namespace Ast
             dest_ = kSrcCloseValue;
             cv_ = cv;
         }
+        bool destIsStack() const { return dest_ == kSrcStack; }
+        void dump( std::ostream& o ) const
+        {
+            if (dest_ == kSrcCloseValue)
+                cv_->dump( 0, o );
+            else
+                o << sd2str(dest_);
+        }
     };
+
+    class Move : public Base, public ValueMaker
+    {
+        ValueEater src_;
+    protected:
+    public:
+        Move( const std::string& name, NthParent uvnumber )
+        {
+            src_.setSrcUpval( name, uvnumber );
+        }
+
+        const ValueEater& source() const { return src_; }
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "Move( src=";
+            src_.dump(o);
+            o << " dest=";
+            ValueMaker::dump(o);
+            o << ")\n";
+        }
+
+        virtual void run( Stack& stack, const RunContext& ) const;
+//         const Value& getUpValue( const RunContext& rc ) const
+//         {
+//             return rc.getUpValue( uvnumber_ );
+//         }
+    };
+    
 
     class OperatorNot : public Base, public BoolEater, public BoolMaker
     {
@@ -1172,18 +1223,26 @@ namespace Ast
             thingliteralop_ = thinglit.getOperator( openum_ );
             srcthing_ = kSrcLiteral;
         }
-        void setThingUpval( const Ast::PushUpval* pup )
+//         void setThingUpval( const ValueEaterAst::PushUpval* pup )
+//         {
+//             uvnumber_ = pup->uvnumber_;
+//             thinguvname_ = pup->name_;
+//             srcthing_ = kSrcUpval;
+//         }
+        void setThingSource( const ValueEater& other )
         {
-            uvnumber_ = pup->uvnumber_;
-            thinguvname_ = pup->name_;
-            srcthing_ = kSrcUpval;
+            bangerr() << "need to implement setThingValueEater";
         }
-        void setOtherUpval( const Ast::PushUpval* pup )
+        void setOtherSource( const ValueEater& other )
         {
-            uvnumberOther_ = pup->uvnumber_;
-            otheruvname_ = pup->name_;
-            srcother_ = kSrcUpval;
+            bangerr() << "need to implement setThingValueEater";
         }
+//         void setOtherUpval( const Ast::PushUpval* pup )
+//         {
+//             uvnumberOther_ = pup->uvnumber_;
+//             otheruvname_ = pup->name_;
+//             srcother_ = kSrcUpval;
+//         }
         void setOtherLiteral( const Bang::Value& lit )
         {
             otherLiteral_ = lit;
@@ -1550,7 +1609,11 @@ namespace Ast
         bool indexValueSrcIsStack() { return indexValue_.srcIsStack(); }
         void setIndexValueSrcRegister() { return indexValue_.setSrcRegister(); }
         void setIndexValueLiteral( const Value& v ) { return indexValue_.setSrcLiteral( v ); }
-        void setIndexValueUpval( const Ast::PushUpval* pup ) { return indexValue_.setSrcUpval( pup ); }
+        
+        //void setIndexValueUpval( const Ast::PushUpval* pup ) { return indexValue_.setSrcUpval( pup ); }
+        void setIndexValueSource( const ValueEater& other ) {
+            indexValue_ = other;
+        }
         
         
 //        const Value& getMsgVal() const { return msgStr_; }
@@ -2172,6 +2235,7 @@ restartTco:
                 case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread); xferstack(pThread,other); pThread = other; goto restartThread; }
                 
                 /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL               
                 case Ast::Base::kTCOApplyUpval:
                 {
                     const Value& v = reinterpret_cast<const Ast::PushUpval*>(pInstr)->getUpValue( frame );
@@ -2206,6 +2270,7 @@ restartTco:
                     }
                 }
                 break;
+#endif
 
                 case Ast::Base::kApplyThingAndValue2ValueOperator:
                 {
@@ -2503,11 +2568,54 @@ void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
         stack.push( primitive_ );
 };
 
-void Ast::PushUpval::run( Stack& stack, const RunContext& rc) const
+void Ast::Move::run( Stack& stack, const RunContext& rc) const
 {
-    if (hasApply())
-        bangerr() << "should not be calling run for ApplyUpval";
-    stack.push( rc.getUpValue( uvnumber_ ) );
+    switch (dest_)
+    {
+        case kSrcStack:
+        {
+            switch (src_.v1src_)
+            {
+                case kSrcUpval: stack.push( rc.getUpValue( src_.v1uvnumber_ ) ); break;
+            }
+            break;
+        }
+        break;
+
+        case kSrcRegister:
+        {
+            switch (src_.v1src_)
+            {
+                case kSrcUpval: rc.thread->r0_ = rc.getUpValue( src_.v1uvnumber_ ); break;
+            }
+            break;
+        }
+        break;
+        
+        case kSrcRegisterBool:
+        {
+            switch (src_.v1src_)
+            {
+                case kSrcUpval: rc.thread->rb0_ = rc.getUpValue( src_.v1uvnumber_ ).tobool(); break;
+            }
+            break;
+        }
+        break;
+        
+        case kSrcCloseValue:
+        {
+            switch (src_.v1src_)
+            {
+                case kSrcUpval: const_cast<RunContext&>(rc).upvalues_ = NEW_UPVAL( cv_, rc.upvalues_, rc.getUpValue( src_.v1uvnumber_ ) ); break;
+            }
+            break;
+        }
+        break;
+        
+    }
+//     if (hasApply())
+//         bangerr() << "should not be calling run for ApplyUpval";
+//     stack.push( rc.getUpValue( uvnumber_ ) );
 };
 
 
@@ -3294,10 +3402,10 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
             else
             {
-                const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
-                if (pup && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
+                const Ast::Move* pmove = dynamic_cast<const Ast::Move*>(ast[i]);
+                if (pmove && pmove->destIsStack() && !pIndex->srcIsStack() && pIndex->indexValueSrcIsStack())
                 {
-                    pIndex->setIndexValueUpval( pup );
+                    pIndex->setIndexValueSource( pmove->source() );
                     ast[i] = &noop;
                     ++i;
                 }
@@ -3343,6 +3451,8 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             continue;
         }
 
+
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
         if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
@@ -3363,12 +3473,14 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                 continue;
             }
         }
+#endif 
     }
     delNoops();
 
 
     for (unsigned i = 0; i < ast.size() - 1; ++i)
     {
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
         const Ast::PushUpval* pup = dynamic_cast<const Ast::PushUpval*>(ast[i]);
         if (pup && !pup->hasApply()) // dynamic_cast<const Ast::ApplyUpval*>(pup))
         {
@@ -3381,6 +3493,8 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
             continue;
         }
+#endif
+        
 #if 1
         const Ast::PushLiteral* plit = dynamic_cast<const Ast::PushLiteral*>(ast[i]);
         if (plit)
@@ -3505,6 +3619,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             }
             if (j < i - 1)
             {
+#if LCFG_FULLY_CONVERTED_PUSHUPVAL       
                 Ast::PushUpval* pthird = dynamic_cast<Ast::PushUpval*>(ast[j]);
                 if (pthird && !pthird->hasApply())
                 {
@@ -3513,6 +3628,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
                     delete pthird;
                     continue;
                 }
+#endif 
                 Ast::PushLiteral* pthird2 = dynamic_cast<Ast::PushLiteral*>(ast[j]);
                 if (pthird2)
                 {
@@ -4178,7 +4294,7 @@ Parser::Program::Program
                                            << " in " << mark.sayWhere();
                     }
 
-                    ast_.push_back( new Ast::PushUpval(ident.name(), upvalNumber) );
+                    ast_.push_back( new Ast::Move(ident.name(), upvalNumber) );
                 }
                 
                 mark.accept();

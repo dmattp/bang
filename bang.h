@@ -16,7 +16,7 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 1
+#define LCFG_MT_SAFEISH 0
 
 
 static const char* const BANG_VERSION = "0.006";
@@ -985,7 +985,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kBreakProg,
                 kCloseValue,
                 kApply,
-                kApplyUpval,
+                kMove,
                 kApplyProgram,
                 kApplyFunRec,
                 kApplyThingAndValue2ValueOperator,
@@ -995,7 +995,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #endif 
                 kIfElse,
                 kTCOApply,
-                kTCOApplyUpval,
+                kTCOMove,
                 kTCOApplyProgram,
                 kTCOApplyFunRec,
                 kTCOIfElse,
@@ -1019,7 +1019,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                     case kApplyFunRec:  instr_ = kTCOApplyFunRec;  break;
                     case kIfElse:       instr_ = kTCOIfElse;       break;
                     case kApplyProgram: instr_ = kTCOApplyProgram; break;
-                    case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
+//                    case kApplyUpval:   instr_ = kTCOApplyUpval;   break;
                     case kApply:        instr_ = kTCOApply;        break;
                 }
             }
