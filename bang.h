@@ -993,6 +993,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kApplyIndexOperator,
 #endif 
                 kIfElse,
+                kTryCatch,
+                kThrow,
+                
                 kTCOApply,
                 kTCOApplyProgram,
                 kTCOApplyFunRec,
@@ -1062,6 +1065,7 @@ DLLEXPORT void RunProgram
         RunContext* prev;
         const Ast::Base* const *ppInstr;
         SHAREDUPVALUE    upvalues_;
+        Ast::Program *catcher;
     public:    
         SHAREDUPVALUE_CREF upvalues() const;
         SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;

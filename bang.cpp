@@ -347,7 +347,8 @@ void indentlevel( int level, std::ostream& o )
 namespace Ast { class Base; }    
 
     RunContext::RunContext()
-    : thread(nullptr), prev(nullptr), ppInstr(nullptr)
+    : thread(nullptr), prev(nullptr), ppInstr(nullptr),
+      catcher(nullptr)
     {}
     
     void RunContext::rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv )
@@ -1060,7 +1061,22 @@ namespace Ast
 
         virtual void run( Stack& stack, const RunContext& ) const;
     };
-    
+
+    class OperatorThrow : public Base
+    {
+    public:
+        OperatorThrow() : Base(kThrow)
+        {}
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "OperatorThrow\n";
+        }
+        virtual void run( Stack& s, const RunContext& rc ) const {
+            bangerr() << "OperatorThrow::run() should not be called";
+        }
+    };
+
 
     class OperatorNot : public Base, public BoolEater, public BoolMaker
     {
@@ -1551,6 +1567,33 @@ namespace Ast
     }; // end class IfElse
 
 
+    class TryCatch : public Base
+    {
+        FRIENDOF_RUNPROG
+        Ast::Program* try_;
+        Ast::Program* catch_;
+    public:
+        TryCatch( Ast::Program* try__, Ast::Program* catch__ )
+        : Base( kTryCatch ),
+          try_( try__ ),
+          catch_( catch__ )
+        {}
+
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "Try {\n";
+            
+            try_->dump( level, o );
+            indentlevel(level, o);
+            o << "} Catch {\n";
+            catch_->dump( level, o );
+            indentlevel(level,o);
+            o << "}\n";
+        }
+    }; // end class IfElse
+    
+
     class PushFunctionRec : public Base, public IsApplicable
     {
     protected:
@@ -1791,8 +1834,9 @@ namespace Primitives {
     :  thread(inthread),
        prev(inthread->callframe),
        ppInstr( inppInstr ), // , /*initialupvalues(uv),*/
-       upvalues_( uv )
-    {}
+       upvalues_( uv ),
+       catcher(nullptr)
+     {}
     
 void RunApplyValue( const Ast::Base* pInstr, const Value& v, Stack& stack, const RunContext& frame )
 {
@@ -2085,6 +2129,51 @@ restartTco:
                     }
                 }
                 break;
+
+                case Ast::Base::kTryCatch:
+                {
+                    const Ast::TryCatch* trycatch = reinterpret_cast<const Ast::TryCatch*>(pInstr);
+                    const Ast::Program* p = trycatch->try_; 
+                    inprog = p;
+                    inupvalues = frame.upvalues_;
+                    
+                    pThread->callframe =
+                        new (pThread->rcAlloc_.allocate(sizeof(RunContext)))
+                        RunContext( pThread, TMPFACT_PROG_TO_RUNPROG(inprog), inupvalues );
+
+                    pThread->callframe->catcher = trycatch->catch_;
+                    
+                    goto restartThread;
+                }
+                break;
+
+                case Ast::Base::kThrow:
+                {
+                    RunContext *pframe = &frame;
+
+                    while (pframe && !pframe->catcher)
+                    {
+                        RunContext* prev = pframe->prev;
+//                        std::cerr << "tossing frame, frame=" << pframe << " prev=" << prev << std::endl;
+                        pframe->~RunContext();
+                        pThread->rcAlloc_.deallocate( pframe, sizeof(RunContext) );
+                        pframe = prev;
+                    }
+                    
+                    if (pframe && pframe->catcher)
+                    {
+                        pThread->callframe = pframe;
+//                        std::cerr << "running catch block frame, frame=" << pframe << std::endl;
+                        pframe->rebind( TMPFACT_PROG_TO_RUNPROG(pframe->catcher), inupvalues );
+                        goto restartReturn;
+                    }
+                    else
+                    {
+                        throw AstExecFail( *(frame.ppInstr), "Unhandled exception" ); // ;e.what() );
+//                        bangerr() << 
+                    }
+                }
+                break;
                 
                 case Ast::Base::kTCOApplyProgram:
                 {
@@ -2262,7 +2351,31 @@ restartTco:
     }
     catch (const std::runtime_error& e)
     {
+        // duplicate code from kThrow
+                    RunContext *pframe = &frame;
+
+                    while (pframe && !pframe->catcher)
+                    {
+                        RunContext* prev = pframe->prev;
+//                        std::cerr << "tossing frame, frame=" << pframe << " prev=" << prev << std::endl;
+                        pframe->~RunContext();
+                        pThread->rcAlloc_.deallocate( pframe, sizeof(RunContext) );
+                        pframe = prev;
+                    }
+                    
+                    if (pframe && pframe->catcher)
+                    {
+                        pThread->callframe = pframe;
+//                        std::cerr << "running catch block frame, frame=" << pframe << std::endl;
+                        pframe->rebind( TMPFACT_PROG_TO_RUNPROG(pframe->catcher), inupvalues );
+                        goto restartReturn;
+                    }
+                    else
+                    {
         throw AstExecFail( *(frame.ppInstr), e.what() );
+//                        bangerr() << "Unhandled exception";
+                    }
+        
     }
 }
 
@@ -3576,6 +3689,7 @@ Parser::Program::Program
     {
         bool bHasOpenBracket = false;
         bool bHasOpenIndex = false;
+        bool bHasOpenTryCatch = false;
         
         while (true)
         {
@@ -3868,6 +3982,11 @@ Parser::Program::Program
                     ast_.push_back( new Ast::OperatorBindings() );
                     continue;
                 }
+                else if (token == "/throw")
+                {
+                    ast_.push_back( new Ast::OperatorThrow() );
+                    continue;
+                }
                 
                 EOperators openum = optoken2enum( token );
                 if (openum != kOpCustom)
@@ -3981,6 +4100,43 @@ Parser::Program::Program
                     auto importAst = prog->getAst();
                     std::copy( importAst->begin(), importAst->end(), std::back_inserter(ast_));
                     // ast_.push_back( new Ast::Apply() );
+                    continue;
+                }
+
+                if (ident.name() == "try")
+                {
+                    mark.accept();
+                    try
+                    {
+                        Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
+                        Ast::Program* ifProg = new Ast::Program( nullptr, ifBranch.ast() );
+                        
+                        eatwhitespace(stream);
+                        Identifier idcatch( mark );
+                        if (idcatch.name() != "catch")
+                            bangerr() << "'catch' must follow 'try'";
+                        
+                        mark.accept();
+                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
+                        Ast::Program* elseProg = new Ast::Program( nullptr, elseBranch.ast() );
+                        
+                        ast_.push_back( new Ast::TryCatch( ifProg, elseProg ) );
+
+                        bHasOpenTryCatch = true;
+                    }
+                    catch (...)
+                    {
+                        std::cerr << "?? error on ifelse\n";
+                    }
+                    continue;
+                }
+                
+                if (ident.name() == "catch")
+                {
+                    if (!bHasOpenTryCatch)
+                        break;
+
+                    bHasOpenTryCatch = false;
                     continue;
                 }
                 

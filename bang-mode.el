@@ -23,14 +23,24 @@
 (defconst bang-font-lock-keywords-2
   (append bang-font-lock-keywords-1
      (list
-      '("\\<\\(as\\|def\\|f\\(?:alse\\|un!?\\)\\|true\\)\\>" . font-lock-keyword-face)
-      '("\\([!?:;]\\)" . font-lock-dmp-subdued-keyword-face)
+      ; use regexp-opt (below) to generate this string
+      '("\\<def!? +\\(: *[[:alnum:]-_]+\\)\\>" 1 font-lock-function-name-face)
+      '("\\<\\(as\\|def\\||f\\(?:alse\\|un!?\\)\\|true\\)\\>" . font-lock-keyword-face)
+      '("\\<\\(catch\\|try\\|throw\\|lookup\\|bind\\)\\>" . font-lock-builtin-face)
+;      '("\\[:space:]def\\[:space:]\\+(w\\+)\\[:space:]\\*\\\\:" . font-lock-function-name-face)
+;      '("\\<\\(\\|try\\)\\>" . font-lock-function-name-face)
+      '("\\([?:;]\\)" . font-lock-function-name-face)
       '("\\([{}]\\)" . font-lock-function-name-face)
+      '("\\([()]\\)" . font-lock-dmp-subdued-keyword-face)
+;      '("\\([!?:;()]\\)" . font-lock-dmp-subdued-keyword-face)
+;      '("\\([{}]\\)" . font-lock-function-name-face)
       ))
   "scope / block delimiters for Bang! mode")
 
 
-;(regexp-opt '("def" "fun!" "fun" "true" "false" "as") t)
+;(regexp-opt '("def" "fun!" "fun" "true" "false" "as" "try" "catch") t)
+;(regexp-opt '("try" "catch") t)
+;(regexp-opt '("[:space:]def[:space:]+(\w+)[:space:]*\\:") t)
 ;(regexp-opt '("{" "}") t)
 ;(insert "fooq")
 
