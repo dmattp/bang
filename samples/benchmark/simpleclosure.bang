@@ -1,0 +1,17 @@
+# 1 < ? 499000; as N
+
+
+def :make-closure a b = {
+  fun = a b +
+}
+
+
+
+0
+1 def! :looper n = {
+  n 1 + as next
+  n next make-closure!
+  ! -- apply closure
+  + 
+  n 499000 < ? next looper!
+}

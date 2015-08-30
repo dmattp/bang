@@ -1,0 +1,17 @@
+# 1 < ? 499000; as N
+
+
+def :make-closure a b = {
+  ^bind
+}
+
+
+
+0
+1 def! :looper n = {
+  n 1 + as next
+  n next make-closure! as h
+  h.a h.b +
+  + 
+  n N < ? next looper!
+}
