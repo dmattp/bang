@@ -100,7 +100,7 @@ namespace Bang
                 tfn_opThingAndValue2Value opOr;
                 tfn_opThingAndValue2Value opAnd;
             };
-//            tfn_opThingAndValue2Value ops[kOpLAST];
+            tfn_opThingAndValue2Value ops[kOpLAST];
         };
         
         Operators()

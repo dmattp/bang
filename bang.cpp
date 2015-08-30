@@ -592,10 +592,21 @@ namespace Primitives
 #endif
     }
 
+    static Bang::Operators* opbytype[] = {
+        0,
+        &gBoolOperators,
+        &gNumberOperators,
+        &gStringOperators,
+        &gFunctionOperators,
+        &gFunctionOperators,
+        0,
+        0, //  @todo: make empty op table for these 
+    };
 
 
     tfn_opThingAndValue2Value Value::getOperator( EOperators which ) const
     {
+#if 0        
         Bang::Operators* op;
         switch (type_)
         {
@@ -607,6 +618,12 @@ namespace Primitives
             case kFunPrimitive: // fall through
             case kThread: bangerr() << "thingAndValue2Value operators not supported for type=" << type_;
         }
+#else
+        const Bang::Operators* const op = opbytype[type_];
+#endif
+#if 1
+        return op->ops[which];
+#else
         switch( which )
         {
             case kOpPlus:   return op->opPlus;
@@ -621,6 +638,7 @@ namespace Primitives
             case kOpAnd:    return op->opAnd;
             default: bangerr() << "op=" << which << "not supported for type=" << type_;
         }
+#endif 
     }
     
 
@@ -1965,7 +1983,27 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         }
     };
 
+    template <ESourceDest esd> struct DestSet {};
+//    template <> struct DestSet<kSrcLiteral>      { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, const Value& vv ) { 
+    template <> struct DestSet<kSrcStack>        { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { stack.push(vv); } };
+    template <> struct DestSet<kSrcRegister>     { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->r0_ = vv; } };
+    template <> struct DestSet<kSrcRegisterBool> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
+    template <> struct DestSet<kSrcCloseValue>   { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
+        frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, vv );
+    } };
 
+    template <ESourceDest esd> struct SrcGet {};
+    template <> struct SrcGet<kSrcLiteral>  { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pa.v1literal_; } };
+    template <> struct SrcGet<kSrcRegister> { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->r0_; }  };
+    template <> struct SrcGet<kSrcUpval>    { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return frame.getUpValue( pa.v1uvnumber_ ); } };
+    
+    template <ESourceDest source, ESourceDest dest> struct Mover {
+        static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
+            DestSet<dest>::set( vm, pThread, frame, stack, SrcGet<source>::get( ve, pThread, frame ) );
+        }
+    };
+
+    
     
 DLLEXPORT void RunProgram
 (   
@@ -2188,53 +2226,25 @@ restartTco:
                 {
                     const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
                     
-    switch (move.dest_)
-    {
-        case kSrcStack:
-        {
-            switch (move.src_.v1src_)
-            {
-                case kSrcUpval: stack.push( frame.getUpValue( move.src_.v1uvnumber_ ) ); break;
-                case kSrcLiteral: stack.push( move.src_.literal() ); break;
-            }
-            break;
-        }
-        break;
-
-        case kSrcRegister:
-        {
-            switch (move.src_.v1src_)
-            {
-                case kSrcUpval: frame.thread->r0_ = frame.getUpValue( move.src_.v1uvnumber_ ); break;
-                case kSrcLiteral: frame.thread->r0_ = move.src_.literal(); break;
-            }
-            break;
-        }
-        break;
-        
-        case kSrcRegisterBool:
-        {
-            switch (move.src_.v1src_)
-            {
-                case kSrcUpval: frame.thread->rb0_ = frame.getUpValue( move.src_.v1uvnumber_ ).tobool(); break;
-                case kSrcLiteral: frame.thread->rb0_ = move.src_.literal().tobool(); break;
-            }
-            break;
-        }
-        break;
-        
-        {
-        case kSrcCloseValue:
-            switch (move.src_.v1src_)
-            {
-                case kSrcUpval: const_cast<RunContext&>(frame).upvalues_ = NEW_UPVAL( move.cv_, frame.upvalues_, frame.getUpValue( move.src_.v1uvnumber_ ) ); break;
-                case kSrcLiteral: const_cast<RunContext&>(frame).upvalues_ = NEW_UPVAL( move.cv_, frame.upvalues_, move.src_.literal() ); break;
-            }
-            break;
-        }
-        break;
-        
-    }
+                    switch (move.dest_)
+                    {
+                        case kSrcStack: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcStack>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcStack>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcRegister: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcRegister>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcRegister>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcRegisterBool: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcRegisterBool>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcRegisterBool>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcCloseValue: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcCloseValue>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcCloseValue>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                    }
             }
             break;
                 
