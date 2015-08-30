@@ -347,8 +347,10 @@ void indentlevel( int level, std::ostream& o )
 namespace Ast { class Base; }    
 
     RunContext::RunContext()
-    : thread(nullptr), prev(nullptr), ppInstr(nullptr),
-      catcher(nullptr)
+    : thread(nullptr), prev(nullptr), ppInstr(nullptr)
+#if LCFG_HAVE_TRY_CATCH      
+    ,catcher(nullptr)
+#endif 
     {}
     
     void RunContext::rebind( const Ast::Base* const * inppInstr, SHAREDUPVALUE_CREF uv )
@@ -1027,15 +1029,18 @@ namespace Ast
 
     class Move : public Base, public ValueMaker
     {
+        FRIENDOF_RUNPROG
         ValueEater src_;
     protected:
     public:
         Move( const std::string& name, NthParent uvnumber )
+        : Base( kMove )
         {
             src_.setSrcUpval( name, uvnumber );
         }
 
         Move( const Value& v )
+        : Base( kMove )
         {
             src_.setSrcLiteral(v);
         }
@@ -1834,8 +1839,10 @@ namespace Primitives {
     :  thread(inthread),
        prev(inthread->callframe),
        ppInstr( inppInstr ), // , /*initialupvalues(uv),*/
-       upvalues_( uv ),
-       catcher(nullptr)
+       upvalues_( uv )
+#if LCFG_HAVE_TRY_CATCH      
+    ,catcher(nullptr)
+#endif 
      {}
     
 void RunApplyValue( const Ast::Base* pInstr, const Value& v, Stack& stack, const RunContext& frame )
@@ -2130,6 +2137,7 @@ restartTco:
                 }
                 break;
 
+#if LCFG_HAVE_TRY_CATCH                
                 case Ast::Base::kTryCatch:
                 {
                     const Ast::TryCatch* trycatch = reinterpret_cast<const Ast::TryCatch*>(pInstr);
@@ -2174,6 +2182,62 @@ restartTco:
                     }
                 }
                 break;
+#endif
+
+                case Ast::Base::kMove:
+                {
+                    const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
+                    
+    switch (move.dest_)
+    {
+        case kSrcStack:
+        {
+            switch (move.src_.v1src_)
+            {
+                case kSrcUpval: stack.push( frame.getUpValue( move.src_.v1uvnumber_ ) ); break;
+                case kSrcLiteral: stack.push( move.src_.literal() ); break;
+            }
+            break;
+        }
+        break;
+
+        case kSrcRegister:
+        {
+            switch (move.src_.v1src_)
+            {
+                case kSrcUpval: frame.thread->r0_ = frame.getUpValue( move.src_.v1uvnumber_ ); break;
+                case kSrcLiteral: frame.thread->r0_ = move.src_.literal(); break;
+            }
+            break;
+        }
+        break;
+        
+        case kSrcRegisterBool:
+        {
+            switch (move.src_.v1src_)
+            {
+                case kSrcUpval: frame.thread->rb0_ = frame.getUpValue( move.src_.v1uvnumber_ ).tobool(); break;
+                case kSrcLiteral: frame.thread->rb0_ = move.src_.literal().tobool(); break;
+            }
+            break;
+        }
+        break;
+        
+        {
+        case kSrcCloseValue:
+            switch (move.src_.v1src_)
+            {
+                case kSrcUpval: const_cast<RunContext&>(frame).upvalues_ = NEW_UPVAL( move.cv_, frame.upvalues_, frame.getUpValue( move.src_.v1uvnumber_ ) ); break;
+                case kSrcLiteral: const_cast<RunContext&>(frame).upvalues_ = NEW_UPVAL( move.cv_, frame.upvalues_, move.src_.literal() ); break;
+            }
+            break;
+        }
+        break;
+        
+    }
+            }
+            break;
+                
                 
                 case Ast::Base::kTCOApplyProgram:
                 {
@@ -2352,6 +2416,7 @@ restartTco:
     catch (const std::runtime_error& e)
     {
         // duplicate code from kThrow
+#if LCFG_HAVE_TRY_CATCH        
                     RunContext *pframe = &frame;
 
                     while (pframe && !pframe->catcher)
@@ -2371,6 +2436,7 @@ restartTco:
                         goto restartReturn;
                     }
                     else
+#endif 
                     {
         throw AstExecFail( *(frame.ppInstr), e.what() );
 //                        bangerr() << "Unhandled exception";
@@ -2479,53 +2545,7 @@ void Ast::PushPrimitive::run( Stack& stack, const RunContext& rc ) const
 
 void Ast::Move::run( Stack& stack, const RunContext& rc) const
 {
-    switch (dest_)
-    {
-        case kSrcStack:
-        {
-            switch (src_.v1src_)
-            {
-                case kSrcUpval: stack.push( rc.getUpValue( src_.v1uvnumber_ ) ); break;
-                case kSrcLiteral: stack.push( src_.literal() ); break;
-            }
-            break;
-        }
-        break;
-
-        case kSrcRegister:
-        {
-            switch (src_.v1src_)
-            {
-                case kSrcUpval: rc.thread->r0_ = rc.getUpValue( src_.v1uvnumber_ ); break;
-                case kSrcLiteral: rc.thread->r0_ = src_.literal(); break;
-            }
-            break;
-        }
-        break;
-        
-        case kSrcRegisterBool:
-        {
-            switch (src_.v1src_)
-            {
-                case kSrcUpval: rc.thread->rb0_ = rc.getUpValue( src_.v1uvnumber_ ).tobool(); break;
-                case kSrcLiteral: rc.thread->rb0_ = src_.literal().tobool(); break;
-            }
-            break;
-        }
-        break;
-        
-        case kSrcCloseValue:
-        {
-            switch (src_.v1src_)
-            {
-                case kSrcUpval: const_cast<RunContext&>(rc).upvalues_ = NEW_UPVAL( cv_, rc.upvalues_, rc.getUpValue( src_.v1uvnumber_ ) ); break;
-                case kSrcLiteral: const_cast<RunContext&>(rc).upvalues_ = NEW_UPVAL( cv_, rc.upvalues_, src_.literal() ); break;
-            }
-            break;
-        }
-        break;
-        
-    }
+    bangerr() << "Move::run() should not be called";
 //     if (hasApply())
 //         bangerr() << "should not be calling run for ApplyUpval";
 //     stack.push( rc.getUpValue( uvnumber_ ) );
