@@ -17,6 +17,7 @@
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
 #define LCFG_MT_SAFEISH 0
+#define LCFG_HAVE_TRY_CATCH 0
 
 
 static const char* const BANG_VERSION = "0.006";
@@ -593,6 +594,16 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             return *this;
         }
 
+        void operator=( double rhs )
+        {
+            if (type_ != kNum )
+            {
+                free_manual_storage();
+                type_ = kNum;
+            }
+            v_.num = rhs;
+        }
+
         const Value& operator=( Value&& rhs )
         {
 //            std::cerr << "&& operator="; rhs.tostring(std::cerr); std::cerr << "\n";
@@ -723,6 +734,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         EValueType type() const { return type_; }
 
         double tonum()  const { return v_.num; }
+//        const double& numref()  const { return v_.num; }
         bool   tobool() const { return v_.b; }
         const bangstring& tostr() const { return *reinterpret_cast<const bangstring*>(v_.cstr); }
         tfn_primitive tofunprim() const { return v_.funprim; }
@@ -991,7 +1003,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kApplyThingAndValue2ValueOperator,
 #if DOT_OPERATOR_INLINE            
                 kApplyIndexOperator,
-#endif 
+#endif
                 kIfElse,
                 kTryCatch,
                 kThrow,
@@ -1065,7 +1077,9 @@ DLLEXPORT void RunProgram
         RunContext* prev;
         const Ast::Base* const *ppInstr;
         SHAREDUPVALUE    upvalues_;
+#if LCFG_HAVE_TRY_CATCH        
         Ast::Program *catcher;
+#endif 
     public:    
         SHAREDUPVALUE_CREF upvalues() const;
         SHAREDUPVALUE_CREF nthBindingParent( const NthParent n ) const;
