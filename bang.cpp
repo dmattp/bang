@@ -650,6 +650,7 @@ namespace Primitives
         return (this->getOperator( which ))( *this, other );
     }
     
+    
     void Value::applyCustomOperator( const bangstring& theOperator, Stack& s ) const
     {
         switch (type_)
@@ -1237,6 +1238,32 @@ namespace Ast
     }; // end, class ApplyThingAndValue2ValueOperator
 
 
+    class Increment : public Base, public ValueEater, public ValueMaker
+    {
+        FRIENDOF_RUNPROG
+    public:
+//        double v_;
+        Increment() //  double toAdd )
+        : Base( kIncrement )
+//          v_(toAdd)
+        {}
+        virtual void dump( int level, std::ostream& o ) const
+        {
+            indentlevel(level, o);
+            o << "Increment ("; //  << v_;
+
+            o << " s2=" << sd2str(v1src_) ;
+            ValueEater::dump(o);
+            o << " dest=";
+            ValueMaker::dump(o);
+            
+            o << ")\n";
+        }
+        virtual void run( Stack& stack, const RunContext& rc ) const {
+            bangerr() << "Increment should not run";
+        }
+    };
+    
     class ApplyCustomOperator : public Base, public ValueEater
     {
     public:
@@ -1996,6 +2023,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct SrcGet<kSrcLiteral>  { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pa.v1literal_; } };
     template <> struct SrcGet<kSrcRegister> { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->r0_; }  };
     template <> struct SrcGet<kSrcUpval>    { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return frame.getUpValue( pa.v1uvnumber_ ); } };
+    template <> struct SrcGet<kSrcStack>    { static Bang::Value get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->stack.pop(); } };
     
     template <ESourceDest source, ESourceDest dest> struct Mover {
         static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
@@ -2003,6 +2031,11 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         }
     };
 
+    template <ESourceDest source, ESourceDest dest> struct Incrementer {
+        static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
+            DestSet<dest>::set( vm, pThread, frame, stack, SrcGet<source>::get( ve, pThread, frame ).tonum() + 1 );
+        }
+    };
     
     
 DLLEXPORT void RunProgram
@@ -2222,6 +2255,35 @@ restartTco:
                 break;
 #endif
 
+                case Ast::Base::kIncrement:
+                {
+                    const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
+                    switch (move.dest_)
+                    {
+                        case kSrcStack: { switch (move.v1src_) {
+                                case kSrcStack:   Incrementer<kSrcStack,kSrcStack>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcStack>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcStack>::domove( move, move, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcRegister: { switch (move.v1src_) {
+                                case kSrcStack:   Incrementer<kSrcStack,kSrcRegister>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcRegister>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcRegister>::domove( move, move, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcRegisterBool: { switch (move.v1src_) {
+                                case kSrcStack:   Incrementer<kSrcStack,kSrcRegisterBool>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcRegisterBool>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcRegisterBool>::domove( move, move, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcCloseValue: { switch (move.v1src_) {
+                                case kSrcStack:   Incrementer<kSrcStack,kSrcCloseValue>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcCloseValue>  ::domove( move, move, pThread, frame, stack ); break;
+                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcCloseValue>::domove( move, move, pThread, frame, stack ); break;
+                            } break; } break;
+                    }
+                }
+                break;
+                
                 case Ast::Base::kMove:
                 {
                     const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
@@ -3526,6 +3588,25 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
     delNoops();
 
 
+
+#if 1
+    for (unsigned i = 0; i < ast.size(); ++i)
+    {
+        Ast::ApplyThingAndValue2ValueOperator* op = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
+        if (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum)
+        {
+            if (op->openum_ == kOpPlus && op->thingLiteral_.tonum() == 1) // || op->openum_ == kOpMinus)
+            {
+//                const double vv = op->thingLiteral_.tonum();
+                auto lno = new Ast::Increment(); //  (op->openum_ == kOpMinus) ? -vv : vv  );
+                *static_cast<Ast::ValueMaker*>(lno) = *static_cast<Ast::ValueMaker*>(op);
+                *static_cast<Ast::ValueEater*>(lno) = op->secondsrc_;
+                ast[i] = lno;
+            }
+        }
+    }
+#endif 
+    
     
     
 #endif 

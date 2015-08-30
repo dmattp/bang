@@ -1004,6 +1004,9 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #if DOT_OPERATOR_INLINE            
                 kApplyIndexOperator,
 #endif
+
+                kIncrement,
+                
                 kIfElse,
                 kTryCatch,
                 kThrow,
