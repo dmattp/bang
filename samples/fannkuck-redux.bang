@@ -45,8 +45,9 @@ def :fannkuch n = {
 
 --              setjfromplus1 1 i range!
      1 def! :inner9 jpr = {
-       jpr 1 + p[] jpr p/set
-       jpr i < ? jpr 1 + inner9!
+       jpr 1 + as next-jpr
+       p[next-jpr] jpr p/set
+       jpr i < ? next-jpr inner9!
      }
 
               t i 1 +  p/set
