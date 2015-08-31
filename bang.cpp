@@ -2037,6 +2037,10 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         }
     };
     
+
+#define LCFG_COMPUTED_GOTO 1
+
+
     
 DLLEXPORT void RunProgram
 (   
@@ -2056,6 +2060,45 @@ restartThread:
 restartReturn:
     RunContext& frame = *(pThread->callframe);
 restartTco:
+
+#if LCFG_COMPUTED_GOTO     
+# define OPCODE_LOC(op) OPCODE_START_##op
+#else
+# define OPCODE_LOC(op) case Ast::Base::op
+#endif
+
+    
+
+    static void* dispatch_table[] = {
+        &&OPCODE_LOC(kUnk),
+        &&OPCODE_LOC(kBreakProg),
+        &&OPCODE_LOC(kCloseValue),
+        &&OPCODE_LOC(kApply),
+        &&OPCODE_LOC(kMove),
+        &&OPCODE_LOC(kApplyProgram),
+        &&OPCODE_LOC(kApplyFunRec),
+        &&OPCODE_LOC(kApplyThingAndValue2ValueOperator),
+#if DOT_OPERATOR_INLINE            
+        &&OPCODE_LOC(kApplyIndexOperator),
+#endif
+        &&OPCODE_LOC(kIncrement),
+        &&OPCODE_LOC(kIfElse),
+#if LCFG_HAVE_TRY_CATCH        
+        &&OPCODE_LOC(kTryCatch),
+        &&OPCODE_LOC(kThrow),
+#else
+        0,
+        0,
+#endif 
+        &&OPCODE_LOC(kTCOApply),
+        &&OPCODE_LOC(kTCOApplyProgram),
+        &&OPCODE_LOC(kTCOApplyFunRec),
+        &&OPCODE_LOC(kTCOIfElse),
+        &&OPCODE_LOC(kMakeCoroutine),
+        &&OPCODE_LOC(kYieldCoroutine),
+        &&OPCODE_LOC(kEofMarker)
+    };
+    
     try
     {
         //const Ast::Base* const ** pppInstr = &(frame.ppInstr);
@@ -2063,14 +2106,18 @@ restartTco:
         while (true)
         {
             const Ast::Base* pInstr = *(frame.ppInstr++);
-            switch (pInstr->instr_)
-            {
-                case Ast::Base::kUnk:
+#if LCFG_COMPUTED_GOTO
+            goto *dispatch_table[pInstr->instr_];
+            do {
+#else
+            switch (pInstr->instr_) {
+#endif 
+            OPCODE_LOC(kUnk):
                     pInstr->run( stack, frame );
                     break;
 
 //                dobreakprog:
-                case Ast::Base::kBreakProg:
+                OPCODE_LOC(kBreakProg):
                 {
                     RunContext* prev = frame.prev;
                     frame.~RunContext();
@@ -2091,7 +2138,7 @@ restartTco:
                     }
                 }
 
-                case Ast::Base::kYieldCoroutine:
+            OPCODE_LOC(kYieldCoroutine):
                     if (pThread->pCaller)
                     {
                         if (reinterpret_cast<const Ast::YieldCoroutine*>(pInstr)->shouldXferstack())
@@ -2104,7 +2151,7 @@ restartTco:
 
                 
 
-                case Ast::Base::kEofMarker:
+        OPCODE_LOC(kEofMarker):
                 {
                     auto pEof = reinterpret_cast<const Ast::EofMarker*>(pInstr);
                     pEof->repl_prompt(stack);
@@ -2148,11 +2195,11 @@ restartTco:
                 }
                 break;
 
-                case Ast::Base:: kMakeCoroutine:
+            OPCODE_LOC(kMakeCoroutine):
                     Ast::MakeCoroutine::go( stack, pThread );
                     break;
 
-                case Ast::Base::kCloseValue:
+                OPCODE_LOC(kCloseValue):
                     frame.upvalues_ =
                         NEW_UPVAL
                         (   reinterpret_cast<const Ast::CloseValue*>(pInstr),
@@ -2161,7 +2208,7 @@ restartTco:
                         );
                     break; // goto restartTco;
 
-                case Ast::Base::kTCOApplyFunRec:
+                OPCODE_LOC(kTCOApplyFunRec):
                 {
                     // no dynamic cast, should be safe since we know the type from instr_
 //                    std::cerr << "got kTCOApplyFunRec" << std::endl;
@@ -2174,7 +2221,7 @@ restartTco:
                 }
                 break;
 
-                case Ast::Base::kApplyFunRec:
+            OPCODE_LOC(kApplyFunRec):
                 {
                     const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
                     inprog = afn->pRecFun_;
@@ -2183,7 +2230,7 @@ restartTco:
                 }
                 break;
                 
-                case Ast::Base::kTCOIfElse:
+            OPCODE_LOC(kTCOIfElse):
                 {
                     const Ast::IfElse* ifelse = reinterpret_cast<const Ast::IfElse*>(pInstr);
                     const Ast::Program* p = ifelse->branchTaken(*pThread);
@@ -2195,7 +2242,7 @@ restartTco:
                 }
                 break;
 
-                case Ast::Base::kIfElse:
+            OPCODE_LOC(kIfElse):
                 {
                     const Ast::IfElse* ifelse = reinterpret_cast<const Ast::IfElse*>(pInstr);
                     const Ast::Program* p = ifelse->branchTaken(*pThread);
@@ -2209,7 +2256,7 @@ restartTco:
                 break;
 
 #if LCFG_HAVE_TRY_CATCH                
-                case Ast::Base::kTryCatch:
+            OPCODE_LOC(kTryCatch):
                 {
                     const Ast::TryCatch* trycatch = reinterpret_cast<const Ast::TryCatch*>(pInstr);
                     const Ast::Program* p = trycatch->try_; 
@@ -2226,7 +2273,7 @@ restartTco:
                 }
                 break;
 
-                case Ast::Base::kThrow:
+            OPCODE_LOC(kThrow):
                 {
                     RunContext *pframe = &frame;
 
@@ -2255,7 +2302,8 @@ restartTco:
                 break;
 #endif
 
-                case Ast::Base::kIncrement:
+            OPCODE_LOC(kIncrement):
+#if 0                
                 {
                     const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
                     switch (move.dest_)
@@ -2282,9 +2330,10 @@ restartTco:
                             } break; } break;
                     }
                 }
+#endif 
                 break;
                 
-                case Ast::Base::kMove:
+            OPCODE_LOC(kMove):
                 {
                     const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
                     
@@ -2311,7 +2360,7 @@ restartTco:
             break;
                 
                 
-                case Ast::Base::kTCOApplyProgram:
+        OPCODE_LOC(kTCOApplyProgram):
                 {
                     const Ast::Program* afn = reinterpret_cast<const Ast::Program*>(pInstr); 
                     frame.rebind( TMPFACT_PROG_TO_RUNPROG(afn) );
@@ -2319,7 +2368,7 @@ restartTco:
                 }
                 break;
 
-                case Ast::Base::kApplyProgram:
+            OPCODE_LOC(kApplyProgram):
                 {
                     const Ast::Program* afn = reinterpret_cast<const Ast::Program*>(pInstr);
                     inprog = afn;
@@ -2333,7 +2382,7 @@ restartTco:
                 
                 /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
 
-                case Ast::Base::kApplyThingAndValue2ValueOperator:
+            OPCODE_LOC(kApplyThingAndValue2ValueOperator):
                 {
                     const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
                     switch (pa.dest_)
@@ -2347,7 +2396,7 @@ restartTco:
                 break;
 
 #if DOT_OPERATOR_INLINE
-                case Ast::Base::kApplyIndexOperator:
+            OPCODE_LOC(kApplyIndexOperator):
                 {
                     auto op = reinterpret_cast<const Ast::ApplyIndexOperator*>(pInstr);
                     auto rc = frame;
@@ -2404,7 +2453,7 @@ restartTco:
                 break;
 #endif 
                 
-                case Ast::Base::kTCOApply:
+            OPCODE_LOC(kTCOApply):
                 {
                     auto op = reinterpret_cast<const Ast::Apply*>(pInstr);
                     switch( op->v1src_ )
@@ -2443,7 +2492,7 @@ restartTco:
                 }
                 break;
 
-                case Ast::Base::kApply:
+            OPCODE_LOC(kApply):
                 {
                     auto op = reinterpret_cast<const Ast::Apply*>(pInstr);
                     switch( op->v1src_ )
@@ -2481,7 +2530,11 @@ restartTco:
                     }
                 }
                 break;
+#if LCFG_COMPUTED_GOTO
+            } while( 0 );
+#else
             } // end,instr switch
+#endif 
         } // end, while loop incrementing PC
 
     }
@@ -3589,7 +3642,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
 
 
-#if 1
+#if 0
     for (unsigned i = 0; i < ast.size(); ++i)
     {
         Ast::ApplyThingAndValue2ValueOperator* op = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
