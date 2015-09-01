@@ -149,6 +149,39 @@ pifi jitit_increment( double constval, Bang::EOperators eop )
 }
 
 
+typedef double (*pifi_up)(Bang::Upvalue* puv );    /* Pointer to Int Function of Int */
+
+pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop )
+{
+  jit_node_t  *in;
+  pifi         incr;
+
+  initjitter();
+
+  _jit = jit_new_state();
+  jit_prolog();                    /*      prolog              */
+  in = jit_arg_f();                  /*      in = arg            */
+  jit_getarg_d(JIT_F0, in);          /*      getarg R0           */
+  switch( eop ) {
+      case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpMinus: jit_subi_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpMult: jit_muli_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpDiv: jit_divi_d(JIT_F0, JIT_F0, constval);  break;
+  }
+  jit_retr_d(JIT_F0);                /*      retr   R0           */
+
+  incr = reinterpret_cast<pifi>(jit_emit());
+  jit_clear_state();
+
+  /* call the generated code, passing 5 as an argument */
+  //printf("%d + 1 = %d\n", 5, incr(5));
+
+//  jit_destroy_state();
+//  finish_jit();
+  return incr;
+}
+
+
 namespace {
     
     bool gDumpMode(false);
@@ -2376,12 +2409,12 @@ restartTco:
                     // static pifi f_incr = jitit_increment();
                     
                     const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
-                    double v;
-                    switch (move.v1src_) {
-                        case kSrcStack:   v = SrcGet<kSrcStack>  ::get( move, pThread, frame ).tonum(); break;
-                        case kSrcUpval:   v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
-                        case kSrcLiteral: v = SrcGet<kSrcLiteral>::get( move, pThread, frame ).tonum(); break;
-                    }
+                    double v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); // break;
+//                     switch (move.v1src_) {
+//                         case kSrcStack:   v = 
+//                         case kSrcUpval:   v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
+//                         case kSrcLiteral: v = SrcGet<kSrcLiteral>::get( move, pThread, frame ).tonum(); break;
+//                     }
                     double v2 = move.f_op( v ); //  + 1;
                     switch (move.dest_)
                     {

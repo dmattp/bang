@@ -772,8 +772,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
     private:
         const Ast::CloseValue* closer_; // contains the symbolic name to which the upvalue is bound
         SHAREDUPVALUE parent_;  // the upvalue chain
-        Value v_; // the value itself
     public:
+        Value v_; // the value itself
 //         ~Upvalue()
 //         {
 //             parent_.reset();
