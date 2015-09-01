@@ -2063,8 +2063,14 @@ restartTco:
 
 #if LCFG_COMPUTED_GOTO     
 # define OPCODE_LOC(op) OPCODE_START_##op
+# define OPCODE_2LOC(pre,op) OPCODE_START_##pre##op
+# define OPCODE_END() \
+            pInstr = *(frame.ppInstr++); \
+            goto *dispatch_table[pInstr->instr_];
 #else
 # define OPCODE_LOC(op) case Ast::Base::op
+# define OPCODE_2LOC,(pre,op) OPCODE_START_##pre##op
+# define OPCODE_END() break
 #endif
 
     
@@ -2099,13 +2105,14 @@ restartTco:
         &&OPCODE_LOC(kEofMarker)
     };
     
+    const Ast::Base* pInstr;
     try
     {
         //const Ast::Base* const ** pppInstr = &(frame.ppInstr);
         //for ( ;true; ++*pppInstr)
         while (true)
         {
-            const Ast::Base* pInstr = *(frame.ppInstr++);
+            pInstr = *(frame.ppInstr++);
 #if LCFG_COMPUTED_GOTO
             goto *dispatch_table[pInstr->instr_];
             do {
@@ -2114,7 +2121,7 @@ restartTco:
 #endif 
             OPCODE_LOC(kUnk):
                     pInstr->run( stack, frame );
-                    break;
+            OPCODE_END()
 
 //                dobreakprog:
                 OPCODE_LOC(kBreakProg):
@@ -2193,11 +2200,11 @@ restartTco:
                         }
                     }
                 }
-                break;
+        OPCODE_END();
 
             OPCODE_LOC(kMakeCoroutine):
                     Ast::MakeCoroutine::go( stack, pThread );
-                    break;
+            OPCODE_END();
 
                 OPCODE_LOC(kCloseValue):
                     frame.upvalues_ =
@@ -2206,8 +2213,8 @@ restartTco:
                             frame.upvalues_,
                             stack.pop()
                         );
-                    break; // goto restartTco;
-
+                OPCODE_END();
+            
                 OPCODE_LOC(kTCOApplyFunRec):
                 {
                     // no dynamic cast, should be safe since we know the type from instr_
@@ -2219,7 +2226,7 @@ restartTco:
                     );
                     goto restartTco;
                 }
-                break;
+                OPCODE_END();
 
             OPCODE_LOC(kApplyFunRec):
                 {
@@ -2228,7 +2235,7 @@ restartTco:
                     inupvalues = (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ );
                     goto restartNonTail;
                 }
-                break;
+                OPCODE_END();
                 
             OPCODE_LOC(kTCOIfElse):
                 {
@@ -2240,7 +2247,7 @@ restartTco:
                         goto restartTco;
                     }
                 }
-                break;
+                OPCODE_END();
 
             OPCODE_LOC(kIfElse):
                 {
@@ -2253,7 +2260,7 @@ restartTco:
                         goto restartNonTail;
                     }
                 }
-                break;
+                OPCODE_END();
 
 #if LCFG_HAVE_TRY_CATCH                
             OPCODE_LOC(kTryCatch):
@@ -2271,7 +2278,7 @@ restartTco:
                     
                     goto restartThread;
                 }
-                break;
+                OPCODE_END();
 
             OPCODE_LOC(kThrow):
                 {
@@ -2299,11 +2306,10 @@ restartTco:
 //                        bangerr() << 
                     }
                 }
-                break;
+                OPCODE_END();
 #endif
 
             OPCODE_LOC(kIncrement):
-#if 0                
                 {
                     const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
                     switch (move.dest_)
@@ -2330,8 +2336,7 @@ restartTco:
                             } break; } break;
                     }
                 }
-#endif 
-                break;
+                OPCODE_END();
                 
             OPCODE_LOC(kMove):
                 {
@@ -2357,7 +2362,7 @@ restartTco:
                             } break; } break;
                     }
             }
-            break;
+            OPCODE_END();
                 
                 
         OPCODE_LOC(kTCOApplyProgram):
@@ -2366,7 +2371,7 @@ restartTco:
                     frame.rebind( TMPFACT_PROG_TO_RUNPROG(afn) );
                     goto restartTco;
                 }
-                break;
+            OPCODE_END();
 
             OPCODE_LOC(kApplyProgram):
                 {
@@ -2375,7 +2380,7 @@ restartTco:
                     inupvalues = frame.upvalues_;
                     goto restartNonTail;
                 }
-                break;
+            OPCODE_END();
 
 #define KTHREAD_CASE \
                 case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread); xferstack(pThread,other); pThread = other; goto restartThread; }
@@ -2384,7 +2389,12 @@ restartTco:
 
             OPCODE_LOC(kApplyThingAndValue2ValueOperator):
                 {
+//                     static void* dispatch_table_tav2v = { &&OPCODE_2LOC(tav2v,kSrcStack), 0, 0, 0,
+//                                          &&OPCODE_2LOC(tav2v,kSrcRegister),
+//                                          &&OPCODE_2LOC(tav2v,kSrcRegisterBool),
+//                                          &&OPCODE_2LOC(tav2v,kSrcCloseValue) };
                     const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
+//                    goto *dispatch_table_tav2v[pa.dest_];
                     switch (pa.dest_)
                     {
                         case kSrcStack:        ApplyThingValueCall<kSrcStack>       ::docall( stack, pThread, frame, pa ); break;
@@ -2393,7 +2403,7 @@ restartTco:
                         case kSrcCloseValue:   ApplyThingValueCall<kSrcCloseValue>  ::docall( stack, pThread, frame, pa ); break;
                     }
                 }
-                break;
+            OPCODE_END();
 
 #if DOT_OPERATOR_INLINE
             OPCODE_LOC(kApplyIndexOperator):
@@ -2450,7 +2460,7 @@ restartTco:
                         break;
                     }
                 }
-                break;
+            OPCODE_END();
 #endif 
                 
             OPCODE_LOC(kTCOApply):
@@ -2490,7 +2500,7 @@ restartTco:
                         break;
                     }
                 }
-                break;
+            OPCODE_END();
 
             OPCODE_LOC(kApply):
                 {
@@ -2529,7 +2539,7 @@ restartTco:
                         break;
                     }
                 }
-                break;
+            OPCODE_END();
 #if LCFG_COMPUTED_GOTO
             } while( 0 );
 #else

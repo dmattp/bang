@@ -1,9 +1,0 @@
-def :zact n = {
-  n
-  n 2 > ? n 1 - zact! *
-}
-
-21 zact!
-4  zact!
-7  zact!
-11 zact!
