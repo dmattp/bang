@@ -93,6 +93,62 @@ And there are primitives, until a better library / module system is in place.
 
 #include "bang.h"
 
+extern "C" {
+  #include "lightning.h"
+}
+
+
+static jit_state_t *_jit;
+
+typedef double (*pifi)(double);    /* Pointer to Int Function of Int */
+
+class MyJitter
+{
+public:
+    MyJitter()
+    {
+        init_jit(0);
+    }
+};
+
+static MyJitter& initjitter()
+{
+    static MyJitter jitter;
+    return jitter;
+}
+
+//int main(int argc, char *argv[])
+pifi jitit_increment( double constval, Bang::EOperators eop )
+{
+  jit_node_t  *in;
+  pifi         incr;
+
+  initjitter();
+
+  _jit = jit_new_state();
+  jit_prolog();                    /*      prolog              */
+  in = jit_arg_f();                  /*      in = arg            */
+  jit_getarg_d(JIT_F0, in);          /*      getarg R0           */
+  switch( eop ) {
+      case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpMinus: jit_subi_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpMult: jit_muli_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpDiv: jit_divi_d(JIT_F0, JIT_F0, constval);  break;
+  }
+  jit_retr_d(JIT_F0);                /*      retr   R0           */
+
+  incr = reinterpret_cast<pifi>(jit_emit());
+  jit_clear_state();
+
+  /* call the generated code, passing 5 as an argument */
+  //printf("%d + 1 = %d\n", 5, incr(5));
+
+//  jit_destroy_state();
+//  finish_jit();
+  return incr;
+}
+
+
 namespace {
     
     bool gDumpMode(false);
@@ -1241,19 +1297,25 @@ namespace Ast
     class Increment : public Base, public ValueEater, public ValueMaker
     {
         FRIENDOF_RUNPROG
+        double v_;
+        EOperators op_;
     public:
-//        double v_;
-        Increment() //  double toAdd )
-        : Base( kIncrement )
-//          v_(toAdd)
-        {}
+        pifi f_op;
+        Increment( double toAdd, EOperators eop )
+        : Base( kIncrement ),
+          v_( toAdd ), op_( eop )
+        {
+            f_op = jitit_increment( toAdd, eop );
+        }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
             o << "Increment ("; //  << v_;
 
-            o << " s2=" << sd2str(v1src_) ;
+            o << " s2=";
             ValueEater::dump(o);
+            o << " op=" << op_ << "[" << op2str(op_) << "]";
+            o << " lit="  << v_;
             o << " dest=";
             ValueMaker::dump(o);
             
@@ -2311,29 +2373,21 @@ restartTco:
 
             OPCODE_LOC(kIncrement):
                 {
+                    // static pifi f_incr = jitit_increment();
+                    
                     const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
+                    double v;
+                    switch (move.v1src_) {
+                        case kSrcStack:   v = SrcGet<kSrcStack>  ::get( move, pThread, frame ).tonum(); break;
+                        case kSrcUpval:   v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
+                        case kSrcLiteral: v = SrcGet<kSrcLiteral>::get( move, pThread, frame ).tonum(); break;
+                    }
+                    double v2 = move.f_op( v ); //  + 1;
                     switch (move.dest_)
                     {
-                        case kSrcStack: { switch (move.v1src_) {
-                                case kSrcStack:   Incrementer<kSrcStack,kSrcStack>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcStack>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcStack>::domove( move, move, pThread, frame, stack ); break;
-                            } break; } break;
-                        case kSrcRegister: { switch (move.v1src_) {
-                                case kSrcStack:   Incrementer<kSrcStack,kSrcRegister>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcRegister>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcRegister>::domove( move, move, pThread, frame, stack ); break;
-                            } break; } break;
-                        case kSrcRegisterBool: { switch (move.v1src_) {
-                                case kSrcStack:   Incrementer<kSrcStack,kSrcRegisterBool>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcRegisterBool>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcRegisterBool>::domove( move, move, pThread, frame, stack ); break;
-                            } break; } break;
-                        case kSrcCloseValue: { switch (move.v1src_) {
-                                case kSrcStack:   Incrementer<kSrcStack,kSrcCloseValue>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcUpval:   Incrementer<kSrcUpval,kSrcCloseValue>  ::domove( move, move, pThread, frame, stack ); break;
-                                case kSrcLiteral: Incrementer<kSrcLiteral,kSrcCloseValue>::domove( move, move, pThread, frame, stack ); break;
-                            } break; } break;
+                        case kSrcStack:      DestSet<kSrcStack>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+                        case kSrcRegister:   DestSet<kSrcRegister>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+                        case kSrcCloseValue: DestSet<kSrcCloseValue>::set( move, pThread, frame, stack, Value( v2 ) ); break;
                     }
                 }
                 OPCODE_END();
@@ -3652,16 +3706,25 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
 
 
-#if 0
+#if 1
     for (unsigned i = 0; i < ast.size(); ++i)
     {
         Ast::ApplyThingAndValue2ValueOperator* op = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
-        if (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum)
+        if
+        (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum
+            &&  op->secondValueSrc().v1src_ == kSrcUpval
+            &&  op->secondValueSrc().v1uvnumber_ == NthParent(0)
+        )
         {
-            if (op->openum_ == kOpPlus && op->thingLiteral_.tonum() == 1) // || op->openum_ == kOpMinus)
+            if (( op->openum_ == kOpPlus
+                    || op->openum_ == kOpMult
+                    || op->openum_ == kOpDiv
+                    || op->openum_ == kOpMinus )
+//                && op->thingLiteral_.tonum() == 1
+            )
             {
-//                const double vv = op->thingLiteral_.tonum();
-                auto lno = new Ast::Increment(); //  (op->openum_ == kOpMinus) ? -vv : vv  );
+                const double vv = op->thingLiteral_.tonum();
+                auto lno = new Ast::Increment( vv, op->openum_ ); // == kOpMinus) ? -vv : vv  );
                 *static_cast<Ast::ValueMaker*>(lno) = *static_cast<Ast::ValueMaker*>(op);
                 *static_cast<Ast::ValueEater*>(lno) = op->secondsrc_;
                 ast[i] = lno;

@@ -2,7 +2,7 @@
 
 
 def :make-closure a b = {
-  fun = a b +
+  fun = a 10 + b +
 }
 
 

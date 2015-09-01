@@ -1,7 +1,7 @@
 
 
 local function make_closure( a, b )
-   return function() return a + b end
+   return function() return a + b + 10 end
 end
 
 local sum = 0
