@@ -18,6 +18,8 @@ CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
 
 # -fomit-frame-pointer
 
+#CPPFLAGS += -S
+
 ifeq (1,$(USE_GC))
  LDFLAGS_GC=-L$(DIR_BOEHM_LIB) -lgc
  CPPFLAGS_GC=-D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)

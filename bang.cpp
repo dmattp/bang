@@ -22,6 +22,10 @@
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
 
+#define LCFG_TRYJIT 1
+
+#define LCFG_INTLITERAL_OPTIMIZATION LCFG_TRYJIT
+
 /*
   Keywords
     fun fun! as def
@@ -86,6 +90,7 @@ And there are primitives, until a better library / module system is in place.
 #endif
 
 
+
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 #define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
@@ -93,11 +98,12 @@ And there are primitives, until a better library / module system is in place.
 
 #include "bang.h"
 
+
+#if LCFG_TRYJIT
+
 extern "C" {
   #include "lightning.h"
 }
-
-
 static jit_state_t *_jit;
 
 typedef double (*pifi)(double);    /* Pointer to Int Function of Int */
@@ -107,7 +113,7 @@ class MyJitter
 public:
     MyJitter()
     {
-        init_jit(0);
+        init_jit("/m/n2proj/bang//bang.exe");
     }
 };
 
@@ -127,7 +133,7 @@ pifi jitit_increment( double constval, Bang::EOperators eop )
 
   _jit = jit_new_state();
   jit_prolog();                    /*      prolog              */
-  in = jit_arg_f();                  /*      in = arg            */
+  in = jit_arg_d();                  /*      in = arg            */
   jit_getarg_d(JIT_F0, in);          /*      getarg R0           */
   switch( eop ) {
       case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
@@ -149,19 +155,43 @@ pifi jitit_increment( double constval, Bang::EOperators eop )
 }
 
 
-typedef double (*pifi_up)(Bang::Upvalue* puv );    /* Pointer to Int Function of Int */
+typedef double (*pifi_up)(void* upvals ); // , void* thread );    /* Pointer to Int Function of Int */
+typedef void (*pifi_up_void)(void* upvals ); // , void* thread );    /* Pointer to Int Function of Int */
 
-pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop )
+pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop, int uvnum, bool isreg )
 {
   jit_node_t  *in;
-  pifi         incr;
+  jit_node_t  *in2;
+  pifi_up         incr;
 
   initjitter();
 
   _jit = jit_new_state();
   jit_prolog();                    /*      prolog              */
-  in = jit_arg_f();                  /*      in = arg            */
-  jit_getarg_d(JIT_F0, in);          /*      getarg R0           */
+
+  in = jit_arg();                  /*      in = arg            */
+  in2 = jit_arg();                  /*      in = arg            */
+
+  jit_getarg(JIT_R0, in);          /*      getarg R0           */
+//  jit_getarg(JIT_R1, in2);          /*      getarg R0           */
+
+  if (isreg)
+  {
+      const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+      jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
+  }
+  else
+  {
+      for ( ; uvnum > 0; --uvnum)
+      {
+//      std::cerr << "uvnum=" << uvnum << "\n";
+          const size_t parentOffset = offsetof( Bang::Upvalue, parent_ );
+          jit_ldxi( JIT_R0, JIT_R0, parentOffset );
+      }
+      const size_t BVOffset = offsetof(Bang::Upvalue,v_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+      jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
+  }
+  
   switch( eop ) {
       case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
       case Bang::kOpMinus: jit_subi_d(JIT_F0, JIT_F0, constval);  break;
@@ -170,7 +200,12 @@ pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop )
   }
   jit_retr_d(JIT_F0);                /*      retr   R0           */
 
-  incr = reinterpret_cast<pifi>(jit_emit());
+  incr = reinterpret_cast<pifi_up>(jit_emit());
+
+// // //   std::cout << "disassemble; reg=" << isreg << " uvnum=" << uvnum << "\n";
+// // //   jit_disassemble();
+// // //   std::cout << "=================================\n";
+  
   jit_clear_state();
 
   /* call the generated code, passing 5 as an argument */
@@ -181,6 +216,71 @@ pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop )
   return incr;
 }
 
+pifi_up_void jitit_increment_uv0_2reg( double constval, Bang::EOperators eop, int uvnum, bool isreg )
+{
+  jit_node_t  *in;
+  jit_node_t  *in2;
+  pifi_up_void      incr;
+
+  initjitter();
+
+  _jit = jit_new_state();
+  jit_prolog();                    /*      prolog              */
+
+  in = jit_arg();                  /*      in = arg            */
+  in2 = jit_arg();                  /*      in = arg            */
+
+  jit_getarg(JIT_R0, in);          /*      getarg R0           */
+//  jit_getarg(JIT_R1, in2);          /*      getarg R0           */
+
+  if (isreg)
+  {
+      const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+      jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
+  }
+  else
+  {
+      for ( ; uvnum > 0; --uvnum)
+      {
+//      std::cerr << "uvnum=" << uvnum << "\n";
+          const size_t parentOffset = offsetof( Bang::Upvalue, parent_ );
+          jit_ldxi( JIT_R0, JIT_R0, parentOffset );
+      }
+      const size_t BVOffset = offsetof(Bang::Upvalue,v_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+      jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
+  }
+  
+  switch( eop ) {
+      case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpMinus: jit_subi_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpMult: jit_muli_d(JIT_F0, JIT_F0, constval);  break;
+      case Bang::kOpDiv: jit_divi_d(JIT_F0, JIT_F0, constval);  break;
+  }
+  
+  //jit_retr_d(JIT_F0);                /*      retr   R0           */
+  {
+      const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+      jit_stxi_d( BVOffset, JIT_R0, JIT_F0 );
+  }
+
+  jit_ret();
+
+  incr = reinterpret_cast<pifi_up_void>(jit_emit());
+
+// // //   std::cout << "disassemble; reg=" << isreg << " uvnum=" << uvnum << "\n";
+// // //   jit_disassemble();
+// // //   std::cout << "=================================\n";
+  
+  jit_clear_state();
+
+  /* call the generated code, passing 5 as an argument */
+  //printf("%d + 1 = %d\n", 5, incr(5));
+
+//  jit_destroy_state();
+//  finish_jit();
+  return incr;
+}
+#endif 
 
 namespace {
     
@@ -210,6 +310,71 @@ namespace {
 
 
 namespace Bang {
+
+
+
+// class Upvalue
+// {
+// public:
+//     Upvalue* parent_;
+// };
+
+
+template <int N>
+class UvLookup
+{
+public:
+    static SHAREDUPVALUE_CREF getUv( SHAREDUPVALUE_CREF head )
+    {
+        return UvLookup<N-1>::getUv( head->parent_ );
+    }
+};
+
+template <>
+class UvLookup<0>
+{
+public:
+    static SHAREDUPVALUE_CREF getUv( SHAREDUPVALUE_CREF head )
+    {
+        return head;
+    }
+};
+
+typedef SHAREDUPVALUE_CREF (*tfn_uvlookup)(SHAREDUPVALUE_CREF);
+
+tfn_uvlookup gUvlookups[] = {
+    &UvLookup<0>::getUv,
+    &UvLookup<1>::getUv,
+    &UvLookup<2>::getUv,
+    &UvLookup<3>::getUv,
+    &UvLookup<4>::getUv,
+    &UvLookup<5>::getUv,
+    &UvLookup<6>::getUv,
+    &UvLookup<7>::getUv,
+    &UvLookup<8>::getUv,
+    &UvLookup<9>::getUv,
+    &UvLookup<10>::getUv,
+    &UvLookup<11>::getUv,
+    &UvLookup<12>::getUv,
+    &UvLookup<13>::getUv,
+    &UvLookup<14>::getUv,
+    &UvLookup<15>::getUv,
+    &UvLookup<16>::getUv,
+    &UvLookup<17>::getUv,
+    &UvLookup<18>::getUv,
+    &UvLookup<19>::getUv,
+    &UvLookup<20>::getUv,
+    &UvLookup<21>::getUv,
+    &UvLookup<22>::getUv,
+    &UvLookup<23>::getUv,
+    &UvLookup<24>::getUv,
+    &UvLookup<25>::getUv,
+    &UvLookup<26>::getUv,
+    &UvLookup<27>::getUv,
+    &UvLookup<28>::getUv,
+    &UvLookup<29>::getUv,
+};
+    
 
 #if !USE_GC
 template< class Tp >    
@@ -1034,12 +1199,14 @@ namespace Ast
     public:
         ESourceDest v1src_;
         NthParent   v1uvnumber_;
+        tfn_uvlookup v1_fn_uvlookup_;
         std::string v1uvname_;
         Value       v1literal_;
     public:
         ValueEater()
         : v1src_( kSrcStack ),
-          v1uvnumber_( kNoParent )
+          v1uvnumber_( kNoParent ),
+          v1_fn_uvlookup_(0)
         {}
         ESourceDest sourceType() const { return v1src_; }
         bool srcIsStack() const        { return v1src_ == kSrcStack; }
@@ -1050,6 +1217,10 @@ namespace Ast
         void setSrcUpval( const std::string& name, NthParent uvnumber )
         {
             v1uvnumber_ = uvnumber;
+            if (uvnumber.toint() >= sizeof(gUvlookups)/sizeof(gUvlookups[0]) )
+                bangerr() << "too few uv lookups, found n=" << uvnumber.toint();
+            
+            v1_fn_uvlookup_ = gUvlookups[uvnumber.toint()];
             v1uvname_ = name;
             v1src_ = kSrcUpval;
         }
@@ -1082,7 +1253,9 @@ namespace Ast
             }
             else if (v1src_ == kSrcUpval)
             {
-                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_;
+                o << "upval#"
+                  << v1uvnumber_.toint()
+                  << ',' << v1uvname_;
             }
             else
             {
@@ -1263,6 +1436,7 @@ namespace Ast
         Value thingLiteral_; // when srcthing_ == kSrcLiteral
         tfn_opThingAndValue2Value thingliteralop_;
         NthParent uvnumber_; // when srcthing_ == kSrcLiteral
+        tfn_uvlookup fn_uv_lookup_;
         std::string thinguvname_;
 
         bool firstValueNotStack() { return srcthing_ != kSrcStack; }
@@ -1271,7 +1445,8 @@ namespace Ast
         : Base( kApplyThingAndValue2ValueOperator ),
           openum_( openum ),
           srcthing_( kSrcStack ),
-          uvnumber_( kNoParent )
+          uvnumber_( kNoParent ),
+          fn_uv_lookup_(0)
         {}
 
         bool thingNotStack() { return srcthing_ != kSrcStack; }
@@ -1288,10 +1463,12 @@ namespace Ast
             }
             else
             {
+                fn_uv_lookup_ = other.v1_fn_uvlookup_;
                 uvnumber_ = other.v1uvnumber_;
                 thinguvname_ = other.v1uvname_;
             }
         }
+
         void setOtherRegister() { secondsrc_.setSrcRegister(); }
         virtual void dump( int level, std::ostream& o ) const
         {
@@ -1309,7 +1486,9 @@ namespace Ast
             }
             else if (srcthing_ == kSrcUpval)
             {
-                o << '#' << uvnumber_.toint() << ',' << thinguvname_;
+                o << '#'
+                    //<< uvnumber_.toint()
+                  << ',' << thinguvname_;
             }
             
             o << " op=" << openum_ << "(" << op2str(openum_) << ')';
@@ -1333,17 +1512,35 @@ namespace Ast
         double v_;
         EOperators op_;
     public:
-        pifi f_op;
-        Increment( double toAdd, EOperators eop )
-        : Base( kIncrement ),
+#if LCFG_TRYJIT        
+        pifi_up f_op;
+        pifi_up_void f_op_void;
+#endif 
+        Increment( double toAdd, EOperators eop, const ValueEater& ve, const ValueMaker& vm )
+        : Base( ve.v1src_ == kSrcUpval ? kIncrement : vm.dest_ == kSrcRegister ? kIncrementReg2Reg : kIncrementReg ),
+          ValueEater( ve ),
+          ValueMaker( vm ),
           v_( toAdd ), op_( eop )
-        {
-            f_op = jitit_increment( toAdd, eop );
+        { 
+#if LCFG_TRYJIT
+            switch( v1src_ )
+            {
+                case kSrcUpval: f_op = jitit_increment_uv0( toAdd, eop, v1uvnumber_.toint(), false ); break;
+                case kSrcRegister:
+                {
+                    if (dest_ == kSrcRegister)
+                        f_op_void = jitit_increment_uv0_2reg( toAdd, eop, 0, true );
+                    else
+                        f_op = jitit_increment_uv0( toAdd, eop, 0, true );
+                }
+                break;
+            }
+#endif 
         }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "Increment ("; //  << v_;
+            o << "Increment/" << instr_ << " ("; //  << v_;
 
             o << " s2=";
             ValueEater::dump(o);
@@ -1375,17 +1572,28 @@ namespace Ast
                 o << "stack ";
             else
             {
-                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << ' ';
+                o << "upval#"
+                  << v1uvnumber_.toint()
+                  << ',' << v1uvname_ << ' ';
             }
             o << custom_ << ")\n";
         }
+
+#if 1      
+ #define FRVE2UV(frame,ve) frame.getUpValue((ve).v1uvnumber_)
+ #define FRATAV2VUV(frame,atav2v) frame.getUpValue((atav2v).uvnumber_)
+#else
+ #define FRVE2UV(frame,ve) ((ve).v1_fn_uvlookup_(frame.upvalues_)->v_)
+ #define FRATAV2VUV(frame,atav2v) ((atav2v).fn_uv_lookup_(frame.upvalues_)->v_)
+#endif 
+        
         virtual void run( Stack& stack, const RunContext& rc ) const
         {
             switch (v1src_)
             {
                 case kSrcUpval:
                 {
-                    const Value& owner = rc.getUpValue(v1uvnumber_);
+                    const Value& owner = FRVE2UV( rc, *this );
                     owner.applyCustomOperator( custom_, stack );
                 }
                 break;
@@ -1413,19 +1621,17 @@ namespace Ast
         {
             indentlevel(level, o);
             o << "ApplyCustomOperatorDotted( src=" << sd2str(v1src_);
-            if (v1src_ == kSrcUpval)
-            {
-                o << '#' << v1uvnumber_.toint() << ',' << v1uvname_;
-            }
+            ValueEater::dump(o);
             o << custom_ << " ." << dotted_ << ")\n";
         }
+
         virtual void run( Stack& stack, const RunContext& rc ) const
         {
             switch (v1src_)
             {
                 case kSrcUpval:
                 {
-                    const Value& owner = rc.getUpValue(v1uvnumber_);
+                    const Value& owner = FRVE2UV(rc, (*this)); // frv1_fn_uvlookup_(rc.upvalu)->v_; // rc.getUpValue(v1uvnumber_);
                     stack.push( dotted_ );
                     owner.applyCustomOperator( custom_, stack );
                 }
@@ -1654,12 +1860,8 @@ namespace Ast
         {
             indentlevel(level, o);
             o << "ApplyIndexOperator( src=";
-            if (v1src_ == kSrcStack)
-                o << "$stk [";
-            else if (v1src_ == kSrcAltStack)
-                o << "$altstack [";
-            else
-                o << "upval#" << v1uvnumber_.toint() << ',' << v1uvname_ << " [";
+            ValueEater::dump(o);
+            o << " [";
             indexValue_.dump(o);
             o << "] )\n";
         }
@@ -2031,13 +2233,31 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
     // disappointing but the inline member function does not run as quickly as the macro here.
 // #define pa_getOtherValue(pa, frame, stack )  \
-//     (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ? frame.thread->r0_ : pa.srcother_ == kSrcLiteral ? pa.otherLiteral_ : stack.pop())
+//     (pa.srcother_ == kSrcUpval ? frame.getUpValue(pa.uvnumberOther_) : pa.srcother_ == kSrcRegister ?
+//     frame.thread->r0_ : pa.srcother_ == kSrcLiteral ? pa.otherLiteral_ : stack.pop())
+
+    template <ESourceDest esd> struct DestSet {};
+//    template <> struct DestSet<kSrcLiteral>      { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, const Value& vv ) { 
+    template <> struct DestSet<kSrcStack>        { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { stack.push(vv); } };
+    template <> struct DestSet<kSrcRegister>     { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->r0_ = vv; } };
+    template <> struct DestSet<kSrcRegisterBool> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
+    template <> struct DestSet<kSrcCloseValue>   { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
+        frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, vv );
+    } };
+
+    template <ESourceDest esd> struct SrcGet {};
+    template <> struct SrcGet<kSrcLiteral>  { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pa.v1literal_; } };
+    template <> struct SrcGet<kSrcRegister> { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->r0_; }  };
+    template <> struct SrcGet<kSrcUpval>    { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return FRVE2UV(frame, pa); } }; // frame.getUpValue( pa.v1uvnumber_ ); } };
+    template <> struct SrcGet<kSrcStack>    { static Bang::Value get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->stack.pop(); } };
+    
+
         
     template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom { };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
+                case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, FRVE2UV(frame, pa.secondsrc_) ); 
                 case kSrcRegister: return pa.thingliteralop_( pa.thingLiteral_, pThread->r0_ );
                 case kSrcLiteral:  return pa.thingliteralop_( pa.thingLiteral_, pa.secondsrc_.v1literal_ );
                 default:           return pa.thingliteralop_( pa.thingLiteral_, stack.pop() );
@@ -2048,7 +2268,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
 //            return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
             switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
+                case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) ); 
                 case kSrcRegister: return  pThread->r0_.applyAndValue2Value( pa.openum_, pThread->r0_ );
                 case kSrcLiteral:  return  pThread->r0_.applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
                 default:           return  pThread->r0_.applyAndValue2Value( pa.openum_, stack.pop() );
@@ -2058,10 +2278,10 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcUpval> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
-                case kSrcRegister: return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pThread->r0_ );
-                case kSrcLiteral:  return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
-                default:           return frame.getUpValue( pa.uvnumber_ ).applyAndValue2Value( pa.openum_, stack.pop() );
+                case kSrcUpval:    return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) );
+                case kSrcRegister: return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pThread->r0_ );
+                case kSrcLiteral:  return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
+                default:           return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, stack.pop() );
             }
             
         }
@@ -2070,7 +2290,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             const Value& owner = stack.pop();
             switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, frame.getUpValue(pa.secondsrc_.v1uvnumber_) );
+                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) ); 
                 case kSrcRegister: return owner.applyAndValue2Value( pa.openum_, pThread->r0_ );
                 default:           return owner.applyAndValue2Value( pa.openum_, stack.pop() );
             }
@@ -2105,20 +2325,6 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         }
     };
 
-    template <ESourceDest esd> struct DestSet {};
-//    template <> struct DestSet<kSrcLiteral>      { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, const Value& vv ) { 
-    template <> struct DestSet<kSrcStack>        { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { stack.push(vv); } };
-    template <> struct DestSet<kSrcRegister>     { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->r0_ = vv; } };
-    template <> struct DestSet<kSrcRegisterBool> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
-    template <> struct DestSet<kSrcCloseValue>   { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
-        frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, vv );
-    } };
-
-    template <ESourceDest esd> struct SrcGet {};
-    template <> struct SrcGet<kSrcLiteral>  { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pa.v1literal_; } };
-    template <> struct SrcGet<kSrcRegister> { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->r0_; }  };
-    template <> struct SrcGet<kSrcUpval>    { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return frame.getUpValue( pa.v1uvnumber_ ); } };
-    template <> struct SrcGet<kSrcStack>    { static Bang::Value get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->stack.pop(); } };
     
     template <ESourceDest source, ESourceDest dest> struct Mover {
         static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
@@ -2133,7 +2339,11 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     };
     
 
-#define LCFG_COMPUTED_GOTO 1
+#if __GNUC__
+# define LCFG_COMPUTED_GOTO 1
+#else
+# define LCFG_COMPUTED_GOTO 0
+#endif 
 
 
     
@@ -2164,11 +2374,12 @@ restartTco:
             goto *dispatch_table[pInstr->instr_];
 #else
 # define OPCODE_LOC(op) case Ast::Base::op
-# define OPCODE_2LOC,(pre,op) OPCODE_START_##pre##op
+# define OPCODE_2LOC(pre,op) OPCODE_START_##pre##op
 # define OPCODE_END() break
 #endif
 
-    
+
+#if LCFG_COMPUTED_GOTO
 
     static void* dispatch_table[] = {
         &&OPCODE_LOC(kUnk),
@@ -2183,6 +2394,8 @@ restartTco:
         &&OPCODE_LOC(kApplyIndexOperator),
 #endif
         &&OPCODE_LOC(kIncrement),
+        &&OPCODE_LOC(kIncrementReg),
+        &&OPCODE_LOC(kIncrementReg2Reg),
         &&OPCODE_LOC(kIfElse),
 #if LCFG_HAVE_TRY_CATCH        
         &&OPCODE_LOC(kTryCatch),
@@ -2199,6 +2412,7 @@ restartTco:
         &&OPCODE_LOC(kYieldCoroutine),
         &&OPCODE_LOC(kEofMarker)
     };
+#endif 
     
     const Ast::Base* pInstr;
     try
@@ -2216,7 +2430,7 @@ restartTco:
 #endif 
             OPCODE_LOC(kUnk):
                     pInstr->run( stack, frame );
-            OPCODE_END()
+            OPCODE_END();
 
 //                dobreakprog:
                 OPCODE_LOC(kBreakProg):
@@ -2406,22 +2620,46 @@ restartTco:
 
             OPCODE_LOC(kIncrement):
                 {
-                    // static pifi f_incr = jitit_increment();
-                    
+#if LCFG_TRYJIT
                     const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
-                    double v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); // break;
-//                     switch (move.v1src_) {
-//                         case kSrcStack:   v = 
-//                         case kSrcUpval:   v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
-//                         case kSrcLiteral: v = SrcGet<kSrcLiteral>::get( move, pThread, frame ).tonum(); break;
-//                     }
-                    double v2 = move.f_op( v ); //  + 1;
+                    double v2 = move.f_op( (void*)frame.upvalues_.get() ); // , (void*)pThread ); //  + 1;
                     switch (move.dest_)
                     {
                         case kSrcStack:      DestSet<kSrcStack>::set( move, pThread, frame, stack, Value( v2 ) ); break;
                         case kSrcRegister:   DestSet<kSrcRegister>::set( move, pThread, frame, stack, Value( v2 ) ); break;
                         case kSrcCloseValue: DestSet<kSrcCloseValue>::set( move, pThread, frame, stack, Value( v2 ) ); break;
                     }
+#endif 
+                }
+                OPCODE_END();
+
+            OPCODE_LOC(kIncrementReg):
+                {
+#if LCFG_TRYJIT
+                    const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
+                    double v2 = move.f_op( pThread ); // , (void*)pThread ); //  + 1;v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
+                    switch (move.dest_)
+                    {
+                        case kSrcStack:      DestSet<kSrcStack>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+                        case kSrcRegister:   DestSet<kSrcRegister>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+                        case kSrcCloseValue: DestSet<kSrcCloseValue>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+                    }
+#endif 
+                }
+                OPCODE_END();
+
+            OPCODE_LOC(kIncrementReg2Reg):
+                {
+#if LCFG_TRYJIT
+                    const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
+                    move.f_op_void( pThread ); // , (void*)pThread ); //  + 1;v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
+//                     switch (move.dest_)
+//                     {
+//                         case kSrcStack:      DestSet<kSrcStack>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+//                         case kSrcRegister:   DestSet<kSrcRegister>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+//                         case kSrcCloseValue: DestSet<kSrcCloseValue>::set( move, pThread, frame, stack, Value( v2 ) ); break;
+//                     }
+#endif 
                 }
                 OPCODE_END();
                 
@@ -2503,7 +2741,7 @@ restartTco:
                     {
                         case kSrcUpval:
                         {
-                            const Value& owner = frame.getUpValue(op->v1uvnumber_);
+                            const Value& owner = FRVE2UV(frame, *op); 
 //                             std::cerr << "kApplyIndexOperator, owner=";
 //                             owner.dump(std::cerr);
 //                             std::cerr << " indexV st=" << op->indexValue_.sourceType() << std::endl;
@@ -2511,7 +2749,7 @@ restartTco:
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
                                 case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, frame ); break;
-                                case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
+                                case kSrcUpval:    owner.applyIndexOperator( FRVE2UV(frame, op->indexValue_), stack, frame ); break;
                                 case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
                                 default: break;
                             }
@@ -2525,7 +2763,7 @@ restartTco:
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
                                 case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, frame ); break;
-                                case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
+                                case kSrcUpval:    owner.applyIndexOperator( FRVE2UV(frame, op->indexValue_ ), stack, frame ); break;
                                 case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
                                 default: break;
                             }
@@ -2539,7 +2777,7 @@ restartTco:
                             {
                                 case kSrcLiteral:  owner.applyIndexOperator( op->indexValue_.v1literal_, stack, frame ); break;
                                 case kSrcStack:    owner.applyIndexOperator( stack.pop(), stack, frame ); break;
-                                case kSrcUpval:    owner.applyIndexOperator( frame.getUpValue(op->indexValue_.v1uvnumber_), stack, frame ); break;
+                                case kSrcUpval:    owner.applyIndexOperator( FRVE2UV(frame, op->indexValue_), stack, frame ); break;
                                 case kSrcRegister: owner.applyIndexOperator( frame.thread->r0_, stack, frame ); break;
                                 default: break;
                             }
@@ -2572,7 +2810,7 @@ restartTco:
                         break;
                         case kSrcUpval:
                         {
-                            const Value& v = frame.getUpValue(op->v1uvnumber_);
+                            const Value& v = FRVE2UV(frame, *op);
                             switch (v.type())
                             {
                                 default: RunApplyValue( pInstr, v, stack, frame ); break;
@@ -2611,7 +2849,7 @@ restartTco:
                         break;
                         case kSrcUpval:
                         {
-                            const Value& v = frame.getUpValue(op->v1uvnumber_);
+                            const Value& v = FRVE2UV(frame, *op); //
                             switch (v.type())
                             {
                                 default: RunApplyValue( pInstr, v, stack, frame ); break;
@@ -3739,14 +3977,16 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
 
 
 
-#if 1
+#if LCFG_INTLITERAL_OPTIMIZATION
     for (unsigned i = 0; i < ast.size(); ++i)
     {
         Ast::ApplyThingAndValue2ValueOperator* op = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
         if
         (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum
-            &&  op->secondValueSrc().v1src_ == kSrcUpval
-            &&  op->secondValueSrc().v1uvnumber_ == NthParent(0)
+        &&  (op->secondValueSrc().v1src_ == kSrcUpval
+            || op->secondValueSrc().v1src_ == kSrcRegister
+            )
+//            &&  op->secondValueSrc().v1uvnumber_ == NthParent(0)
         )
         {
             if (( op->openum_ == kOpPlus
@@ -3757,9 +3997,9 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
             )
             {
                 const double vv = op->thingLiteral_.tonum();
-                auto lno = new Ast::Increment( vv, op->openum_ ); // == kOpMinus) ? -vv : vv  );
-                *static_cast<Ast::ValueMaker*>(lno) = *static_cast<Ast::ValueMaker*>(op);
-                *static_cast<Ast::ValueEater*>(lno) = op->secondsrc_;
+                auto lno = new Ast::Increment( vv, op->openum_, op->secondsrc_, *op ); // == kOpMinus) ? -vv : vv  );
+//                *static_cast<Ast::ValueMaker*>(lno) = *static_cast<Ast::ValueMaker*>(op);
+//                *static_cast<Ast::ValueEater*>(lno) = op->secondsrc_;
                 ast[i] = lno;
             }
         }

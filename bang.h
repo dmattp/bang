@@ -734,6 +734,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         EValueType type() const { return type_; }
 
         double tonum()  const { return v_.num; }
+        // size_t numoffset() const { return ((const char*)&v_.num - (const char*)this); }
 //        const double& numref()  const { return v_.num; }
         bool   tobool() const { return v_.b; }
         const bangstring& tostr() const { return *reinterpret_cast<const bangstring*>(v_.cstr); }
@@ -769,11 +770,12 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
     class Upvalue : public gcbase<Upvalue>
     {
+    public:
+        SHAREDUPVALUE parent_;  // the upvalue chain
+        Value v_; // the value itself
     private:
         const Ast::CloseValue* closer_; // contains the symbolic name to which the upvalue is bound
-        SHAREDUPVALUE parent_;  // the upvalue chain
     public:
-        Value v_; // the value itself
 //         ~Upvalue()
 //         {
 //             parent_.reset();
@@ -824,7 +826,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                     uv = uv->parent_.get();
                 }
             }
-#elsif 1            
+#elif 1            
             while ( uvnumber != NthParent(0) )
             {
                 uv = uv->parent_.get();
@@ -1033,6 +1035,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 #endif
 
                 kIncrement,
+                kIncrementReg,
+                kIncrementReg2Reg,
                 
                 kIfElse,
                 kTryCatch,
