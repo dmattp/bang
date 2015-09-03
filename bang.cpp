@@ -22,7 +22,7 @@
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
 
-#define LCFG_TRYJIT 1
+// #define LCFG_TRYJIT 1
 
 #define LCFG_INTLITERAL_OPTIMIZATION LCFG_TRYJIT
 
@@ -156,12 +156,13 @@ pifi jitit_increment( double constval, Bang::EOperators eop )
 
 
 typedef double (*pifi_up)(void* upvals ); // , void* thread );    /* Pointer to Int Function of Int */
-typedef void (*pifi_up_void)(void* upvals ); // , void* thread );    /* Pointer to Int Function of Int */
+typedef void (*pifi_up_void)(void* pthread, void* upvals ); // , void* thread );    /* Pointer to Int Function of Int */
+
 
 pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop, int uvnum, bool isreg )
 {
   jit_node_t  *in;
-  jit_node_t  *in2;
+//  jit_node_t  *in2;
   pifi_up         incr;
 
   initjitter();
@@ -170,7 +171,7 @@ pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop, int uvnum, b
   jit_prolog();                    /*      prolog              */
 
   in = jit_arg();                  /*      in = arg            */
-  in2 = jit_arg();                  /*      in = arg            */
+//  in2 = jit_arg();                  /*      in = arg            */
 
   jit_getarg(JIT_R0, in);          /*      getarg R0           */
 //  jit_getarg(JIT_R1, in2);          /*      getarg R0           */
@@ -216,69 +217,143 @@ pifi_up jitit_increment_uv0( double constval, Bang::EOperators eop, int uvnum, b
   return incr;
 }
 
-pifi_up_void jitit_increment_uv0_2reg( double constval, Bang::EOperators eop, int uvnum, bool isreg )
+
+class  Litnumop2reg
 {
-  jit_node_t  *in;
-  jit_node_t  *in2;
-  pifi_up_void      incr;
+public:
+    void addOperation( double constval, Bang::EOperators eop )
+    {
+        switch( eop ) {
+            case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
+            case Bang::kOpMinus: jit_subi_d(JIT_F0, JIT_F0, constval);  break;
+            case Bang::kOpMult: jit_muli_d(JIT_F0, JIT_F0, constval);  break;
+            case Bang::kOpDiv: jit_divi_d(JIT_F0, JIT_F0, constval);  break;
+        }
+    }
+    void addReverseOperation( double constval, Bang::EOperators eop )
+    {
+        switch( eop ) {
+            case Bang::kOpPlus:  jit_addi_d(JIT_F0, constval, JIT_F0);  break;
+            case Bang::kOpMult:  jit_muli_d(JIT_F0, constval, JIT_F0);  break;
+            case Bang::kOpMinus:
+                jit_movi_d( JIT_F1, constval );
+                jit_subr_d(JIT_F0, JIT_F1, JIT_F0);
+                break;
+            case Bang::kOpDiv:
+                jit_movi_d( JIT_F1, constval );
+                jit_divr_d(JIT_F0, JIT_F1, JIT_F0);
+                break;
+        }
+    }
 
-  initjitter();
+    void loadFromUpval( Bang::NthParent uvnumP )
+    {
+        const size_t parentOffset = offsetof( Bang::Upvalue, parent_ );
+        jit_movr( JIT_R2, JIT_R1 );
+        for ( int uvnum = uvnumP.toint() ; uvnum > 0; --uvnum)
+        {
+            jit_ldxi( JIT_R2, JIT_R2, parentOffset );
+        }
+        
+        const size_t BVOffset = offsetof(Bang::Upvalue,v_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+        jit_ldxi_d( JIT_F0, JIT_R2, BVOffset );
+    }
+    
+    void addUpvalOp( Bang::NthParent uvnumP, Bang::EOperators eop )
+    {
+        const size_t parentOffset = offsetof( Bang::Upvalue, parent_ );
+        jit_movr( JIT_R2, JIT_R1 );
+        for ( int uvnum = uvnumP.toint() ; uvnum > 0; --uvnum)
+        {
+            jit_ldxi( JIT_R2, JIT_R2, parentOffset );
+        }
+        
+        const size_t BVOffset = offsetof(Bang::Upvalue,v_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+        jit_ldxi_d( JIT_F1, JIT_R2, BVOffset );
+      
+        switch( eop ) {
+            case Bang::kOpPlus: jit_addr_d(JIT_F0, JIT_F0, JIT_F1);  break;
+            case Bang::kOpMinus: jit_subr_d(JIT_F0, JIT_F0, JIT_F1);  break;
+            case Bang::kOpMult: jit_mulr_d(JIT_F0, JIT_F0, JIT_F1);  break;
+            case Bang::kOpDiv: jit_divr_d(JIT_F0, JIT_F0, JIT_F1);  break;
+        }
+    }
+    void loadFromRegister()
+    {
+        const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+        jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
+    }
 
-  _jit = jit_new_state();
-  jit_prolog();                    /*      prolog              */
+    // R0 is pthread, R1 is Upvalue*
+    Litnumop2reg()
+    {
+        jit_node_t  *in;
+        jit_node_t  *in2;
+        initjitter();
 
-  in = jit_arg();                  /*      in = arg            */
-  in2 = jit_arg();                  /*      in = arg            */
+        _jit = jit_new_state();
+        jit_prolog();                    /*      prolog              */
+        in = jit_arg();                  /*      in = arg            */
+        in2 = jit_arg();                  /*      in = arg            */
+        jit_getarg(JIT_R0, in);          /*      getarg R0           */
+        jit_getarg(JIT_R1, in2);          /*      getarg R0           */
 
-  jit_getarg(JIT_R0, in);          /*      getarg R0           */
-//  jit_getarg(JIT_R1, in2);          /*      getarg R0           */
+// // //         std::cout << "disassemble PROLOG AND ARGS\n";
+// // //         jit_disassemble();
+// // //         std::cout << "=================================\n";
+// // //         
+        //jit_retr_d(JIT_F0);                /*      retr   R0           */
+    }
 
-  if (isreg)
-  {
-      const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
-      jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
-  }
-  else
-  {
-      for ( ; uvnum > 0; --uvnum)
-      {
-//      std::cerr << "uvnum=" << uvnum << "\n";
-          const size_t parentOffset = offsetof( Bang::Upvalue, parent_ );
-          jit_ldxi( JIT_R0, JIT_R0, parentOffset );
-      }
-      const size_t BVOffset = offsetof(Bang::Upvalue,v_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
-      jit_ldxi_d( JIT_F0, JIT_R0, BVOffset );
-  }
-  
-  switch( eop ) {
-      case Bang::kOpPlus: jit_addi_d(JIT_F0, JIT_F0, constval);  break;
-      case Bang::kOpMinus: jit_subi_d(JIT_F0, JIT_F0, constval);  break;
-      case Bang::kOpMult: jit_muli_d(JIT_F0, JIT_F0, constval);  break;
-      case Bang::kOpDiv: jit_divi_d(JIT_F0, JIT_F0, constval);  break;
-  }
-  
-  //jit_retr_d(JIT_F0);                /*      retr   R0           */
-  {
-      const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
-      jit_stxi_d( BVOffset, JIT_R0, JIT_F0 );
-  }
+    pifi_up_void closeitup() // store to pThread->r0_.v_.num
+    {
+        const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+        jit_stxi_d( BVOffset, JIT_R0, JIT_F0 );
 
-  jit_ret();
+        jit_ret();
 
-  incr = reinterpret_cast<pifi_up_void>(jit_emit());
+        pifi_up_void incr = reinterpret_cast<pifi_up_void>(jit_emit());
+
+// // //         std::cout << "disassemble; reg=" << isreg << " uvnum=" << uvnum << "\n";
+// // //         jit_disassemble();
+// // //         std::cout << "=================================\n";
+// // //   
+        jit_clear_state();
+
+        /* call the generated code, passing 5 as an argument */
+        //printf("%d + 1 = %d\n", 5, incr(5));
+
+//  jit_destroy_state();
+//  finish_jit();
+        return incr;
+        {
+            const size_t BVOffset = offsetof(Bang::Thread,r0_.v_.num); //  ( &(((Bang::Upvalue*)0)->v_.v_.num) - &(*((Bang::Upvalue*)0)) );
+            jit_stxi_d( BVOffset, JIT_R0, JIT_F0 );
+        }
+
+        jit_ret();
+
+        incr = reinterpret_cast<pifi_up_void>(jit_emit());
 
 // // //   std::cout << "disassemble; reg=" << isreg << " uvnum=" << uvnum << "\n";
 // // //   jit_disassemble();
 // // //   std::cout << "=================================\n";
   
-  jit_clear_state();
+        jit_clear_state();
 
-  /* call the generated code, passing 5 as an argument */
-  //printf("%d + 1 = %d\n", 5, incr(5));
+        /* call the generated code, passing 5 as an argument */
+        //printf("%d + 1 = %d\n", 5, incr(5));
 
 //  jit_destroy_state();
 //  finish_jit();
-  return incr;
+        return incr;
+    }
+};
+
+
+
+pifi_up_void jitit_increment_uv0_2reg( double constval, Bang::EOperators eop, int uvnum, bool isreg )
+{
 }
 #endif 
 
@@ -1515,7 +1590,8 @@ namespace Ast
 #if LCFG_TRYJIT        
         pifi_up f_op;
         pifi_up_void f_op_void;
-#endif 
+#endif
+        std::vector<ApplyThingAndValue2ValueOperator*> origOps_;
         Increment( double toAdd, EOperators eop, const ValueEater& ve, const ValueMaker& vm )
         : Base( ve.v1src_ == kSrcUpval ? kIncrement : vm.dest_ == kSrcRegister ? kIncrementReg2Reg : kIncrementReg ),
           ValueEater( ve ),
@@ -1528,13 +1604,19 @@ namespace Ast
                 case kSrcUpval: f_op = jitit_increment_uv0( toAdd, eop, v1uvnumber_.toint(), false ); break;
                 case kSrcRegister:
                 {
-                    if (dest_ == kSrcRegister)
-                        f_op_void = jitit_increment_uv0_2reg( toAdd, eop, 0, true );
-                    else
-                        f_op = jitit_increment_uv0( toAdd, eop, 0, true );
+                    f_op = jitit_increment_uv0( toAdd, eop, 0, true );
                 }
                 break;
             }
+        }
+        Increment( pifi_up_void jitted, EOperators eop, const ValueEater& ve, const ValueMaker& vm )
+        : Base( kIncrementReg2Reg ), // ve.v1src_ == kSrcUpval ? kIncrement : vm.dest_ == kSrcRegister ? kIncrementReg2Reg : kIncrementReg ),
+          ValueEater( ve ),
+          ValueMaker( vm ),
+          v_( -999.0 ),
+          op_( eop ),
+          f_op_void( jitted )
+        { 
 #endif 
         }
         virtual void dump( int level, std::ostream& o ) const
@@ -1550,6 +1632,8 @@ namespace Ast
             ValueMaker::dump(o);
             
             o << ")\n";
+            std::for_each( origOps_.begin(), origOps_.end(),
+                [&]( ApplyThingAndValue2ValueOperator* op ) { op->dump( level + 1, o ); } );
         }
         virtual void run( Stack& stack, const RunContext& rc ) const {
             bangerr() << "Increment should not run";
@@ -2652,7 +2736,7 @@ restartTco:
                 {
 #if LCFG_TRYJIT
                     const Ast::Increment& move = *reinterpret_cast<const Ast::Increment*>(pInstr);
-                    move.f_op_void( pThread ); // , (void*)pThread ); //  + 1;v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
+                    move.f_op_void( pThread, frame.upvalues_.get() ); // , (void*)pThread ); //  + 1;v = SrcGet<kSrcUpval>  ::get( move, pThread, frame ).tonum(); break;
 //                     switch (move.dest_)
 //                     {
 //                         case kSrcStack:      DestSet<kSrcStack>::set( move, pThread, frame, stack, Value( v2 ) ); break;
@@ -3984,26 +4068,81 @@ void OptimizeAst( std::vector<Ast::Base*>& ast )
         if
         (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum
         &&  (op->secondValueSrc().v1src_ == kSrcUpval
-            || op->secondValueSrc().v1src_ == kSrcRegister
+            || (op->secondValueSrc().v1src_ == kSrcRegister && op->dest_ == kSrcRegister)
             )
-//            &&  op->secondValueSrc().v1uvnumber_ == NthParent(0)
         )
         {
-            if (( op->openum_ == kOpPlus
-                    || op->openum_ == kOpMult
-                    || op->openum_ == kOpDiv
-                    || op->openum_ == kOpMinus )
-//                && op->thingLiteral_.tonum() == 1
-            )
+            if (( op->openum_ == kOpPlus || op->openum_ == kOpMult || op->openum_ == kOpDiv || op->openum_ == kOpMinus ) )
             {
-                const double vv = op->thingLiteral_.tonum();
-                auto lno = new Ast::Increment( vv, op->openum_, op->secondsrc_, *op ); // == kOpMinus) ? -vv : vv  );
+                if (op->dest_ == kSrcRegister)
+                {
+                    std::vector<Ast::ApplyThingAndValue2ValueOperator*> ops_;
+                    ops_.push_back( op );
+                    Litnumop2reg jitme;
+                
+                    if (op->secondValueSrc().v1src_ == kSrcRegister)
+                        jitme.loadFromRegister();
+                    else // upval
+                        jitme.loadFromUpval( op->secondValueSrc().v1uvnumber_ );
+                    
+                    const double vv = op->thingLiteral_.tonum();
+
+                    jitme.addOperation( vv, op->openum_ );
+                    
+                    // combine multiple subsequent register + literal -> register operations
+                    // into a single jitted function.  This is quite the thing.
+                    for (unsigned j = i + 1; j < ast.size(); ++j)
+                    {
+                        Ast::ApplyThingAndValue2ValueOperator* op = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[j]);
+                        if (!op)
+                            break;
+                        const bool isCommuteOp = ( op->openum_ == kOpPlus || op->openum_ == kOpMult );
+                        const bool isMathOp = ( isCommuteOp || op->openum_ == kOpDiv || op->openum_ == kOpMinus );
+                        const bool isOtherDestReg = op->secondValueSrc().v1src_ == kSrcRegister && op->dest_ == kSrcRegister;
+//                        std::cerr << "commute="  << isCommuteOp << " math=" << isMathOp << " otherreg=" << isOtherDestReg << "\n"; op->dump(9,std::cerr);
+                        if
+                        (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum
+                        &&  isOtherDestReg && isMathOp
+                        )
+                        {
+                            jitme.addOperation( op->thingLiteral_.tonum(), op->openum_ );
+                            ops_.push_back( op );
+                            ast[j] = &noop;
+                        }
+                        else if
+                        (op && op->srcthing_ == kSrcUpval
+                        &&  isOtherDestReg && isCommuteOp
+                        )
+                        {
+                            jitme.addUpvalOp( op->uvnumber_, op->openum_ );
+                            ops_.push_back( op );
+                            ast[j] = &noop;
+                        }
+                        else if
+                        (op && op->srcthing_ == kSrcRegister && op->dest_ == kSrcRegister
+                        &&  op->secondValueSrc().v1src_ == kSrcLiteral && op->secondValueSrc().v1literal_.type() == Value::kNum
+                        )
+                        {
+                            jitme.addReverseOperation( op->secondValueSrc().v1literal_.tonum(), op->openum_ );
+                            ops_.push_back( op );
+                            ast[j] = &noop;
+                        }
+                        else
+                            break;
+                    }
+                
+                    auto jitfun = jitme.closeitup();
+                    auto lno = new Ast::Increment( jitfun, op->openum_, op->secondsrc_, *op ); // == kOpMinus) ? -vv :
+                                                                                             // vv
+                    lno->origOps_ = ops_;
+                    ast[i] = lno;
+                }
 //                *static_cast<Ast::ValueMaker*>(lno) = *static_cast<Ast::ValueMaker*>(op);
 //                *static_cast<Ast::ValueEater*>(lno) = op->secondsrc_;
-                ast[i] = lno;
             }
         }
     }
+    delNoops();
 #endif 
     
     

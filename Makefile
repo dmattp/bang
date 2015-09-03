@@ -21,12 +21,21 @@ CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
 #CPPFLAGS += -S
 
 ifeq (1,$(USE_GC))
- LDFLAGS_GC=-L$(DIR_BOEHM_LIB) -lgc
- CPPFLAGS_GC=-D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)
+ LDFLAGS += -L$(DIR_BOEHM_LIB) -lgc
+ CPPFLAGS += -D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)
 endif
 
+# GNU lightning JIT
+#   DIR_LIGHTNING_LIB should be set in [site.mak] with path to liblightning.so/.a
+#   Also set CPPFLAGS_LIGHTNING in [site.mak] if necessary for include paths
+ifeq (1,$(USE_LIGHTNING))
+LDFLAGS += -L$(DIR_LIGHTNING_LIB) -llightning
+CPPFLAGS += $(CPPFLAGS_LIGHTNING) -DLCFG_TRYJIT=1
+endif
+
+
 libbang$(EXT_SO): bang.cpp bang.h Makefile
-	$(CXX) $(CPPFLAGS) $(CPPFLAGS_GC)  $< $(LDFLAGS_GC) $(LDFLAGS_DL) -shared -o $@
+	$(CXX) $(CPPFLAGS) $< $(LDFLAGS) $(LDFLAGS_DL) -shared -o $@
 
 bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
 	$(CXX) $(CPPFLAGS)  $< -L . -lbang -o $@
@@ -53,13 +62,3 @@ bangone$(EXT_EXE): bangmain.cpp bang.cpp hashlib.cpp
 	$(CXX) $(CPPFLAGS)  $? -L . -o $@
 endif
 
-
-#  -Wl,--out-implib,$(@:.dll=.a)
-
-# -g0 doesnt seem to actually drop any size, maybe need linker option too?
-# mingw32-g++ -O2 --std=c++11 bang.cpp -o $@
-
-#	mingw32-g++ -O2 -Wl,--stack,33554432 --std=c++11 bang.cpp -o $@
-
-# Default stack size seems to be 2M?
-#   mingw32-g++ -Wl,--stack,16777216 -O2 --std=c++11 bang.cpp -o $@
