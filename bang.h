@@ -1024,27 +1024,28 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             enum EAstInstr {
                 kUnk,
                 kBreakProg,
-                kCloseValue,
+                kCloseValue, // 2
                 kApply,
                 kMove,
-                kApplyProgram,
+                kApplyProgram,  // 5
                 kApplyFunRec,
                 kApplyThingAndValue2ValueOperator,
 #if DOT_OPERATOR_INLINE            
-                kApplyIndexOperator,
+                kApplyIndexOperator, // 8
 #endif
 
                 kIncrement,
                 kIncrementReg,
-                kIncrementReg2Reg,
+                kIncrementReg2Reg,  // 11
                 
                 kIfElse,
                 kTryCatch,
-                kThrow,
+                kThrow,  // 14
                 
                 kTCOApply,
                 kTCOApplyProgram,
-                kTCOApplyFunRec,
+                kTCOApplyFunRec, // 17
+                kTCOApplyFunRecMinusNUpvals,
                 kTCOIfElse,
                 kMakeCoroutine,
                 kYieldCoroutine,
