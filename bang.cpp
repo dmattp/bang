@@ -391,69 +391,6 @@ namespace Bang {
 
 
 
-// class Upvalue
-// {
-// public:
-//     Upvalue* parent_;
-// };
-
-
-template <int N>
-class UvLookup
-{
-public:
-    static SHAREDUPVALUE_CREF getUv( SHAREDUPVALUE_CREF head )
-    {
-        return UvLookup<N-1>::getUv( head->parent_ );
-    }
-};
-
-template <>
-class UvLookup<0>
-{
-public:
-    static SHAREDUPVALUE_CREF getUv( SHAREDUPVALUE_CREF head )
-    {
-        return head;
-    }
-};
-
-typedef SHAREDUPVALUE_CREF (*tfn_uvlookup)(SHAREDUPVALUE_CREF);
-
-tfn_uvlookup gUvlookups[] = {
-    &UvLookup<0>::getUv,
-    &UvLookup<1>::getUv,
-    &UvLookup<2>::getUv,
-    &UvLookup<3>::getUv,
-    &UvLookup<4>::getUv,
-    &UvLookup<5>::getUv,
-    &UvLookup<6>::getUv,
-    &UvLookup<7>::getUv,
-    &UvLookup<8>::getUv,
-    &UvLookup<9>::getUv,
-    &UvLookup<10>::getUv,
-    &UvLookup<11>::getUv,
-    &UvLookup<12>::getUv,
-    &UvLookup<13>::getUv,
-    &UvLookup<14>::getUv,
-    &UvLookup<15>::getUv,
-    &UvLookup<16>::getUv,
-    &UvLookup<17>::getUv,
-    &UvLookup<18>::getUv,
-    &UvLookup<19>::getUv,
-    &UvLookup<20>::getUv,
-    &UvLookup<21>::getUv,
-    &UvLookup<22>::getUv,
-    &UvLookup<23>::getUv,
-    &UvLookup<24>::getUv,
-    &UvLookup<25>::getUv,
-    &UvLookup<26>::getUv,
-    &UvLookup<27>::getUv,
-    &UvLookup<28>::getUv,
-    &UvLookup<29>::getUv,
-};
-    
-
 #if !USE_GC
 template< class Tp >    
 struct FcStack
@@ -1277,14 +1214,12 @@ namespace Ast
     public:
         ESourceDest v1src_;
         NthParent   v1uvnumber_;
-        tfn_uvlookup v1_fn_uvlookup_;
         std::string v1uvname_;
         Value       v1literal_;
     public:
         ValueEater()
         : v1src_( kSrcStack ),
-          v1uvnumber_( kNoParent ),
-          v1_fn_uvlookup_(0)
+          v1uvnumber_( kNoParent )
         {}
         ESourceDest sourceType() const { return v1src_; }
         bool srcIsStack() const        { return v1src_ == kSrcStack; }
@@ -1295,10 +1230,6 @@ namespace Ast
         void setSrcUpval( const std::string& name, NthParent uvnumber )
         {
             v1uvnumber_ = uvnumber;
-            if (uvnumber.toint() >= sizeof(gUvlookups)/sizeof(gUvlookups[0]) )
-                bangerr() << "too few uv lookups, found n=" << uvnumber.toint();
-            
-            v1_fn_uvlookup_ = gUvlookups[uvnumber.toint()];
             v1uvname_ = name;
             v1src_ = kSrcUpval;
         }
@@ -1514,7 +1445,6 @@ namespace Ast
         Value thingLiteral_; // when srcthing_ == kSrcLiteral
         tfn_opThingAndValue2Value thingliteralop_;
         NthParent uvnumber_; // when srcthing_ == kSrcLiteral
-        tfn_uvlookup fn_uv_lookup_;
         std::string thinguvname_;
 
         bool firstValueNotStack() { return srcthing_ != kSrcStack; }
@@ -1523,8 +1453,7 @@ namespace Ast
         : Base( kApplyThingAndValue2ValueOperator ),
           openum_( openum ),
           srcthing_( kSrcStack ),
-          uvnumber_( kNoParent ),
-          fn_uv_lookup_(0)
+          uvnumber_( kNoParent )
         {}
 
         bool thingNotStack() { return srcthing_ != kSrcStack; }
@@ -1541,7 +1470,6 @@ namespace Ast
             }
             else
             {
-                fn_uv_lookup_ = other.v1_fn_uvlookup_;
                 uvnumber_ = other.v1uvnumber_;
                 thinguvname_ = other.v1uvname_;
             }
@@ -1671,9 +1599,6 @@ namespace Ast
 #if 1
  #define FRVE2UV(frame,ve) frame.getUpValue((ve).v1uvnumber_)
  #define FRATAV2VUV(frame,atav2v) frame.getUpValue((atav2v).uvnumber_)
-#else
- #define FRVE2UV(frame,ve) ((ve).v1_fn_uvlookup_(frame.upvalues_)->v_)
- #define FRATAV2VUV(frame,atav2v) ((atav2v).fn_uv_lookup_(frame.upvalues_)->v_)
 #endif 
         
         virtual void run( Stack& stack, const RunContext& rc ) const
@@ -1720,7 +1645,7 @@ namespace Ast
             {
                 case kSrcUpval:
                 {
-                    const Value& owner = FRVE2UV(rc, (*this)); // frv1_fn_uvlookup_(rc.upvalu)->v_; // rc.getUpValue(v1uvnumber_);
+                    const Value& owner = FRVE2UV(rc, (*this)); 
                     stack.push( dotted_ );
                     owner.applyCustomOperator( custom_, stack );
                 }
