@@ -22,8 +22,6 @@
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
 
-#define LCFG_OPTIMIZE_TCO_SELF_RECURSE_VALUES 1
-
 // #define LCFG_TRYJIT 1
 
 #define LCFG_INTLITERAL_OPTIMIZATION LCFG_TRYJIT
@@ -1176,8 +1174,7 @@ const Ast::Base* gFailedAst = nullptr;
         kSrcUpval,
         kSrcRegister,
         kSrcRegisterBool,
-        kSrcCloseValue,
-        kSrcClobberUpvalue
+        kSrcCloseValue
     };
         static const char* sd2str( ESourceDest sd )
         {
@@ -1189,7 +1186,6 @@ const Ast::Base* gFailedAst = nullptr;
             : sd == kSrcRegister ? "$reg"
             : sd == kSrcRegisterBool ? "$reg_bool"
             : sd == kSrcCloseValue ? "CloseValue"
-            : sd == kSrcClobberUpvalue ? "ClobberUpval"
             : "Unknown-source/dest"
             );
         }
@@ -1371,10 +1367,9 @@ namespace Ast
     {
     public: // protected:
         const Ast::CloseValue* cv_; // valid when dest_ is kSrcCloseValue
-        NthParent clobberUpvalNum_;
     public:
         ValueMaker()
-        : cv_(0), clobberUpvalNum_(kNoParent)
+        : cv_(0)
         {}
         void setDestRegister() { dest_ = kSrcRegister; }
         void setDestCloseValue( const Ast::CloseValue* cv )
@@ -1382,22 +1377,12 @@ namespace Ast
             dest_ = kSrcCloseValue;
             cv_ = cv;
         }
-        void setDestClobberUpval( NthParent uv, const Ast::CloseValue* cv )
-        {
-            dest_ = kSrcClobberUpvalue;
-            cv_ = cv;
-            clobberUpvalNum_ = uv;
-        }
         bool destIsStack() const { return dest_ == kSrcStack; }
         void dump( std::ostream& o ) const
         {
             o << sd2str(dest_) << ",";
             if (dest_ == kSrcCloseValue)
                 cv_->dump( 0, o );
-            if (dest_ == kSrcClobberUpvalue)
-            {
-                o << "uvnum=" << clobberUpvalNum_.toint() << "/" << cv_->valueName();
-            }
         }
     };
 
@@ -2345,11 +2330,6 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
             frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, std::move(bv) );
         }
     };
-    template<> struct StoreValueResultTo<kSrcClobberUpvalue> {
-        static inline void store( Stack&, Thread*, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa, Bang::Value&& bv ) {
-            const_cast<Value&>( frame.getUpValue(pa.clobberUpvalNum_) ) = std::move(bv);
-        }
-    };
 
     template <ESourceDest esd> struct DestSet {};
 //    template <> struct DestSet<kSrcLiteral>      { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, const Value& vv ) { 
@@ -2358,9 +2338,6 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct DestSet<kSrcRegisterBool> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
     template <> struct DestSet<kSrcCloseValue>   { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
         frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, vv );
-    } };
-    template <> struct DestSet<kSrcClobberUpvalue> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
-        const_cast<Value&>( frame.getUpValue(pa.clobberUpvalNum_) ) = vv;
     } };
 
     template <ESourceDest esd> struct SrcGet {};
@@ -2525,12 +2502,6 @@ restartTco:
         &&OPCODE_LOC(kTCOApply),
         &&OPCODE_LOC(kTCOApplyProgram),
         &&OPCODE_LOC(kTCOApplyFunRec),
-#if LCFG_OPTIMIZE_TCO_SELF_RECURSE_VALUES
-        &&OPCODE_LOC(kTCOApplyFunRecMinusNUpvals),
-#else
-        0,
-#endif 
-
         &&OPCODE_LOC(kTCOIfElse),
         &&OPCODE_LOC(kMakeCoroutine),
         &&OPCODE_LOC(kYieldCoroutine),
@@ -2661,22 +2632,6 @@ restartTco:
                 }
                 OPCODE_END();
 
-#if LCFG_OPTIMIZE_TCO_SELF_RECURSE_VALUES                
-                OPCODE_LOC(kTCOApplyFunRecMinusNUpvals):
-                {
-                    const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
-                    frame.rebind
-                    (  TMPFACT_PROG_TO_RUNPROG(afn->pRecFun_),
-//                        frame.upvalues_
-                        frame.nthBindingParent( afn->nthparent_ )
-                        // (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ )
-                    );
-                    frame.ppInstr += afn->skipInstructions;
-                    goto restartTco;
-                }
-                OPCODE_END();
-#endif 
-                
             OPCODE_LOC(kApplyFunRec):
                 {
                     const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
@@ -2825,10 +2780,6 @@ restartTco:
                                 case kSrcUpval:   Mover<kSrcUpval,kSrcCloseValue>  ::domove( move, move.src_, pThread, frame, stack ); break;
                                 case kSrcLiteral: Mover<kSrcLiteral,kSrcCloseValue>::domove( move, move.src_, pThread, frame, stack ); break;
                             } break; } break;
-                        case kSrcClobberUpvalue: { switch (move.src_.v1src_) {
-                                case kSrcUpval:   Mover<kSrcUpval,kSrcClobberUpvalue>  ::domove( move, move.src_, pThread, frame, stack ); break;
-                                case kSrcLiteral: Mover<kSrcLiteral,kSrcClobberUpvalue>::domove( move, move.src_, pThread, frame, stack ); break;
-                            } break; } break;
                     }
             }
             OPCODE_END();
@@ -2870,7 +2821,6 @@ restartTco:
                         case kSrcRegister:     ApplyThingValueCall<kSrcRegister>    ::docall( stack, pThread, frame, pa ); break;
                         case kSrcRegisterBool: ApplyThingValueCall<kSrcRegisterBool>::docall( stack, pThread, frame, pa ); break;
                         case kSrcCloseValue:   ApplyThingValueCall<kSrcCloseValue>  ::docall( stack, pThread, frame, pa ); break;
-                        case kSrcClobberUpvalue: ApplyThingValueCall<kSrcClobberUpvalue>  ::docall( stack, pThread, frame, pa ); break;
                     }
                 }
             OPCODE_END();
@@ -4223,67 +4173,6 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
         {
 //            std::cerr << "got possibleTail convertToTailCall" << std::endl;
             possibleTail->convertToTailCall();
-            
-#if LCFG_OPTIMIZE_TCO_SELF_RECURSE_VALUES
-            Ast::PushFunctionRec* afr = dynamic_cast<Ast::PushFunctionRec*>(possibleTail);
-
-            /* recursive invocation where i'm putting something on the stack prior to ApplyFunctionRec;
-             * we can optimize by mutating the upval rather than pushing / popping to new CloseValue; since
-             * we're in a tail call, the frame is dead anyway.
-             * This is a very common idiom for loops (which are likely to be in performance critical areas)
-             * so probably worth optimizing.
-             * Often, determining arity of called function is difficult since Bang! doesn't track arity yet; but because
-             * in this case we call ourselves, our arity is easily analyzed (for inbound values, anyway)
-             */
-            if (afr)
-            {
-//                std::cerr << "afr=" << afr << " typeid=" << typeid(*possibleTail).name() << " instr=" << afr->instr_ << " astlen=" << astLen << " uvchain=" << upvalueChain << std::endl; // dynamic type information is nice here
-
-                if (afr->instr_ == Ast::Base::kTCOApplyFunRec && astLen > 2) // needs at least 3 instructions: { [some operation], ApplyFunctionRec, kBreakProg }
-                {
-                    // Lookup program being called
-                    auto pCalledProg = afr->getRecFunAst();
-
-                    // this only works if I'm tail calling _myself_, otherwise it's not safe to mutate the upvalues
-                    // since the tail call doesn't really wipe out the called methods frame.  Damnit, and that's
-                    // almost never the case when i have an if-else block, since that makes a subframe; I'd have
-                    // to check that the if-else block is in tail position and so on/so-forth on all nested
-                    // programs.  Bah, this is not worth it.  Need something better.
-                    if (pCalledProg == &ast)
-                    {
-                        Ast::ValueMaker* vm = dynamic_cast<Ast::ValueMaker*>( ast[astLen-3] );
-                        Ast::CloseValue* cv = dynamic_cast<Ast::CloseValue*>( (*pCalledProg)[0] );
-                    
-                        if (cv && vm && vm->dest_ == kSrcStack)
-                        {
-                            afr->instr_ = Ast::Base::kTCOApplyFunRecMinusNUpvals;
-                            const auto nthParent = upvalueChain->FindBinding( cv );
-//                        std::cerr << "ZZZ-3 afr=" << afr << " vm=" << vm << " nthParent=" << nthParent.toint() << " uv=" << cv->valueName() <<  std::endl;
-                            vm->setDestClobberUpval( nthParent, cv );
-                            afr->setBindingParent( nthParent );
-                            afr->skipInstructions = 1;
-
-                            if (astLen > 3)
-                            {
-                                Ast::ValueMaker* vm = dynamic_cast<Ast::ValueMaker*>( ast[astLen-4] );
-                                Ast::CloseValue* cv = dynamic_cast<Ast::CloseValue*>( (*pCalledProg)[1] );
-                            
-                                if (cv && vm && vm->dest_ == kSrcStack)
-                                {
-                                    const auto nthParent = upvalueChain->FindBinding( cv );
-                                    vm->setDestClobberUpval( nthParent, cv );
-                                    afr->setBindingParent( nthParent );
-                                    afr->skipInstructions = 2;
-                                }
-                            }
-
-                        
-//                        vm->setDestClobberUpval( NthParent(0), cv );
-                        }
-                    }
-                }
-            }
-#endif
         }
     }
     

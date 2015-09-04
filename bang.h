@@ -1045,7 +1045,6 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 kTCOApply,
                 kTCOApplyProgram,
                 kTCOApplyFunRec, // 17
-                kTCOApplyFunRecMinusNUpvals,
                 kTCOIfElse,
                 kMakeCoroutine,
                 kYieldCoroutine,
