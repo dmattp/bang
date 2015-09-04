@@ -22,7 +22,7 @@
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
 
-#define LCFG_OPTIMIZE_TCO_SELF_RECURSE_VALUES 0
+#define LCFG_OPTIMIZE_TCO_SELF_RECURSE_VALUES 1
 
 // #define LCFG_TRYJIT 1
 
@@ -93,13 +93,15 @@ And there are primitives, until a better library / module system is in place.
 
 
 
+#include "bang.h"
+
+void OptimizeAst( std::vector<Bang::Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain );
+
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 #define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
 #define FRIENDOF_OPTIMIZE friend void OptimizeAst( std::vector<Ast::Base*>& ast );
 
-
-#include "bang.h"
 
 
 #if LCFG_TRYJIT
@@ -1394,7 +1396,7 @@ namespace Ast
                 cv_->dump( 0, o );
             if (dest_ == kSrcClobberUpvalue)
             {
-                o << "uvnum=" << clobberUpvalNum_.toint();
+                o << "uvnum=" << clobberUpvalNum_.toint() << "/" << cv_->valueName();
             }
         }
     };
@@ -1896,10 +1898,10 @@ namespace Ast
         : pParent_( parent )
         {}
 
-        void setAst( const astList_t& newast )
-        {
-            ast_ = newast;
-        }
+//         void setAst( const astList_t& newast )
+//         {
+//             ast_ = newast;
+//         }
         
         void setApply() {
             IsApplicable::setApply();
@@ -1917,6 +1919,7 @@ namespace Ast
         }
 
         const astList_t* getAst() const { return &ast_; }
+        astList_t& astRef() { return ast_; }
 
         // 'run' pushes the program onto the stack as a BoundProgram.
         // 
@@ -2052,10 +2055,16 @@ namespace Ast
         Ast::Program* pRecFun_;
         NthParent nthparent_;
     public:
+        int skipInstructions;
         PushFunctionRec( Ast::Program* other, NthParent boundAt )
         : pRecFun_( other ),
           nthparent_(boundAt)
         {}
+
+        void setBindingParent( NthParent n ) {
+            nthparent_ = n;
+//            nthparent_ = (nthparent_ == kNoParent) ? NthParent(0) : --nthparent;
+        }
 
         void setApply() {
             IsApplicable::setApply();
@@ -2349,6 +2358,9 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct DestSet<kSrcRegisterBool> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
     template <> struct DestSet<kSrcCloseValue>   { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
         frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, vv );
+    } };
+    template <> struct DestSet<kSrcClobberUpvalue> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
+        const_cast<Value&>( frame.getUpValue(pa.clobberUpvalNum_) ) = vv;
     } };
 
     template <ESourceDest esd> struct SrcGet {};
@@ -2655,10 +2667,11 @@ restartTco:
                     const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
                     frame.rebind
                     (  TMPFACT_PROG_TO_RUNPROG(afn->pRecFun_),
-                        frame.upvalues_
+//                        frame.upvalues_
+                        frame.nthBindingParent( afn->nthparent_ )
                         // (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ )
                     );
-                    frame.ppInstr++;
+                    frame.ppInstr += afn->skipInstructions;
                     goto restartTco;
                 }
                 OPCODE_END();
@@ -2811,6 +2824,10 @@ restartTco:
                         case kSrcCloseValue: { switch (move.src_.v1src_) {
                                 case kSrcUpval:   Mover<kSrcUpval,kSrcCloseValue>  ::domove( move, move.src_, pThread, frame, stack ); break;
                                 case kSrcLiteral: Mover<kSrcLiteral,kSrcCloseValue>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcClobberUpvalue: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcClobberUpvalue>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcClobberUpvalue>::domove( move, move.src_, pThread, frame, stack ); break;
                             } break; } break;
                     }
             }
@@ -3472,13 +3489,13 @@ class Parser
     struct ParsingRecursiveFunStack;
     class Program
     {
-        Ast::Program::astList_t ast_;
+        Ast::Program::astList_t& ast_;
     public:
         Program( ParsingContext& pc, StreamMark&, const Ast::Program* parent,
             const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
-            ParsingRecursiveFunStack* pRecParsing );
+            ParsingRecursiveFunStack* pRecParsing, Ast::Program::astList_t& );
 
-        const Ast::Program::astList_t& ast() { return ast_; }
+        // const Ast::Program::astList_t& ast() { return ast_; }
     };
 
     class Comment
@@ -3652,6 +3669,9 @@ class Parser
         Ast::Program *parentProgram;
         const Ast::CloseValue* parentsBinding;
         std::string progname_;
+//         Ast::Program::astList_t& parentProgramAst() {
+//             return *(parentProgram->getAst());
+//         }
         std::pair<Ast::Program*,const Ast::CloseValue*> FindProgramForIdent( const std::string& ident )
         {
             if (progname_ == ident)
@@ -3761,15 +3781,15 @@ class Parser
 
             // pNewFun_ =  new Ast::PushFun( pParentFun );
 
-            Ast::Program::astList_t functionAst;
+//            Ast::Program::astList_t functionAst;
+            pNewProgram_ = new Ast::Program( nullptr ); // , functionAst );
             const Ast::CloseValue* const entryUvChain = upvalueChain;
-            upvalueChain = getParamBindings( mark, functionAst, upvalueChain );
+            upvalueChain = getParamBindings( mark, pNewProgram_->astRef(), upvalueChain );
 
             //~~~ programParent??
-            Program program( parsectx, mark, nullptr, upvalueChain, entryUvChain, pRecParsing );
-            const auto& subast = program.ast();
-            std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
-            pNewProgram_ = new Ast::Program( nullptr, functionAst );
+            Program program( parsectx, mark, nullptr, upvalueChain, entryUvChain, pRecParsing, pNewProgram_->astRef() );
+//             const auto& subast = program.ast();
+//             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
 
             mark.accept();
         }
@@ -3821,17 +3841,17 @@ class Parser
                 bangerr(ParseFail) << "in " << mark.sayWhere() << "identifier must follow \"def :\"";
             }
 
-            Ast::Program::astList_t functionAst;
+//            Ast::Program::astList_t functionAst;
+            pDefProg_ = new Ast::Program(nullptr);
             const Ast::CloseValue* const entryUvChain = upvalueChain;
-            upvalueChain = getParamBindings( mark, functionAst, upvalueChain );
+            upvalueChain = getParamBindings( mark, pDefProg_->astRef(), upvalueChain );
 
             // std::string defFunName = pWithDefFun_->getParamName();
-            pDefProg_ = new Ast::Program(nullptr);
             ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, lastParentUpvalue, *defname_ ); // , pWithDefFun_);
-            Program progdef( parsectx, mark, nullptr, upvalueChain, entryUvChain, &recursiveStack ); // pDefFun_, &recursiveStack );
-            const auto& subast = progdef.ast();
-            std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
-            pDefProg_->setAst( functionAst );
+            Program progdef( parsectx, mark, nullptr, upvalueChain, entryUvChain, &recursiveStack,  pDefProg_->astRef() ); // pDefFun_, &recursiveStack );
+//            const auto& subast = progdef.ast();
+//            std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
+//            pDefProg_->setAst( functionAst );
             mark.accept();
         }
 
@@ -3841,20 +3861,21 @@ class Parser
     }; // end, Defdef class
     
     Program* program_;
+    Ast::Program::astList_t programAst_;
 public:
     Parser( ParsingContext& ctx, StreamMark& mark, const Ast::Program* parent )
     {
-        program_ = new Program( ctx, mark, parent, nullptr, nullptr, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+        program_ = new Program( ctx, mark, parent, nullptr, nullptr, nullptr, programAst_ ); // 0,0,0 = no upvalues, no recursive chain
     }
 
     Parser( ParsingContext& ctx, StreamMark& mark, const Ast::CloseValue* upvalchain )
     {
-        program_ = new Program( ctx, mark, nullptr /*parent*/, upvalchain, upvalchain, nullptr ); // 0,0,0 = no upvalues, no recursive chain
+        program_ = new Program( ctx, mark, nullptr /*parent*/, upvalchain, upvalchain, nullptr, programAst_ ); // 0,0,0 = no upvalues, no recursive chain
     }
     
     const Ast::Program::astList_t& programAst()
     {
-        return program_->ast();
+        return programAst_;
     }
 };
 
@@ -3862,7 +3883,7 @@ public:
     {
         Parser p( parsecontext_, stream_, uvchain );
 
-        auto prog = new Ast::Program( parent_, p.programAst() );
+        auto prog = new Ast::Program( parent_, p.programAst() );  //~~~todo: refactor me up
         prog->setApply();
         return prog;
     }
@@ -4216,30 +4237,49 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
              */
             if (afr)
             {
-                std::cerr << "afr=" << afr << " typeid=" << typeid(*possibleTail).name() << " instr=" << afr->instr_ << " astlen=" << astLen << " uvchain=" << upvalueChain << std::endl; // dynamic type information is nice here
+//                std::cerr << "afr=" << afr << " typeid=" << typeid(*possibleTail).name() << " instr=" << afr->instr_ << " astlen=" << astLen << " uvchain=" << upvalueChain << std::endl; // dynamic type information is nice here
 
                 if (afr->instr_ == Ast::Base::kTCOApplyFunRec && astLen > 2) // needs at least 3 instructions: { [some operation], ApplyFunctionRec, kBreakProg }
                 {
-                    Ast::ValueMaker* vm = dynamic_cast<Ast::ValueMaker*>( ast[astLen-3] );
-
                     // Lookup program being called
-                    // bah crap, in the case this thing is nested (fully possible, e.g., with if/else)
-                    // the parent program may not have set the AST components yet, because we optimize subtrees
-                    // first as they become available.  Big crap
                     auto pCalledProg = afr->getRecFunAst();
-                    std::cerr << "ZZZ afr=" << afr << " vm=" << vm
-                              << " pCalledProg=" << pCalledProg
-                              << " #pCalledProg=" << pCalledProg->size()
-//                              << " cv=" << cv
-//                              << " uvchain=" << upvalueChain
-                              <<  std::endl;
-                    Ast::CloseValue* cv = dynamic_cast<Ast::CloseValue*>( (*pCalledProg)[0] );
-                    if (cv && vm && vm->dest_ == kSrcStack)
+
+                    // this only works if I'm tail calling _myself_, otherwise it's not safe to mutate the upvalues
+                    // since the tail call doesn't really wipe out the called methods frame.  Damnit, and that's
+                    // almost never the case when i have an if-else block, since that makes a subframe; I'd have
+                    // to check that the if-else block is in tail position and so on/so-forth on all nested
+                    // programs.  Bah, this is not worth it.  Need something better.
+                    if (pCalledProg == &ast)
                     {
-                        afr->instr_ = Ast::Base::kTCOApplyFunRecMinusNUpvals;
-//                        const auto nthParent = upvalueChain->FindBinding( cv );
-//                        vm->setDestClobberUpval( nthParent, cv );
-                        vm->setDestClobberUpval( NthParent(0), cv );
+                        Ast::ValueMaker* vm = dynamic_cast<Ast::ValueMaker*>( ast[astLen-3] );
+                        Ast::CloseValue* cv = dynamic_cast<Ast::CloseValue*>( (*pCalledProg)[0] );
+                    
+                        if (cv && vm && vm->dest_ == kSrcStack)
+                        {
+                            afr->instr_ = Ast::Base::kTCOApplyFunRecMinusNUpvals;
+                            const auto nthParent = upvalueChain->FindBinding( cv );
+//                        std::cerr << "ZZZ-3 afr=" << afr << " vm=" << vm << " nthParent=" << nthParent.toint() << " uv=" << cv->valueName() <<  std::endl;
+                            vm->setDestClobberUpval( nthParent, cv );
+                            afr->setBindingParent( nthParent );
+                            afr->skipInstructions = 1;
+
+                            if (astLen > 3)
+                            {
+                                Ast::ValueMaker* vm = dynamic_cast<Ast::ValueMaker*>( ast[astLen-4] );
+                                Ast::CloseValue* cv = dynamic_cast<Ast::CloseValue*>( (*pCalledProg)[1] );
+                            
+                                if (cv && vm && vm->dest_ == kSrcStack)
+                                {
+                                    const auto nthParent = upvalueChain->FindBinding( cv );
+                                    vm->setDestClobberUpval( nthParent, cv );
+                                    afr->setBindingParent( nthParent );
+                                    afr->skipInstructions = 2;
+                                }
+                            }
+
+                        
+//                        vm->setDestClobberUpval( NthParent(0), cv );
+                        }
                     }
                 }
             }
@@ -4416,8 +4456,10 @@ Parser::Program::Program
     StreamMark& stream,
     const Ast::Program* parent,
     const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
-    ParsingRecursiveFunStack* pRecParsing
+    ParsingRecursiveFunStack* pRecParsing,
+    Ast::Program::astList_t& programAst
 )
+: ast_( programAst )
 {
 //    std::cerr << "enter Program parent=" << parent << " uvchain=" << upvalueChain << "\n";
 //    const Ast::CloseValue* const entryUvChain = upvalueChain;
@@ -4568,7 +4610,8 @@ Parser::Program::Program
             {
                 bHasOpenIndex = true;
                 mark.accept();
-                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
+                Ast::Program::astList_t indexProgAst;
+                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, indexProgAst );
                 mark.accept();
 #if 0
                 ast_.push_back( new Ast::ApplyIndexOperator( indexProgram.ast() ) );
@@ -4576,7 +4619,7 @@ Parser::Program::Program
 #else
                 ast_.push_back( new Ast::StackToAltstack() );
                 
-                const auto astop = indexProgram.ast();
+                const auto astop = indexProgAst;
                 for (auto el = astop.begin(); el != astop.end(); ++el)
                 {
                     if ((*el)->instr_ != Ast::Base::kBreakProg)
@@ -4601,8 +4644,8 @@ Parser::Program::Program
                 mark.accept();
                 try
                 {
-                    Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
-                    Ast::Program* ifProg = new Ast::Program( nullptr, ifBranch.ast() );
+                    Ast::Program* ifProg = new Ast::Program( nullptr ); // , ifBranchAst );
+                    Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, ifProg->astRef() );
                     Ast::Program* elseProg = nullptr;
                     eatwhitespace(stream);
                     c = mark.getc();
@@ -4614,8 +4657,8 @@ Parser::Program::Program
                     {
                         mark.accept();
 //                        std::cerr << "  found else clause\n";
-                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
-                        elseProg = new Ast::Program( nullptr, elseBranch.ast() );
+                        elseProg = new Ast::Program( nullptr ); // , elseBranch.ast() );
+                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, elseProg->astRef() );
                     }
                         
                     ast_.push_back( new Ast::IfElse( ifProg, elseProg ) );
@@ -4844,8 +4887,8 @@ Parser::Program::Program
                     mark.accept();
                     try
                     {
-                        Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
-                        Ast::Program* ifProg = new Ast::Program( nullptr, ifBranch.ast() );
+                        Ast::Program* ifProg = new Ast::Program( nullptr ); // , ifBranch.ast() );
+                        Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, ifProg->astRef() );
                         
                         eatwhitespace(stream);
                         Identifier idcatch( mark );
@@ -4853,8 +4896,8 @@ Parser::Program::Program
                             bangerr() << "'catch' must follow 'try'";
                         
                         mark.accept();
-                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing );
-                        Ast::Program* elseProg = new Ast::Program( nullptr, elseBranch.ast() );
+                        Ast::Program* elseProg = new Ast::Program( nullptr ); // , elseBranch.ast() );
+                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, elseProg->astRef() );
                         
                         ast_.push_back( new Ast::TryCatch( ifProg, elseProg ) );
 
