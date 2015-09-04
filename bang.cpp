@@ -22,6 +22,8 @@
 
 #define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
 
+#define LCFG_HAVE_TAV_SWAP 0
+
 // #define LCFG_TRYJIT 1
 
 #define LCFG_INTLITERAL_OPTIMIZATION LCFG_TRYJIT
@@ -1439,7 +1441,9 @@ namespace Ast
 
     class ApplyThingAndValue2ValueOperator : public Base, public ValueEater, public ValueMaker, public SecondValueEater
     {
+        FRIENDOF_RUNPROG
     public:
+        bool argSwap_;
         EOperators openum_ ; // method
         tfn_opThingAndValue2Value thingliteralop_;
 //        NthParent uvnumber_; // when srcthing_ == kSrcLiteral
@@ -1447,9 +1451,12 @@ namespace Ast
 
         ApplyThingAndValue2ValueOperator( EOperators openum )
         : Base( kApplyThingAndValue2ValueOperator ),
+          argSwap_( false ),
           openum_( openum )
         {}
 
+        void setArgSwap() { argSwap_ = true; }
+        
         //~~~ @todo: revisit use of these and see if generic ValueEater can be used instead
         bool firstValueNotStack() { return v1src_ != kSrcStack; }
         void setThingRegister() { this->setSrcRegister(); }
@@ -1467,6 +1474,12 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
+
+            if (argSwap_)
+            {
+                o << "SWAP ";
+            }
+            
             o << "ApplyThingAndValue2ValueOperator( ";
 
             o << " s1=";
@@ -2271,11 +2284,29 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     };
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcUpval> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
-            switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) );
-                case kSrcRegister: return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pThread->r0_ );
-                case kSrcLiteral:  return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
-                default:           return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, stack.pop() );
+#if LCFG_HAVE_TAV_SWAP
+            // i think a better implementation would be to have a distinct Ast::Swap()
+            // instruction, then the optimizer could remove it when followed by a dual ValueEater where
+            // both Values are not coming from the stack.  if both values come from the stack
+            // then the Ast::Swap() instruction is left in place.
+            if (pa.argSwap_)
+            {
+                switch( pa.secondsrc_.v1src_ ) {
+                    case kSrcUpval:    return FRVE2UV(frame, pa.secondsrc_) .applyAndValue2Value( pa.openum_, FRATAV2VUV(frame,pa) );
+                    case kSrcRegister: return pThread->r0_                  .applyAndValue2Value( pa.openum_, FRATAV2VUV(frame,pa)  );
+                    case kSrcLiteral:  return pa.secondsrc_.v1literal_      .applyAndValue2Value( pa.openum_, FRATAV2VUV(frame,pa) );
+                    default:           return stack.pop()                   .applyAndValue2Value( pa.openum_, FRATAV2VUV(frame,pa) );
+                }
+            }
+            else
+#endif
+            {
+                switch( pa.secondsrc_.v1src_ ) {
+                    case kSrcUpval:    return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) );
+                    case kSrcRegister: return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pThread->r0_ );
+                    case kSrcLiteral:  return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
+                    default:           return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, stack.pop() );
+                }
             }
             
         }
@@ -2656,7 +2687,7 @@ restartTco:
 #endif 
                 }
                 OPCODE_END();
-                
+
             OPCODE_LOC(kMove):
                 {
                     const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
@@ -2682,7 +2713,6 @@ restartTco:
                     }
             }
             OPCODE_END();
-                
                 
         OPCODE_LOC(kTCOApplyProgram):
                 {
@@ -4058,8 +4088,8 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
     }
     delNoops();
 #endif 
-    
-    
+
+
     
 #endif 
 
@@ -4554,6 +4584,22 @@ Parser::Program::Program
                     ast_.push_back( new Ast::OperatorThrow() );
                     continue;
                 }
+#if LCFG_HAVE_TAV_SWAP
+                else if (token == "~-")
+                {
+                    auto atav = new Ast::ApplyThingAndValue2ValueOperator( kOpMinus );
+                    atav->setArgSwap();
+                    ast_.push_back( atav );
+                    continue;
+                }
+                else if (token == "~/")
+                {
+                    auto atav = new Ast::ApplyThingAndValue2ValueOperator( kOpDiv );
+                    atav->setArgSwap();
+                    ast_.push_back( atav );
+                    continue;
+                }
+#endif 
                 
                 EOperators openum = optoken2enum( token );
                 if (openum != kOpCustom)
