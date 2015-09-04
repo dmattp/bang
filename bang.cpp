@@ -1437,45 +1437,33 @@ namespace Ast
         virtual bool firstValueNotStack() = 0;
     };
 
-    class ApplyThingAndValue2ValueOperator : public Base, public ValueMaker, public SecondValueEater
+    class ApplyThingAndValue2ValueOperator : public Base, public ValueEater, public ValueMaker, public SecondValueEater
     {
     public:
         EOperators openum_ ; // method
-        ESourceDest srcthing_;
-        Value thingLiteral_; // when srcthing_ == kSrcLiteral
         tfn_opThingAndValue2Value thingliteralop_;
-        NthParent uvnumber_; // when srcthing_ == kSrcLiteral
-        std::string thinguvname_;
+//        NthParent uvnumber_; // when srcthing_ == kSrcLiteral
 
-        bool firstValueNotStack() { return srcthing_ != kSrcStack; }
 
         ApplyThingAndValue2ValueOperator( EOperators openum )
         : Base( kApplyThingAndValue2ValueOperator ),
-          openum_( openum ),
-          srcthing_( kSrcStack ),
-          uvnumber_( kNoParent )
+          openum_( openum )
         {}
 
-        bool thingNotStack() { return srcthing_ != kSrcStack; }
-
-        void setThingRegister() { srcthing_ = kSrcRegister; }
+        //~~~ @todo: revisit use of these and see if generic ValueEater can be used instead
+        bool firstValueNotStack() { return v1src_ != kSrcStack; }
+        void setThingRegister() { this->setSrcRegister(); }
+        void setOtherRegister() { secondsrc_.setSrcRegister(); }
 
         void setThingVeSrc( const ValueEater& other )
         {
-            srcthing_ = other.v1src_;
-            if (srcthing_ == kSrcLiteral)
+            ValueEater::setSrcOther( other );
+            if (other.v1src_ == kSrcLiteral)
             {
-                thingLiteral_ = other.v1literal_;
-                thingliteralop_ = thingLiteral_.getOperator( openum_ );
-            }
-            else
-            {
-                uvnumber_ = other.v1uvnumber_;
-                thinguvname_ = other.v1uvname_;
+                thingliteralop_ = v1literal_.getOperator( openum_ );
             }
         }
 
-        void setOtherRegister() { secondsrc_.setSrcRegister(); }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -1484,27 +1472,13 @@ namespace Ast
             o << " s1=";
             secondsrc_.dump(o);
 
-            o << " s2=" << sd2str(srcthing_) ;
-            if (srcthing_ == kSrcLiteral)
-            {
-                o << ',';
-                thingLiteral_.dump( o );
-            }
-            else if (srcthing_ == kSrcUpval)
-            {
-                o << '#'
-                    //<< uvnumber_.toint()
-                  << ',' << thinguvname_;
-            }
+            o << " s2=";
+            ValueEater::dump(o);
             
             o << " op=" << openum_ << "(" << op2str(openum_) << ')';
             o << " dest=";
             ValueMaker::dump( o );
-//             << sd2str(dest_);
-//             if (dest_ == kSrcCloseValue)
-//             {
-//                 cv_->dump( 0, o );
-//             }
+            
             o << ")\n";
         }
         virtual void run( Stack& stack, const RunContext& rc ) const
@@ -1598,7 +1572,7 @@ namespace Ast
 
 #if 1
  #define FRVE2UV(frame,ve) frame.getUpValue((ve).v1uvnumber_)
- #define FRATAV2VUV(frame,atav2v) frame.getUpValue((atav2v).uvnumber_)
+ #define FRATAV2VUV(frame,atav2v) frame.getUpValue((atav2v).v1uvnumber_)
 #endif 
         
         virtual void run( Stack& stack, const RunContext& rc ) const
@@ -2277,10 +2251,10 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return pa.thingliteralop_( pa.thingLiteral_, FRVE2UV(frame, pa.secondsrc_) ); 
-                case kSrcRegister: return pa.thingliteralop_( pa.thingLiteral_, pThread->r0_ );
-                case kSrcLiteral:  return pa.thingliteralop_( pa.thingLiteral_, pa.secondsrc_.v1literal_ );
-                default:           return pa.thingliteralop_( pa.thingLiteral_, stack.pop() );
+                case kSrcUpval:    return pa.thingliteralop_( pa.v1literal_, FRVE2UV(frame, pa.secondsrc_) ); 
+                case kSrcRegister: return pa.thingliteralop_( pa.v1literal_, pThread->r0_ );
+                case kSrcLiteral:  return pa.thingliteralop_( pa.v1literal_, pa.secondsrc_.v1literal_ );
+                default:           return pa.thingliteralop_( pa.v1literal_, stack.pop() );
             }
         }
     };
@@ -2335,7 +2309,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
     {
         static inline void docall( Stack& stack, Thread* pThread, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa )
         {
-            switch (pa.srcthing_)
+            switch (pa.v1src_)
             {
                 case kSrcUpval:    ThingValueOperatorFetchFromSaveTo<kSrcUpval,edst>   ::apply( stack, pThread, frame, pa ); break;
                 case kSrcStack:    ThingValueOperatorFetchFromSaveTo<kSrcStack,edst>   ::apply( stack, pThread, frame, pa ); break;
@@ -3849,7 +3823,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
         if (pmove && pmove->destIsStack())
         {
             Ast::ApplyThingAndValue2ValueOperator* pTav2v = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (pTav2v && pTav2v->srcthing_ == kSrcStack)
+            if (pTav2v && pTav2v->v1src_ == kSrcStack)
             {
                 pTav2v->setThingVeSrc( pmove->source() );
                 ast[i] = &noop;
@@ -3899,7 +3873,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
             if (psecond)
             {
-                if (psecond->srcthing_ == kSrcStack)
+                if (psecond->v1src_ == kSrcStack)
                 {
                     pfirst->setDestRegister();
                     psecond->setThingRegister();
@@ -3957,7 +3931,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
         if (pfirst && pfirst->dest_ == kSrcStack)
         {
             Ast::ApplyThingAndValue2ValueOperator* psecond = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i+1]);
-            if (psecond && psecond->secondValueIsStack() && psecond->srcthing_ != kSrcStack)
+            if (psecond && psecond->secondValueIsStack() && psecond->v1src_ != kSrcStack)
             {
                 pfirst->setDestRegister();
                 psecond->setOtherRegister();
@@ -3971,7 +3945,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
     for (unsigned i = 2; i < ast.size(); ++i)
     {
         Ast::ApplyThingAndValue2ValueOperator* pfirst = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
-        if (pfirst && pfirst->secondValueIsStack() && pfirst->thingNotStack())
+        if (pfirst && pfirst->secondValueIsStack() && pfirst->firstValueNotStack())
         {
             unsigned j = i - 1;
             for (; j > 0; --j)
@@ -4006,7 +3980,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
     {
         Ast::ApplyThingAndValue2ValueOperator* op = dynamic_cast<Ast::ApplyThingAndValue2ValueOperator*>(ast[i]);
         if
-        (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum
+        (op && op->v1src_ == kSrcLiteral && op->v1literal_.type() == Value::kNum
         &&  (op->secondValueSrc().v1src_ == kSrcUpval
             || (op->secondValueSrc().v1src_ == kSrcRegister && op->dest_ == kSrcRegister)
             )
@@ -4025,7 +3999,7 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
                     else // upval
                         jitme.loadFromUpval( op->secondValueSrc().v1uvnumber_ );
                     
-                    const double vv = op->thingLiteral_.tonum();
+                    const double vv = op->v1literal_.tonum();
 
                     jitme.addOperation( vv, op->openum_ );
                     
@@ -4041,25 +4015,25 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
                         const bool isOtherDestReg = op->secondValueSrc().v1src_ == kSrcRegister && op->dest_ == kSrcRegister;
 //                        std::cerr << "commute="  << isCommuteOp << " math=" << isMathOp << " otherreg=" << isOtherDestReg << "\n"; op->dump(9,std::cerr);
                         if
-                        (op && op->srcthing_ == kSrcLiteral && op->thingLiteral_.type() == Value::kNum
+                        (op && op->v1src_ == kSrcLiteral && op->v1literal_.type() == Value::kNum
                         &&  isOtherDestReg && isMathOp
                         )
                         {
-                            jitme.addOperation( op->thingLiteral_.tonum(), op->openum_ );
+                            jitme.addOperation( op->v1literal_.tonum(), op->openum_ );
                             ops_.push_back( op );
                             ast[j] = &noop;
                         }
                         else if
-                        (op && op->srcthing_ == kSrcUpval
+                        (op && op->v1src_ == kSrcUpval
                         &&  isOtherDestReg && isCommuteOp
                         )
                         {
-                            jitme.addUpvalOp( op->uvnumber_, op->openum_ );
+                            jitme.addUpvalOp( op->v1uvnumber_, op->openum_ );
                             ops_.push_back( op );
                             ast[j] = &noop;
                         }
                         else if
-                        (op && op->srcthing_ == kSrcRegister && op->dest_ == kSrcRegister
+                        (op && op->v1src_ == kSrcRegister && op->dest_ == kSrcRegister
                         &&  op->secondValueSrc().v1src_ == kSrcLiteral && op->secondValueSrc().v1literal_.type() == Value::kNum
                         )
                         {
