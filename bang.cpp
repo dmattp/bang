@@ -95,12 +95,11 @@ And there are primitives, until a better library / module system is in place.
 
 #include "bang.h"
 
-void OptimizeAst( std::vector<Bang::Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain );
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 #define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
-#define FRIENDOF_OPTIMIZE friend void OptimizeAst( std::vector<Ast::Base*>& ast );
+#define FRIENDOF_OPTIMIZE friend void Bang::OptimizeAst( std::vector<Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain );
 
 
 
@@ -391,6 +390,7 @@ namespace {
 
 namespace Bang {
 
+void OptimizeAst( std::vector<Bang::Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain );
 
 
 #if !USE_GC
@@ -1830,19 +1830,13 @@ namespace Ast
 //        void runAst( Stack& stack, const RunContext& ) const;
     public:
         ApplyIndexOperator( const bangstring& msgStr )
-        :
-#if DOT_OPERATOR_INLINE
-          Base( kApplyIndexOperator )
-#endif 
+        : Base( kApplyIndexOperator )
         {
             indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
 
         ApplyIndexOperator()
-        :
-#if DOT_OPERATOR_INLINE
-          Base( kApplyIndexOperator )
-#endif 
+        : Base( kApplyIndexOperator )
         {
             // indexValue_.setSrcLiteral( Bang::Value(msgStr) );
         }
@@ -1857,8 +1851,6 @@ namespace Ast
             indexValue_ = other;
         }
         
-        
-//        const Value& getMsgVal() const { return msgStr_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
@@ -1869,11 +1861,7 @@ namespace Ast
             o << "] )\n";
         }
         virtual void run( Stack& stack, const RunContext& ) const
-#if DOT_OPERATOR_INLINE
         { bangerr() <<"ApplyIndexOperator::run should not be called"; }
-#else
-        ;
-#endif 
     }; // end, ApplyIndexOperator class
     
     class IfElse : public Base, public BoolEater
@@ -2157,7 +2145,7 @@ namespace Primitives {
     {
         std::ostringstream oss;
         oss << pInstr->where_;
-        oss << ": " << typeid(*pInstr).name() << ": Called apply without function.2; found type=" << v.type_ << " V=";
+        oss << ": " << typeid(*pInstr).name() << ": Called apply without function.2; found type=" << v.type() << " V=";
         v.dump(oss);
         throw std::runtime_error(oss.str());
     }
@@ -2219,71 +2207,46 @@ static Thread gNullThread;
 DLLEXPORT Thread* pNullThread( &gNullThread );
 DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
-    template< ESourceDest edst > struct StoreValueResultTo {
-        static inline void store( Stack& stack, Thread*, Bang::Value&& bv ) { char This_should_never_be_instantiated[0-edst-1]; }
-    };
-    template<> struct StoreValueResultTo<kSrcStack> {
-        static inline void store( Stack& stack, Thread*, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv ) {
-            stack.push( std::move(bv) );
-        }
-    };
-    template<> struct StoreValueResultTo<kSrcRegister> {
-        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, Bang::Value&& bv ) {
-            pThread->r0_ = std::move(bv);
-        }
-    };
-    template<> struct StoreValueResultTo<kSrcRegisterBool> {
-        static inline void store( Stack&, Thread* pThread, RunContext&, const Ast::ApplyThingAndValue2ValueOperator&, const Bang::Value& bv ) {
-            pThread->rb0_ = bv.tobool();
-        }
-    };
-    template<> struct StoreValueResultTo<kSrcCloseValue> {
-        static inline void store( Stack&, Thread*, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa, Bang::Value&& bv ) {
-            frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, std::move(bv) );
-        }
-    };
-
     template <ESourceDest esd> struct DestSet {};
-//    template <> struct DestSet<kSrcLiteral>      { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, const Value& vv ) { 
-    template <> struct DestSet<kSrcStack>        { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { stack.push(vv); } };
-    template <> struct DestSet<kSrcRegister>     { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->r0_ = vv; } };
-    template <> struct DestSet<kSrcRegisterBool> { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
-    template <> struct DestSet<kSrcCloseValue>   { static void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
+    template <> struct DestSet<kSrcStack>        { static inline void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { stack.push(vv); }
+                                                   static inline void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value&& vv ) { stack.push(std::move(vv)); }
+    };
+    template <> struct DestSet<kSrcRegister>     { static inline void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->r0_ = vv; }
+                                                   static inline void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value&& vv ) { pThread->r0_ = std::move(vv); }
+    }; 
+    template <> struct DestSet<kSrcRegisterBool> { static inline void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) { pThread->rb0_ = vv.tobool(); } };
+    template <> struct DestSet<kSrcCloseValue>   { static inline void set( const Ast::ValueMaker& pa, Thread* pThread, RunContext& frame, Stack& stack, const Value& vv ) {
         frame.upvalues_ = NEW_UPVAL( pa.cv_, frame.upvalues_, vv );
     } };
 
     template <ESourceDest esd> struct SrcGet {};
-    template <> struct SrcGet<kSrcLiteral>  { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pa.v1literal_; } };
-    template <> struct SrcGet<kSrcRegister> { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->r0_; }  };
-    template <> struct SrcGet<kSrcUpval>    { static const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return FRVE2UV(frame, pa); } }; // frame.getUpValue( pa.v1uvnumber_ ); } };
-    template <> struct SrcGet<kSrcStack>    { static Bang::Value get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->stack.pop(); } };
+    template <> struct SrcGet<kSrcLiteral>  { static inline const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pa.v1literal_; } };
+    template <> struct SrcGet<kSrcRegister> { static inline const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->r0_; }  };
+    template <> struct SrcGet<kSrcUpval>    { static inline const Bang::Value& get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return FRVE2UV(frame, pa); } }; // frame.getUpValue( pa.v1uvnumber_ ); } };
+    template <> struct SrcGet<kSrcStack>    { static inline Bang::Value get( const Ast::ValueEater& pa, Thread* pThread, RunContext& frame ) { return pThread->stack.pop(); } };
     
-
-        
-    template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom { };
+    template <ESourceDest esd> struct Invoke2n2OperatorWithThingFrom {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
+            switch( pa.secondsrc_.v1src_ ) {
+                case kSrcUpval:    return SrcGet<esd>::get(pa,pThread,frame).applyAndValue2Value( pa.openum_, SrcGet<kSrcUpval>   ::get( pa.secondsrc_, pThread, frame ) );
+                case kSrcRegister: return SrcGet<esd>::get(pa,pThread,frame).applyAndValue2Value( pa.openum_, SrcGet<kSrcRegister>::get( pa.secondsrc_, pThread, frame ) );
+                case kSrcLiteral:  return SrcGet<esd>::get(pa,pThread,frame).applyAndValue2Value( pa.openum_, SrcGet<kSrcLiteral> ::get( pa.secondsrc_, pThread, frame ) );
+                default:           return SrcGet<esd>::get(pa,pThread,frame).applyAndValue2Value( pa.openum_, SrcGet<kSrcStack>   ::get( pa.secondsrc_, pThread, frame ) );
+            }
+        }
+    };
+    
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return pa.thingliteralop_( pa.v1literal_, FRVE2UV(frame, pa.secondsrc_) ); 
-                case kSrcRegister: return pa.thingliteralop_( pa.v1literal_, pThread->r0_ );
-                case kSrcLiteral:  return pa.thingliteralop_( pa.v1literal_, pa.secondsrc_.v1literal_ );
-                default:           return pa.thingliteralop_( pa.v1literal_, stack.pop() );
+                case kSrcUpval:    return pa.thingliteralop_( pa.v1literal_, SrcGet<kSrcUpval>   ::get( pa.secondsrc_, pThread, frame ) );
+                case kSrcRegister: return pa.thingliteralop_( pa.v1literal_, SrcGet<kSrcRegister>::get( pa.secondsrc_, pThread, frame ) );
+                case kSrcLiteral:  return pa.thingliteralop_( pa.v1literal_, SrcGet<kSrcLiteral> ::get( pa.secondsrc_, pThread, frame ) );
+                default:           return pa.thingliteralop_( pa.v1literal_, SrcGet<kSrcStack>   ::get( pa.secondsrc_, pThread, frame ) );
             }
         }
     };
-    template <> struct Invoke2n2OperatorWithThingFrom<kSrcRegister> {
-        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
-//            return pThread->r0_.applyAndValue2Value( pa.openum_, pa_getOtherValue( pa, frame, stack ) );
-            switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return  pThread->r0_.applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) ); 
-                case kSrcRegister: return  pThread->r0_.applyAndValue2Value( pa.openum_, pThread->r0_ );
-                case kSrcLiteral:  return  pThread->r0_.applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
-                default:           return  pThread->r0_.applyAndValue2Value( pa.openum_, stack.pop() );
-            }
-        }
-    };
-    template <> struct Invoke2n2OperatorWithThingFrom<kSrcUpval> {
-        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
+
 #if LCFG_HAVE_TAV_SWAP
             // i think a better implementation would be to have a distinct Ast::Swap()
             // instruction, then the optimizer could remove it when followed by a dual ValueEater where
@@ -2300,34 +2263,13 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
             }
             else
 #endif
-            {
-                switch( pa.secondsrc_.v1src_ ) {
-                    case kSrcUpval:    return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) );
-                    case kSrcRegister: return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pThread->r0_ );
-                    case kSrcLiteral:  return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, pa.secondsrc_.v1literal_ );
-                    default:           return FRATAV2VUV(frame,pa).applyAndValue2Value( pa.openum_, stack.pop() );
-                }
-            }
-            
-        }
-    };
-    template <> struct Invoke2n2OperatorWithThingFrom<kSrcStack> {
-        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
-            const Value& owner = stack.pop();
-            switch( pa.secondsrc_.v1src_ ) {
-                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, FRVE2UV(frame, pa.secondsrc_) ); 
-                case kSrcRegister: return owner.applyAndValue2Value( pa.openum_, pThread->r0_ );
-                default:           return owner.applyAndValue2Value( pa.openum_, stack.pop() );
-            }
-        }
-    };
-
+    
     template< ESourceDest eThingSource, ESourceDest eValueDest >
     struct ThingValueOperatorFetchFromSaveTo
     {
         static inline void apply(  Stack& stack, Thread* pThread, RunContext& frame, const Ast::ApplyThingAndValue2ValueOperator& pa )
         {
-            StoreValueResultTo<eValueDest>::store( stack, pThread, frame, pa, Invoke2n2OperatorWithThingFrom<eThingSource>::getAndCall( pa, pThread, frame, stack ) );
+            DestSet<eValueDest>::set( pa, pThread, frame, stack, Invoke2n2OperatorWithThingFrom<eThingSource>::getAndCall( pa, pThread, frame, stack ) );
         }
     };
 
@@ -2352,16 +2294,16 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
     
     template <ESourceDest source, ESourceDest dest> struct Mover {
-        static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
+        static inline void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
             DestSet<dest>::set( vm, pThread, frame, stack, SrcGet<source>::get( ve, pThread, frame ) );
         }
     };
 
-    template <ESourceDest source, ESourceDest dest> struct Incrementer {
-        static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
-            DestSet<dest>::set( vm, pThread, frame, stack, SrcGet<source>::get( ve, pThread, frame ).tonum() + 1 );
-        }
-    };
+//     template <ESourceDest source, ESourceDest dest> struct Incrementer {
+//         static void domove( const Ast::ValueMaker& vm, const Ast::ValueEater& ve, Thread* pThread, RunContext& frame, Stack& stack ) { 
+//             DestSet<dest>::set( vm, pThread, frame, stack, SrcGet<source>::get( ve, pThread, frame ).tonum() + 1 );
+//         }
+//     };
     
 
 #if __GNUC__
@@ -2406,7 +2348,7 @@ restartTco:
 
 #if LCFG_COMPUTED_GOTO
 
-    static void* dispatch_table[] = {
+    static void* const dispatch_table[] = {
         &&OPCODE_LOC(kUnk),
         &&OPCODE_LOC(kBreakProg),
         &&OPCODE_LOC(kCloseValue),
@@ -2415,9 +2357,7 @@ restartTco:
         &&OPCODE_LOC(kApplyProgram),
         &&OPCODE_LOC(kApplyFunRec),
         &&OPCODE_LOC(kApplyThingAndValue2ValueOperator),
-#if DOT_OPERATOR_INLINE            
         &&OPCODE_LOC(kApplyIndexOperator),
-#endif
         &&OPCODE_LOC(kIncrement),
         &&OPCODE_LOC(kIncrementReg),
         &&OPCODE_LOC(kIncrementReg2Reg),
