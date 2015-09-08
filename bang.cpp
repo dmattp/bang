@@ -2236,6 +2236,18 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
         }
     };
     
+    template <> struct Invoke2n2OperatorWithThingFrom<kSrcStack> {
+        static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
+            const Bang::Value& owner = stack.pop();
+            switch( pa.secondsrc_.v1src_ ) {
+                case kSrcUpval:    return owner.applyAndValue2Value( pa.openum_, SrcGet<kSrcUpval>   ::get( pa.secondsrc_, pThread, frame ) );
+                case kSrcRegister: return owner.applyAndValue2Value( pa.openum_, SrcGet<kSrcRegister>::get( pa.secondsrc_, pThread, frame ) );
+                case kSrcLiteral:  return owner.applyAndValue2Value( pa.openum_, SrcGet<kSrcLiteral> ::get( pa.secondsrc_, pThread, frame ) );
+                default:           return owner.applyAndValue2Value( pa.openum_, SrcGet<kSrcStack>   ::get( pa.secondsrc_, pThread, frame ) );
+            }
+        }
+    };
+    
     template <> struct Invoke2n2OperatorWithThingFrom<kSrcLiteral> {
         static inline Bang::Value getAndCall( const Ast::ApplyThingAndValue2ValueOperator& pa, Thread* pThread, RunContext& frame, Stack& stack ) {
             switch( pa.secondsrc_.v1src_ ) {
@@ -3128,6 +3140,8 @@ public:
     : filename_( filename )
     {
         f_ = fopen( filename.c_str(), "r");
+        if (!f_)
+            bangerr() << "Cannot open file=" << filename;
     }
     ~RegurgeFile()
     {
@@ -4421,9 +4435,13 @@ Parser::Program::Program
                         
                     ast_.push_back( new Ast::IfElse( ifProg, elseProg ) );
                 }
-                catch (...)
+                catch ( const std::exception& e )
                 {
-                    std::cerr << "?? error on ifelse\n";
+                    std::cerr << "?? error on ifelse: " << e.what() << std::endl;
+                }
+                catch ( ... )
+                {
+                    std::cerr << "?? unknown error on ifelse" << std::endl;
                 }
                 continue;
             }
