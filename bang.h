@@ -16,13 +16,13 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 1
+#define LCFG_MT_SAFEISH 0
 #define LCFG_HAVE_TRY_CATCH 0
 
 
 static const char* const BANG_VERSION = "0.006";
 
-#if defined(WIN32)
+#if defined(WIN32) && !__GNUC__
 # define DLLEXPORT _declspec(dllexport)
 #else
 # define DLLEXPORT
@@ -761,6 +761,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         NthParent operator--() const { return NthParent(nth_-1); }
         bool operator==( NthParent other ) const { return nth_ == other.nth_; }
         bool operator!=( NthParent other ) const { return nth_ != other.nth_; }
+        bool operator< ( NthParent other ) const { return nth_ < other.nth_; }
         int toint() const { return nth_; } // use judiciously, please
     };
 

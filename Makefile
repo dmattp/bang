@@ -62,3 +62,12 @@ bangone$(EXT_EXE): bangmain.cpp bang.cpp hashlib.cpp
 	$(CXX) $(CPPFLAGS)  $? -L . -o $@
 endif
 
+clean:
+	rm *.tlog
+	rm *.dll
+	rm *.exe
+	rm *.manifest
+
+
+
+

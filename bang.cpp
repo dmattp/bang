@@ -987,17 +987,20 @@ namespace Ast
     {
         const CloseValue* pUpvalParent_;
         bangstring paramName_;
+        unsigned subprogUseCount_;
     public:
+        void incUseCount() { ++subprogUseCount_; }
         CloseValue( const CloseValue* parent, const bangstring& name )
         : Base( kCloseValue ),
           pUpvalParent_( parent ),
-          paramName_( name )
+          paramName_( name ),
+          subprogUseCount_(0)
         {}
         const bangstring& valueName() const { return paramName_; }
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-            o << "CloseValue(" << paramName_ << ") " << std::hex << PtrToHash(this) << std::dec << "\n";
+            o << "CloseValue(" << paramName_ << ") #" << subprogUseCount_ << " " << std::hex << PtrToHash(this) << std::dec << "\n";
         }
         
         const NthParent FindBinding( const bangstring& varName ) const
@@ -1015,6 +1018,14 @@ namespace Ast
 
                 return (fbp == kNoParent ) ? fbp : ++fbp;
             }
+        }
+
+        CloseValue& nthUpvalue( NthParent n )
+        {
+            if (n == NthParent(0))
+                return *this;
+            else
+                return const_cast<CloseValue*>(pUpvalParent_)->nthUpvalue( --n );
         }
 
         const NthParent FindBinding( const CloseValue* target ) const
@@ -4420,19 +4431,25 @@ Parser::Program::Program
                     Program ifBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, ifProg->astRef() );
                     Ast::Program* elseProg = nullptr;
                     eatwhitespace(stream);
-                    c = mark.getc();
-                    if (c != ':')
+                    try
                     {
-                        mark.regurg(c); // no single char operator found
-                    }
-                    else
-                    {
-                        mark.accept();
+                        c = mark.getc();
+                        if (c != ':')
+                        {
+                            mark.regurg(c); // no single char operator found
+                        }
+                        else
+                        {
+                            mark.accept();
 //                        std::cerr << "  found else clause\n";
-                        elseProg = new Ast::Program( nullptr ); // , elseBranch.ast() );
-                        Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, elseProg->astRef() );
+                            elseProg = new Ast::Program( nullptr ); // , elseBranch.ast() );
+                            Program elseBranch( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, elseProg->astRef() );
+                        }
                     }
-                        
+                    catch (const ErrorEof& ) // no else clause found before EOF
+                    {
+                    }
+                    
                     ast_.push_back( new Ast::IfElse( ifProg, elseProg ) );
                 }
                 catch ( const std::exception& e )
@@ -4441,7 +4458,8 @@ Parser::Program::Program
                 }
                 catch ( ... )
                 {
-                    std::cerr << "?? unknown error on ifelse" << std::endl;
+                    bangerr(ParseFail) << "Parse error in if/else block at " << mark.sayWhere();
+                    // bangerr() << "Parse error on ifelse" << std::endl;
                 }
                 continue;
             }
@@ -4697,7 +4715,7 @@ Parser::Program::Program
                     }
                     catch (...)
                     {
-                        std::cerr << "?? error on ifelse\n";
+                        bangerr(ParseFail) << "Parse error in try/catch block at " << mark.sayWhere();
                     }
                     continue;
                 }
@@ -4760,6 +4778,12 @@ Parser::Program::Program
                                            << " in " << mark.sayWhere();
                     }
 
+                    const NthParent entryUvNumber = upvalueChain->FindBinding( entryUvChain );
+                    if (! (upvalNumber < entryUvNumber) )
+                    {
+                        auto& cvForUpval = const_cast<Ast::CloseValue*>(upvalueChain)->nthUpvalue( upvalNumber );
+                        cvForUpval.incUseCount();
+                    }
                     ast_.push_back( new Ast::Move(ident.name(), upvalNumber) );
                 }
                 
