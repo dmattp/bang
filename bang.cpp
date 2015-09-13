@@ -4102,7 +4102,15 @@ namespace Primitives {
         auto proc = GetProcAddress( hlib, "bang_open" );
         if (!proc)
         {
-            bangerr() << "Could not find 'bang_open()' in library=" << libname;
+#if UNICODE
+            auto altname = std::wstring("bang_") + llstr + "_open";
+#else
+            auto altname = std::string("bang_") + llstr + "_open";
+#endif
+            proc = GetProcAddress( hlib, altname.c_str() );
+            
+            if (!proc)
+                bangerr() << "Could not find 'bang_open()' or '" << altname << "' in library=" << libname;
         }
 //         std::cerr << "Calling 'bang_open()' in library=" << libname 
 //                       << " stack=0x" << std::hex <<  (void*)&s << std::dec << std::endl;
@@ -4132,7 +4140,9 @@ namespace Primitives {
         void* voidproc = dlsym( lib, "bang_open" );
         if (!voidproc)
         {
-            std::cerr << "Could not find 'bang_open()' in library=" << libname << std::endl;
+            auto altname = std::string("bang_") + libname + "_open";
+            voidproc = dlsym( lib, altname.c_str() );
+            bangerr() << "Could not find 'bang_open()' or '" << altname << "' in library=" << libname;
             return;
         }
 //         std::cerr << "Calling 'bang_open()' in library=" << libname 

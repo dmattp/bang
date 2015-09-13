@@ -51,7 +51,7 @@ extern "C"
 #if _WINDOWS
 __declspec(dllexport)
 #endif 
-void bang_open( Bang::Stack* stack, const Bang::RunContext* )
+void bang_arraylib_open( Bang::Stack* stack, const Bang::RunContext* )
 {
     stack->push( &Bang::ArrayNs::lookup );
 }
