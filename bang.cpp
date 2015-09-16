@@ -95,6 +95,9 @@ And there are primitives, until a better library / module system is in place.
 
 #include "bang.h"
 
+#if HAVE_BUILTIN_ARRAY
+# include "arraylib.h"
+#endif 
 
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
@@ -4087,14 +4090,28 @@ namespace Primitives {
     {
         const auto& v = s.pop();
         const auto& libname = v.tostr();
+
+#if HAVE_BUILTIN_ARRAY
+        if (libname == "arraylib")
+        {
+            return bang_arraylib_open( &s, &rc );
+        }
+#endif 
+        
 #if UNICODE
         std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
         std::wstring wpath = converter.from_bytes( libname );
         const auto& llstr = wpath.c_str();
 #else
         const auto& llstr = libname.c_str();
-#endif 
+#endif
+        
         HMODULE hlib = LoadLibrary( llstr );
+// #if UNICODE
+//         HMODULE hlib = LoadLibrary( L".\\bang.exe" );
+// #else
+//         HMODULE hlib = LoadLibrary( ".\\bang.exe" );
+// #endif 
         if (!hlib)
         {
             bangerr() << "Could not load library=" << libname;

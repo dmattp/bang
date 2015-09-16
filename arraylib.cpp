@@ -48,9 +48,7 @@ namespace Bang
 
 
 extern "C"
-#if _WINDOWS
-__declspec(dllexport)
-#endif 
+DLLEXPORT
 void bang_arraylib_open( Bang::Stack* stack, const Bang::RunContext* )
 {
     stack->push( &Bang::ArrayNs::lookup );

@@ -99,4 +99,9 @@ namespace Bang
         }
     }; // end, Array class
 
-}
+} // end, Bang namespace
+
+
+extern "C"
+DLLEXPORT
+void bang_arraylib_open( Bang::Stack* stack, const Bang::RunContext* );
