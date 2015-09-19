@@ -1,18 +1,18 @@
 
-def :foldl operator = {
+fun :foldl operator = {
   # 1 > ?
   operator! operator foldl!
 }
 
-def :map xform = {
-  def :innermap = {
+fun :map xform = {
+  fun :innermap = {
     # 0 > ?
     as val innermap! val xform!
   }
   innermap!
 }
 
-def :filter predicate = {
+fun :filter predicate = {
     fun v = {
       v predicate! ? v
     } map!

@@ -1,7 +1,7 @@
 
 
-def :make-point x y = ^bind;
-def :make-circle point radius = ^bind;
+fun :make-point x y = ^bind;
+fun :make-circle point radius = ^bind;
 
 11 22 make-point! fun! aPoint =
 aPoint 300 make-circle! as circle

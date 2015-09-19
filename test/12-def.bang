@@ -1,4 +1,4 @@
 
-def :squared x = x x *;
+fun :squared x = x x *;
 3 squared !
   

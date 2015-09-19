@@ -1,6 +1,6 @@
 
-def :my-save-stack = {
-  def :inner list = { as element
+fun :my-save-stack = {
+  fun :inner list = { as element
       fun = element list!; as newList
       # 0 > ? newList inner! : newList
   }

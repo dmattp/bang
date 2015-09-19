@@ -1,5 +1,5 @@
-def :range last = { swap! as do-me
-   def! :inner current = {
+fun :range last = { swap! as do-me
+   fun! :inner current = {
       current last > ~ ?
          current do-me!
          current 1 + inner!

@@ -8,8 +8,8 @@
 
 -- this is some tricky business
 
-def :ndup-stack = {
-  def :inner list = { as element
+fun :ndup-stack = {
+  fun :inner list = { as element
     fun = element list!; as newList
     # 0 > ? newList inner!;
     element

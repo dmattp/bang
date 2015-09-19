@@ -1,7 +1,7 @@
 8 as N
 
-def :coro = {
-    def :inner n = {
+fun :coro = {
+    fun :inner n = {
        n '%@ hello from coroutine!\n' print!
        n 4000 + yield!
        n + -- add yielded value to n
@@ -14,7 +14,7 @@ def :coro = {
 
 coro coroutine! as co
 
-def :testme n = {
+fun :testme n = {
     n co! -- pass 'n' to coroutine
     n 'rc=%@ %@ returned from coroutine\n' print!
     n 1 >

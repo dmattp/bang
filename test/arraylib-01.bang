@@ -1,6 +1,6 @@
 'arraylib' crequire! as array
 
-def :assert = { ? 'pass' : 'fail' }
+fun :assert = { ? 'pass' : 'fail' }
 
 'checking array create'
 (1 2 3 array.from-stack! as a # 0 = assert!)

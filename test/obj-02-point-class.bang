@@ -1,5 +1,5 @@
 
--- messed up; this does not work:  def :make-point y_ = { as x_
+-- messed up; this does not work:  fun :make-point y_ = { as x_
 fun :make-point y_ = {
     as x_
 

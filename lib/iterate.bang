@@ -1,5 +1,5 @@
-def :times = { swap! as loopFun
-    def! :innerLoop remain = {
+fun :times = { swap! as loopFun
+    fun! :innerLoop remain = {
       loopFun!
       remain 1 >
       ? remain 1 - innerLoop!
@@ -7,8 +7,8 @@ def :times = { swap! as loopFun
 }
 
 
---def :range last = { swap! as do-me
---   def! :inner current = {
+--fun :range last = { swap! as do-me
+--   fun! :inner current = {
 --      current do-me!
 --      current last <
 --      ? current 1 + inner!
@@ -16,8 +16,8 @@ def :times = { swap! as loopFun
 --   -- first inner!
 --}
 
-def :range last = { swap! as do-me
-   def! :inner current = {
+fun :range last = { swap! as do-me
+   fun! :inner current = {
       current last >~ ?
          current do-me!
          current 1 + inner!

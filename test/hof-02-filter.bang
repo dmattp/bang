@@ -1,19 +1,19 @@
 
-def :map xform = {
-  def :innermap = {
+fun :map xform = {
+  fun :innermap = {
     # 0 > ?
     as val innermap! val xform!
   }
   innermap!
 }
 
-def :filter predicate = {
+fun :filter predicate = {
     fun v = {
       v predicate! ? v
     } map!
 }
 
-def :more-than-seven v =  v 7 >;
+fun :more-than-seven v =  v 7 >;
 
    5 3 15 7 4 12 8
 more-than-seven filter!

@@ -1,6 +1,6 @@
 
-def :reverse = {
-  def :inner list = { as element
+fun :reverse = {
+  fun :inner list = { as element
       fun = list! element; as newList
       # 0 > ? newList inner! : newList!
   }

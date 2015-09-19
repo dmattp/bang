@@ -1,6 +1,6 @@
 
-def :times totalTimes = { fun! loopFun =
-    def :innerLoop remain = {
+fun :times totalTimes = { fun! loopFun =
+    fun :innerLoop remain = {
       loopFun!
       remain 1 >
       ? remain 1 - innerLoop!
@@ -8,6 +8,6 @@ def :times totalTimes = { fun! loopFun =
     totalTimes innerLoop!
 }
 
-def :say-hello = "hello\n" print!;
+fun :say-hello = "hello\n" print!;
 
 say-hello 7 times!

@@ -1,6 +1,6 @@
 
 
-def :Foldl operator = {
+fun :Foldl operator = {
   # 1 > ?
   operator! operator Foldl!
 }

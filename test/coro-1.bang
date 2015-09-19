@@ -1,5 +1,5 @@
 
-def :coro = {
+fun :coro = {
     'hello from coroutine!\n' print!
     yield!
     

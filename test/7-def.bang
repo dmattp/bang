@@ -1,4 +1,4 @@
-def :square n = n n *;
+fun :square n = n n *;
 3 square!
 
 
