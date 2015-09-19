@@ -99,6 +99,11 @@ namespace Bang
         }
     }; // end, Array class
 
+    namespace ArrayNs
+    {
+        void lookup( Bang::Stack& s, const Bang::RunContext& ctx);
+    }
+
 } // end, Bang namespace
 
 

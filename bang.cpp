@@ -102,7 +102,7 @@ And there are primitives, until a better library / module system is in place.
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 #define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
-#define FRIENDOF_OPTIMIZE friend void Bang::OptimizeAst( std::vector<Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain );
+#define FRIENDOF_OPTIMIZE friend void Bang::OptimizeAst( std::vector<Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain, bool notco );
 
 
 
@@ -393,7 +393,7 @@ namespace {
 
 namespace Bang {
 
-void OptimizeAst( std::vector<Bang::Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain );
+    void OptimizeAst( std::vector<Bang::Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain, bool notco );
 
 
 #if !USE_GC
@@ -1662,9 +1662,17 @@ namespace Ast
             }
         }
     };
+
+
+    class ApplicableBase : public Base, public IsApplicable
+    {
+    public:
+        ApplicableBase() {};
+        ApplicableBase* setApplyP() { IsApplicable::setApply(); return this; }
+    };
     
     
-    class PushPrimitive: public Base, public IsApplicable
+    class PushPrimitive: public ApplicableBase
     {
     public:
         tfn_primitive primitive_;
@@ -1784,6 +1792,8 @@ namespace Ast
             o << "Apply (src=";
             ValueEater::dump(o);
             o << ") " << where_ ;
+            if (instr_ == kTCOApply)
+                o << " TCO";
             if (gFailedAst == this)
                 o << " ***                                 <== *** FAILED *** ";
             o << std::endl;
@@ -2340,8 +2350,7 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
 
     
-DLLEXPORT void RunProgram
-(   
+DLLEXPORT void RunProgram(   
     Thread* pThread,
     const Ast::Program* inprog,
     SHAREDUPVALUE inupvalues
@@ -2363,8 +2372,9 @@ restartTco:
 # define OPCODE_LOC(op) OPCODE_START_##op
 # define OPCODE_2LOC(pre,op) OPCODE_START_##pre##op
 # define OPCODE_END() \
+    do { /*std::cerr << "Exec instr=" << (*frame.ppInstr)->instr_ << std::endl; */ \
             pInstr = *(frame.ppInstr++); \
-            goto *dispatch_table[pInstr->instr_];
+            goto *dispatch_table[pInstr->instr_]; } while (0)
 #else
 # define OPCODE_LOC(op) case Ast::Base::op
 # define OPCODE_2LOC(pre,op) OPCODE_START_##pre##op
@@ -2413,6 +2423,7 @@ restartTco:
         while (true)
         {
             pInstr = *(frame.ppInstr++);
+            // std::cerr << "Exec instr=" << pInstr->instr_ << std::endl;
 #if LCFG_COMPUTED_GOTO
             goto *dispatch_table[pInstr->instr_];
             do {
@@ -3337,11 +3348,15 @@ class Parser
     class Program
     {
         Ast::Program::astList_t& ast_;
+        bool noTco_; // e.g., when parsed program is going to be pasted into another program
     public:
         Program( ParsingContext& pc, StreamMark&, const Ast::Program* parent,
             const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
-            ParsingRecursiveFunStack* pRecParsing, Ast::Program::astList_t& );
+            ParsingRecursiveFunStack* pRecParsing, Ast::Program::astList_t&,
+            bool disableTco = false
+               );
 
+        void noTco() { noTco_ = true; }
         // const Ast::Program::astList_t& ast() { return ast_; }
     };
 
@@ -3736,7 +3751,7 @@ public:
     }
     
 
-void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueChain )
+void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueChain, bool noTco )
 {
     class NoOp : public Ast::Base
     {
@@ -4061,21 +4076,33 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
     
 #endif 
 
-    
-    const int astLen = ast.size();
-    if (astLen > 1) // last instr should always be "kBreakProg"
+
+    if (!noTco)
     {
-        Ast::Base* possibleTail = ast[astLen-2];
-        if (possibleTail->isTailable() && ast[astLen-1]->instr_ == Ast::Base::kBreakProg)
+        const int astLen = ast.size();
+        if (astLen > 1) // last instr should always be "kBreakProg"
         {
+            Ast::Base* possibleTail = ast[astLen-2];
+            if (possibleTail->isTailable() && ast[astLen-1]->instr_ == Ast::Base::kBreakProg)
+            {
 //            std::cerr << "got possibleTail convertToTailCall" << std::endl;
-            possibleTail->convertToTailCall();
+                possibleTail->convertToTailCall();
+            }
         }
     }
-    
 }
 
 namespace Primitives {
+
+// #if HAVE_BUILTIN_ARRAY
+//     tfn_primitive arraylib( Bang::Stack&s, const RunContext& rc )
+//     {
+//         static tfn_primitive arraylib(nullptr);
+//         if (!arraylib)
+//             arraylib = bang_arraylib_open( &s, &rc );
+//         return arraylib;
+//     }
+// #endif     
     //////////////////////////////////////////////////////////////////
     // yucky system specific code
     //////////////////////////////////////////////////////////////////
@@ -4094,7 +4121,8 @@ namespace Primitives {
 #if HAVE_BUILTIN_ARRAY
         if (libname == "arraylib")
         {
-            return bang_arraylib_open( &s, &rc );
+            bang_arraylib_open( &s, &rc );
+            return;
         }
 #endif 
         
@@ -4267,9 +4295,11 @@ Parser::Program::Program
     const Ast::Program* parent,
     const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
     ParsingRecursiveFunStack* pRecParsing,
-    Ast::Program::astList_t& programAst
+    Ast::Program::astList_t& programAst,
+    bool disableTco
 )
-: ast_( programAst )
+: ast_( programAst ),
+  noTco_( disableTco ) // must call noTco().
 {
 //    std::cerr << "enter Program parent=" << parent << " uvchain=" << upvalueChain << "\n";
 //    const Ast::CloseValue* const entryUvChain = upvalueChain;
@@ -4277,6 +4307,7 @@ Parser::Program::Program
     {
         bool bHasOpenBracket = false;
         bool bHasOpenIndex = false;
+        bool bHasOpenArray = false;
         bool bHasOpenTryCatch = false;
         
         while (true)
@@ -4392,6 +4423,44 @@ Parser::Program::Program
                 ast_.push_back( newapplywhere(mark) );
                 continue;
             }
+#if HAVE_BUILTIN_ARRAY
+            if (c == '@')
+            {
+                const char c = mark.getc();
+                if (c != '[')
+                {
+                    mark.regurg(c);
+                }
+                else // c == '[', inline array declaration
+                {
+                    bHasOpenArray = true;
+                    mark.accept();
+
+                    std::cerr << "opening array\n";
+                    
+                    Ast::Program::astList_t indexProgAst;
+                    Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, indexProgAst, true );
+                    mark.accept();
+
+                    ast_.push_back( (new Ast::PushPrimitive( &Primitives::beginStackBound, "(" ))->setApplyP() );
+                    
+                    std::copy_if( indexProgAst.begin(), indexProgAst.end(),
+                        std::back_inserter( ast_ ),
+                        []( const Ast::Base* op ) { return op->instr_ != Ast::Base::kBreakProg; } );
+
+                    // arraylib.from-stack!
+                    ast_.push_back( new Ast::Move( Bang::Value( "from-stack"  ) ) );
+                    ast_.push_back( new Ast::PushPrimitive( Bang::ArrayNs::lookup, "{ArrayLib}" ) );
+                    ast_.push_back( new Ast::ApplyIndexOperator() );
+                    ast_.push_back( new Ast::Apply() );
+                        
+                    ast_.push_back( (new Ast::PushPrimitive( &Primitives::endStackBound, ")" ))->setApplyP() );
+
+                    continue;
+                }
+            }
+#endif
+            
 #if HAVE_MUTATION            
             else if (c == '|')
             {
@@ -4408,7 +4477,7 @@ Parser::Program::Program
 #endif 
             else if (c == ']') // "Object Method / Message / Dereference / Index" operator
             {
-                if (bHasOpenIndex)
+                if (bHasOpenIndex || bHasOpenArray)
                 {
                     mark.accept();
                     continue;
@@ -4421,14 +4490,16 @@ Parser::Program::Program
                 bHasOpenIndex = true;
                 mark.accept();
                 Ast::Program::astList_t indexProgAst;
-                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, indexProgAst );
+                Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, indexProgAst, true );
                 mark.accept();
 #if 0
                 ast_.push_back( new Ast::ApplyIndexOperator( indexProgram.ast() ) );
                 // ast_.push_back( new Ast::Apply() );
 #else
                 ast_.push_back( new Ast::StackToAltstack() );
-                
+
+                // this probably has problems with tail calls at end of program, as they
+                // will break out of the current program.
                 const auto astop = indexProgAst;
                 for (auto el = astop.begin(); el != astop.end(); ++el)
                 {
@@ -4824,13 +4895,13 @@ Parser::Program::Program
 
         stream.accept();
         ast_.push_back( new Ast::BreakProg() );
-        OptimizeAst( ast_, upvalueChain );
+        OptimizeAst( ast_, upvalueChain, noTco_ );
     }
-    catch (const ErrorEof&)
+    catch ( const ErrorEof& )
     {
         stream.accept();
         ast_.push_back( parsecontext.hitEof( upvalueChain ) );
-        OptimizeAst( ast_, upvalueChain );
+        OptimizeAst( ast_, upvalueChain, noTco_ );
     }
 }
 
