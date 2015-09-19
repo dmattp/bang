@@ -1,6 +1,6 @@
 
 
-def :make-point x y = { 
+fun :make-point x y = { 
   ^bind
 }
 

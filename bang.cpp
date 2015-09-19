@@ -3603,62 +3603,6 @@ class Parser
     }
     
     
-//     class Fundef
-//     {
-//         bool postApply_;
-//         Ast::Program* pNewProgram_;
-//     public:
-//         ~Fundef() { delete pNewProgram_; }
-        
-//         Fundef( ParsingContext& parsectx, StreamMark& stream,
-//             const Ast::CloseValue* upvalueChain,
-//             // const Ast::PushFun* pParentFun,
-//             const ParsingRecursiveFunStack* pRecParsing
-//               )
-//         :  postApply_(false),
-//            pNewProgram_(nullptr)
-//         {
-//             bool isAs = false;
-//             StreamMark mark(stream);
-
-//             eatwhitespace(mark);
-
-//             if (eatReservedWord( "fun", mark ))
-//                 ;
-//             else
-//                 throw ErrorNoMatch();
-
-//             if (isAs)
-//                 postApply_ = true;
-//             else
-//             {
-//                 char c = mark.getc();
-//                 if (c == '!')
-//                     postApply_ = true;
-//                 else
-//                     mark.regurg(c);
-//             }
-
-//             eatwhitespace(mark);
-
-//             // pNewFun_ =  new Ast::PushFun( pParentFun );
-
-// //            Ast::Program::astList_t functionAst;
-//             pNewProgram_ = new Ast::Program( nullptr ); // , functionAst );
-//             const Ast::CloseValue* const entryUvChain = upvalueChain;
-//             upvalueChain = getParamBindings( mark, pNewProgram_->astRef(), upvalueChain );
-
-//             //~~~ programParent??
-//             Program program( parsectx, mark, nullptr, upvalueChain, entryUvChain, pRecParsing, pNewProgram_->astRef() );
-// //             const auto& subast = program.ast();
-// //             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
-
-//             mark.accept();
-//         }
-//         bool hasPostApply() const { return postApply_; }
-//         Ast::Program* stealProgram() { auto rc = pNewProgram_; pNewProgram_ = nullptr; return rc; }
-//     }; // end, Fundef class
-
     class Defdef
     {
         bool postApply_;
@@ -3688,8 +3632,6 @@ class Parser
             c = mark.getc();
             if (c == ':')
             {
-//                 bangerr(ParseFail) << "got '" << c << "' expecting ':' in "
-//                                    << mark.sayWhere() << " - def name must start with ':'";
                 try
                 {
                     Identifier param(mark);
@@ -4130,6 +4072,7 @@ namespace Primitives {
         std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
         std::wstring wpath = converter.from_bytes( libname );
         const auto& llstr = wpath.c_str();
+//        const auto& llcstr = libname.c_str();
 #else
         const auto& llstr = libname.c_str();
 #endif
@@ -4147,11 +4090,7 @@ namespace Primitives {
         auto proc = GetProcAddress( hlib, "bang_open" );
         if (!proc)
         {
-#if UNICODE
-            auto altname = std::wstring("bang_") + llstr + "_open";
-#else
-            auto altname = std::string("bang_") + llstr + "_open";
-#endif
+            auto altname = std::string("bang_") + libname.c_str() + "_open";
             proc = GetProcAddress( hlib, altname.c_str() );
             
             if (!proc)
@@ -4350,20 +4289,8 @@ Parser::Program::Program
             }
             
             //////////////////////////////////////////////////////////////////
-            // Define functions; 'fun', 'fun!', and 'def' keywords
+            // Define functions; 'fun' and 'fun!' keywords
             //////////////////////////////////////////////////////////////////
-//             try
-//             {
-//                 Defdef fun( parsecontext, stream, upvalueChain, pRecParsing );
-
-//                 ast_.push_back( fun.stealDefProg() );
-
-//                 if (fun.hasPostApply())
-//                     ast_.push_back( newapplywhere(stream) );
-
-//                 continue;
-//             } catch ( const ErrorNoMatch& ) {}
-
             try
             {
                 Defdef fun( parsecontext, stream, upvalueChain, pRecParsing );

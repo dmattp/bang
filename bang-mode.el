@@ -24,8 +24,8 @@
   (append bang-font-lock-keywords-1
      (list
       ; use regexp-opt (below) to generate this string
-      '("\\<def!? +\\(: *[[:alnum:]-_]+\\)\\>" 1 font-lock-function-name-face)
-      '("\\<\\(as\\|def\\||f\\(?:alse\\|un!?\\)\\|true\\)\\>" . font-lock-keyword-face)
+      '("\\<fun!? +\\(: *[[:alnum:]-_]+\\)\\>" 1 font-lock-function-name-face)
+      '("\\<\\(as\\|fun\\||false\\|true\\)\\>" . font-lock-keyword-face)
       '("\\<\\(catch\\|try\\|throw\\|lookup\\|bind\\)\\>" . font-lock-builtin-face)
 ;      '("\\[:space:]def\\[:space:]\\+(w\\+)\\[:space:]\\*\\\\:" . font-lock-function-name-face)
 ;      '("\\<\\(\\|try\\)\\>" . font-lock-function-name-face)
@@ -74,7 +74,7 @@
   (kill-all-local-variables)
   (set-syntax-table bang-mode-syntax-table)
   (use-local-map bang-mode-map)
-  (set (make-local-variable 'font-lock-defaults) '(bang-font-lock-keywords-2))
+  (set (make-local-variable 'font-lock-defaults ) '(bang-font-lock-keywords-2) )
 ;  (set (make-local-variable 'indent-line-function) 'bang-indent-line)
   (setq major-mode 'bang-mode)
   (setq mode-name "Bang!")

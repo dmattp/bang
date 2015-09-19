@@ -1,6 +1,6 @@
-def :main p01 = {
-   def :secondfun x = p01 x +;
-   def :lastfun p01 = p01 secondfun !;
+fun :main p01 = {
+   fun :secondfun x = p01 x +;
+   fun :lastfun p01 = p01 secondfun !;
    5 lastfun !
 }
 1000 main !

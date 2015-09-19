@@ -1,6 +1,6 @@
 
 
-def :make-point = { as y as x
+fun :make-point = { as y as x
   fun = lookup
 }
 
