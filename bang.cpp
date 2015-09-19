@@ -30,13 +30,7 @@
 
 /*
   Keywords
-    fun fun! as def
-    
-So really there are only four keywords, all of which are
-syntactic variants for creating a function/closure.
-
-Well, with the "module/object" system, there is now a second:
-
+    fun fun! as
     lookup -- (does not require apply!!!)
   
 And there are some built-in operators:
@@ -880,39 +874,8 @@ namespace Primitives
 
     tfn_opThingAndValue2Value Value::getOperator( EOperators which ) const
     {
-#if 0        
-        Bang::Operators* op;
-        switch (type_)
-        {
-            case kNum:  op = &gNumberOperators; break;
-            case kBool: op = &gBoolOperators;   break;
-            case kStr:  op = &gStringOperators; break;
-            case kFun: // fall through
-            case kBoundFun: op = &gFunctionOperators; break;// fall through
-            case kFunPrimitive: // fall through
-            case kThread: bangerr() << "thingAndValue2Value operators not supported for type=" << type_;
-        }
-#else
         const Bang::Operators* const op = opbytype[type_];
-#endif
-#if 1
         return op->ops[which];
-#else
-        switch( which )
-        {
-            case kOpPlus:   return op->opPlus;
-            case kOpMult:   return op->opMult;
-            case kOpDiv:    return op->opDiv;
-            case kOpMinus:  return op->opMinus;
-            case kOpGt:     return op->opGt;
-            case kOpLt:     return op->opLt;
-            case kOpEq:     return op->opEq;
-            case kOpModulo: return op->opModulo;
-            case kOpOr:     return op->opOr;
-            case kOpAnd:    return op->opAnd;
-            default: bangerr() << "op=" << which << "not supported for type=" << type_;
-        }
-#endif 
     }
     
 
@@ -4072,17 +4035,12 @@ namespace Primitives {
         std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
         std::wstring wpath = converter.from_bytes( libname );
         const auto& llstr = wpath.c_str();
-//        const auto& llcstr = libname.c_str();
 #else
         const auto& llstr = libname.c_str();
 #endif
         
         HMODULE hlib = LoadLibrary( llstr );
-// #if UNICODE
-//         HMODULE hlib = LoadLibrary( L".\\bang.exe" );
-// #else
-//         HMODULE hlib = LoadLibrary( ".\\bang.exe" );
-// #endif 
+
         if (!hlib)
         {
             bangerr() << "Could not load library=" << libname;
