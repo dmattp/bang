@@ -1102,14 +1102,14 @@ const Ast::Base* gFailedAst = nullptr;
         StreamMark& stream_;
         const Ast::Program* parent_;
         const Ast::CloseValue* upvalueChain_;
-        void* pRecParsing_; /* ParsingRecursiveFunStack */
+        const void* pRecParsing_; /* ParsingRecursiveFunStack; what, why is this void?? */
     public:
         ImportParsingContext
         (   ParsingContext& parsecontext,
             StreamMark& stream,
             const Ast::Program* parent,
             const Ast::CloseValue* upvalueChain,
-            void* pRecParsing
+            const void* pRecParsing
         )
         : parsecontext_(parsecontext), stream_(stream),
           parent_(parent), upvalueChain_( upvalueChain ),
@@ -3352,7 +3352,7 @@ class Parser
     public:
         Program( ParsingContext& pc, StreamMark&, const Ast::Program* parent,
             const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
-            ParsingRecursiveFunStack* pRecParsing, Ast::Program::astList_t&,
+            const ParsingRecursiveFunStack* pRecParsing, Ast::Program::astList_t&,
             bool disableTco = false
                );
 
@@ -3527,14 +3527,14 @@ class Parser
 
     struct ParsingRecursiveFunStack
     {
-        ParsingRecursiveFunStack* prev;
+        const ParsingRecursiveFunStack* prev;
         Ast::Program *parentProgram;
         const Ast::CloseValue* parentsBinding;
         std::string progname_;
 //         Ast::Program::astList_t& parentProgramAst() {
 //             return *(parentProgram->getAst());
 //         }
-        std::pair<Ast::Program*,const Ast::CloseValue*> FindProgramForIdent( const std::string& ident )
+        std::pair<Ast::Program*,const Ast::CloseValue*> FindProgramForIdent( const std::string& ident ) const
         {
             if (progname_ == ident)
             {
@@ -3548,7 +3548,7 @@ class Parser
         }
         
         ParsingRecursiveFunStack
-        (   ParsingRecursiveFunStack* p,
+        (   const ParsingRecursiveFunStack* p,
             Ast::Program* parent,
             const Ast::CloseValue* binding,
             const std::string& progname
@@ -3603,61 +3603,61 @@ class Parser
     }
     
     
-    class Fundef
-    {
-        bool postApply_;
-        Ast::Program* pNewProgram_;
-    public:
-        ~Fundef() { delete pNewProgram_; }
+//     class Fundef
+//     {
+//         bool postApply_;
+//         Ast::Program* pNewProgram_;
+//     public:
+//         ~Fundef() { delete pNewProgram_; }
         
-        Fundef( ParsingContext& parsectx, StreamMark& stream,
-            const Ast::CloseValue* upvalueChain,
-            // const Ast::PushFun* pParentFun,
-            ParsingRecursiveFunStack* pRecParsing
-              )
-        :  postApply_(false),
-           pNewProgram_(nullptr)
-        {
-            bool isAs = false;
-            StreamMark mark(stream);
+//         Fundef( ParsingContext& parsectx, StreamMark& stream,
+//             const Ast::CloseValue* upvalueChain,
+//             // const Ast::PushFun* pParentFun,
+//             const ParsingRecursiveFunStack* pRecParsing
+//               )
+//         :  postApply_(false),
+//            pNewProgram_(nullptr)
+//         {
+//             bool isAs = false;
+//             StreamMark mark(stream);
 
-            eatwhitespace(mark);
+//             eatwhitespace(mark);
 
-            if (eatReservedWord( "fun", mark ))
-                ;
-            else
-                throw ErrorNoMatch();
+//             if (eatReservedWord( "fun", mark ))
+//                 ;
+//             else
+//                 throw ErrorNoMatch();
 
-            if (isAs)
-                postApply_ = true;
-            else
-            {
-                char c = mark.getc();
-                if (c == '!')
-                    postApply_ = true;
-                else
-                    mark.regurg(c);
-            }
+//             if (isAs)
+//                 postApply_ = true;
+//             else
+//             {
+//                 char c = mark.getc();
+//                 if (c == '!')
+//                     postApply_ = true;
+//                 else
+//                     mark.regurg(c);
+//             }
 
-            eatwhitespace(mark);
+//             eatwhitespace(mark);
 
-            // pNewFun_ =  new Ast::PushFun( pParentFun );
+//             // pNewFun_ =  new Ast::PushFun( pParentFun );
 
-//            Ast::Program::astList_t functionAst;
-            pNewProgram_ = new Ast::Program( nullptr ); // , functionAst );
-            const Ast::CloseValue* const entryUvChain = upvalueChain;
-            upvalueChain = getParamBindings( mark, pNewProgram_->astRef(), upvalueChain );
+// //            Ast::Program::astList_t functionAst;
+//             pNewProgram_ = new Ast::Program( nullptr ); // , functionAst );
+//             const Ast::CloseValue* const entryUvChain = upvalueChain;
+//             upvalueChain = getParamBindings( mark, pNewProgram_->astRef(), upvalueChain );
 
-            //~~~ programParent??
-            Program program( parsectx, mark, nullptr, upvalueChain, entryUvChain, pRecParsing, pNewProgram_->astRef() );
-//             const auto& subast = program.ast();
-//             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
+//             //~~~ programParent??
+//             Program program( parsectx, mark, nullptr, upvalueChain, entryUvChain, pRecParsing, pNewProgram_->astRef() );
+// //             const auto& subast = program.ast();
+// //             std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
 
-            mark.accept();
-        }
-        bool hasPostApply() const { return postApply_; }
-        Ast::Program* stealProgram() { auto rc = pNewProgram_; pNewProgram_ = nullptr; return rc; }
-    }; // end, Fundef class
+//             mark.accept();
+//         }
+//         bool hasPostApply() const { return postApply_; }
+//         Ast::Program* stealProgram() { auto rc = pNewProgram_; pNewProgram_ = nullptr; return rc; }
+//     }; // end, Fundef class
 
     class Defdef
     {
@@ -3665,8 +3665,8 @@ class Parser
         Ast::Program* pDefProg_;
         std::unique_ptr<std::string> defname_;
     public:
-        ~Defdef() { delete pDefProg_; } // delete pWithDefFun_; 
-        Defdef( ParsingContext& parsectx, StreamMark& stream, const Ast::CloseValue* upvalueChain, ParsingRecursiveFunStack* pRecParsing )
+        ~Defdef() { delete pDefProg_; }
+        Defdef( ParsingContext& parsectx, StreamMark& stream, const Ast::CloseValue* upvalueChain, const ParsingRecursiveFunStack* pRecParsing )
         : postApply_(false), pDefProg_(nullptr)
         {
             const Ast::CloseValue* const lastParentUpvalue = upvalueChain;
@@ -3674,7 +3674,7 @@ class Parser
 
             eatwhitespace(mark);
             
-            if (!eatReservedWord( "def", mark ))
+            if (!eatReservedWord( "def", mark ) && !eatReservedWord( "fun", mark ))
                 throw ErrorNoMatch();
 
             char c = mark.getc();
@@ -3686,40 +3686,40 @@ class Parser
             eatwhitespace(mark);
 
             c = mark.getc();
-            if (c != ':')
+            if (c == ':')
             {
-                bangerr(ParseFail) << "got '" << c << "' expecting ':' in "
-                                   << mark.sayWhere() << " - def name must start with ':'";
+//                 bangerr(ParseFail) << "got '" << c << "' expecting ':' in "
+//                                    << mark.sayWhere() << " - def name must start with ':'";
+                try
+                {
+                    Identifier param(mark);
+                    eatwhitespace(mark);
+                    defname_ = std::unique_ptr<std::string>(new std::string(param.name()));
+                }
+                catch ( const ErrorNoMatch& )
+                {
+                    bangerr(ParseFail) << "in " << mark.sayWhere() << "identifier must follow \"def :\"";
+                }
             }
+            else
+                mark.regurg( c );
 
-            try
-            {
-                Identifier param(mark);
-                eatwhitespace(mark);
-                defname_ = std::unique_ptr<std::string>(new std::string(param.name()));
-            }
-            catch ( const ErrorNoMatch& )
-            {
-                bangerr(ParseFail) << "in " << mark.sayWhere() << "identifier must follow \"def :\"";
-            }
-
-//            Ast::Program::astList_t functionAst;
             pDefProg_ = new Ast::Program(nullptr);
             const Ast::CloseValue* const entryUvChain = upvalueChain;
             upvalueChain = getParamBindings( mark, pDefProg_->astRef(), upvalueChain );
 
-            // std::string defFunName = pWithDefFun_->getParamName();
-            ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, lastParentUpvalue, *defname_ ); // , pWithDefFun_);
-            Program progdef( parsectx, mark, nullptr, upvalueChain, entryUvChain, &recursiveStack,  pDefProg_->astRef() ); // pDefFun_, &recursiveStack );
-//            const auto& subast = progdef.ast();
-//            std::copy( subast.begin(), subast.end(), std::back_inserter(functionAst) );
-//            pDefProg_->setAst( functionAst );
+            ParsingRecursiveFunStack recursiveStack( pRecParsing, pDefProg_, lastParentUpvalue, defname_ ? *defname_ : "" );
+            Program progdef( parsectx, mark, nullptr, upvalueChain, entryUvChain,
+                defname_ ? &recursiveStack : pRecParsing,
+                pDefProg_->astRef() );
+            
             mark.accept();
         }
 
         bool hasPostApply() const { return postApply_; }
         Ast::Program* stealDefProg() { auto rc = pDefProg_; pDefProg_ = nullptr; return rc; }
         const std::string& getDefName() { return *defname_; }
+        bool hasDefName() const { return static_cast<bool>(defname_); }
     }; // end, Defdef class
     
     Program* program_;
@@ -4294,7 +4294,7 @@ Parser::Program::Program
     StreamMark& stream,
     const Ast::Program* parent,
     const Ast::CloseValue* upvalueChain, const Ast::CloseValue* const entryUvChain,
-    ParsingRecursiveFunStack* pRecParsing,
+    const ParsingRecursiveFunStack* pRecParsing,
     Ast::Program::astList_t& programAst,
     bool disableTco
 )
@@ -4352,17 +4352,17 @@ Parser::Program::Program
             //////////////////////////////////////////////////////////////////
             // Define functions; 'fun', 'fun!', and 'def' keywords
             //////////////////////////////////////////////////////////////////
-            try
-            {
-                Fundef fun( parsecontext, stream, upvalueChain, pRecParsing );
+//             try
+//             {
+//                 Defdef fun( parsecontext, stream, upvalueChain, pRecParsing );
 
-                ast_.push_back( fun.stealProgram() );
+//                 ast_.push_back( fun.stealDefProg() );
 
-                if (fun.hasPostApply())
-                    ast_.push_back( newapplywhere(stream) );
+//                 if (fun.hasPostApply())
+//                     ast_.push_back( newapplywhere(stream) );
 
-                continue;
-            } catch ( const ErrorNoMatch& ) {}
+//                 continue;
+//             } catch ( const ErrorNoMatch& ) {}
 
             try
             {
@@ -4372,7 +4372,7 @@ Parser::Program::Program
                 
                 if (fun.hasPostApply())
                     ast_.push_back( newapplywhere(stream) );
-                else
+                else if (fun.hasDefName())
                 {
                     Ast::CloseValue* cv = new Ast::CloseValue( upvalueChain, internstring(fun.getDefName()) );
                     upvalueChain = cv;

@@ -35,8 +35,8 @@ static const char* const BANG_VERSION = "0.006";
 
 #if LCFG_MT_SAFEISH 
 # include "atomic.h"
-#define MT_SAFEISH_INC(counter) Atomic::add( counter, 1 )
-#define MT_SAFEISH_DEC(counter) (1 == Atomic::add( counter, -1 ))
+#define MT_SAFEISH_INC(counter) Atomic::increment( counter )
+#define MT_SAFEISH_DEC(counter) (0 == Atomic::decrement( counter ))
 #else
 #define MT_SAFEISH_INC(counter) ++counter
 #define MT_SAFEISH_DEC(counter) (0 == --counter)
@@ -168,7 +168,7 @@ namespace Bang
     template <class T>
     class gcbase : private Uncopyable
     {
-        int refcount_;
+        long refcount_;
         void (*deleter_)( T* );
         //~~~ wait, what?  I don't know that this makes sense either, unless the other guy's
         // refcount is 1 (and is about to be decremented); otherwise people are hanging on to a
@@ -353,7 +353,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         }
         struct bangstringstore
         {
-            int refcount;
+            long refcount;
             int len;
             unsigned hash;
             char* str;

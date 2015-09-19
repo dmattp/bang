@@ -47,19 +47,16 @@ namespace Atomic
 
       return *( (T*)(void*)&rc );
    }
-    
-   template< typename TVAR, typename TADDEND >
-   inline TVAR
-   add( volatile TVAR& var, TADDEND addend )
+
+   inline long
+   increment( volatile long& var )
    {
-      
-      while( true )
-      {
-         TVAR oldVal( var );
-         TVAR newVal( oldVal + addend );
-         if( oldVal == Atomic::cmpxchg( var, oldVal, newVal ) )
-            return oldVal;
-      }
+       return InterlockedIncrement( &var );
+   }
+   inline long
+   decrement( volatile long& var )
+   {
+       return InterlockedDecrement( &var );
    }
 }
 
