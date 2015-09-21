@@ -197,11 +197,8 @@ namespace Hashlib
 } // end namespace Hashlib
 
 
-extern "C"
-#if _WINDOWS
-__declspec(dllexport)
-#endif 
-void bang_open( Bang::Stack* stack, const Bang::RunContext* )
+extern "C" DLLEXPORT
+void bang_hashlib_open( Bang::Stack* stack, const Bang::RunContext* )
 {
     stack->push( &Hashlib::banghash_lookup );
 }

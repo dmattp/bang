@@ -47,3 +47,7 @@ namespace Hashlib
         DLLEXPORT virtual void apply( Bang::Stack& s ); // , CLOSURE_CREF running )
     };
 }
+
+
+extern "C" DLLEXPORT
+void bang_hashlib_open( Bang::Stack* stack, const Bang::RunContext* );

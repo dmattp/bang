@@ -7,12 +7,12 @@ endif
 all:: bang$(EXT_EXE) #-- mathlib.dll
 all:: mathlib$(EXT_SO)
 all:: stringlib$(EXT_SO)
-all:: hashlib$(EXT_SO)
 all:: iolib$(EXT_SO)
 
 CPPOPTLEVEL ?= -O2
 CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
 HAVE_BUILTIN_ARRAY=1
+HAVE_BUILTIN_HASH=1
 
 
 # CPPFLAGS += -march=i686
@@ -44,11 +44,18 @@ else
 all:: arraylib$(EXT_SO)
 endif
 
+ifeq (1,$(HAVE_BUILTIN_HASH))
+   CPPFLAGS += -DHAVE_BUILTIN_HASH=1
+   OBJS_LIBBANG += hashlib.o
+else
+all:: arraylib$(EXT_SO)
+endif
+
 
 bang.o: bang.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) -c $< -o $@
 
-arraylib.o: arraylib.cpp bang.h Makefile
+%.o: %.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) -c $< -o $@
 
 libbang$(EXT_SO): $(OBJS_LIBBANG)
@@ -62,13 +69,15 @@ arraylib$(EXT_SO): arraylib.o
 	$(CXX) $< $(LDFLAGS) $(LDFLAGS_DL) -shared -o $@
 endif
 
+ifneq (1,$(HAVE_BUILTIN_HASH))
+hashlib$(EXT_SO): hashlib.cpp hashlib.h bang.h 
+	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
+endif 
+
 mathlib$(EXT_SO): mathlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
 
 stringlib$(EXT_SO): stringlib.cpp bang.h
-	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
-
-hashlib$(EXT_SO): hashlib.cpp hashlib.h bang.h 
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 
 iolib$(EXT_SO): iolib.cpp bang.h

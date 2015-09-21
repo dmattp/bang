@@ -93,6 +93,10 @@ And there are primitives, until a better library / module system is in place.
 # include "arraylib.h"
 #endif 
 
+#if HAVE_BUILTIN_HASH
+# include "hashlib.h"
+#endif 
+
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 #define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
@@ -4027,6 +4031,13 @@ namespace Primitives {
         if (libname == "arraylib")
         {
             bang_arraylib_open( &s, &rc );
+            return;
+        }
+#endif 
+#if HAVE_BUILTIN_HASH
+        if (libname == "hashlib")
+        {
+            bang_hashlib_open( &s, &rc );
             return;
         }
 #endif 
