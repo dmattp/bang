@@ -74,7 +74,6 @@ And there are primitives, until a better library / module system is in place.
 #include <stdio.h>
 #include <ctype.h>
 #include <limits.h>
-#include <sstream>
 
 #if defined(_WIN32)
 # include <windows.h> // for load library
@@ -363,28 +362,7 @@ pifi_up_void jitit_increment_uv0_2reg( double constval, Bang::EOperators eop, in
 #endif 
 
 namespace {
-    
     bool gDumpMode(false);
-    template <class E = std::runtime_error>
-    class ebuild
-    {
-        std::ostringstream oss;
-    public:
-        template<class T> ebuild& operator <<( const T & t )
-        {
-            oss << t;
-            return *this;
-        }
-        ebuild() { }
-        // template <class T> ebuild( T&& t ) : E( std::forward(t) ) {}
-        
-        void throw_()
-        {
-            throw E( oss.str() );
-        }
-    };
-#define bangerr(...) for ( ebuild<__VA_ARGS__> err; true; err.throw_() ) err
-    
 }
 
 
@@ -2702,7 +2680,6 @@ restartTco:
             OPCODE_LOC(kApplyIndexOperator):
                 {
                     auto op = reinterpret_cast<const Ast::ApplyIndexOperator*>(pInstr);
-                    auto rc = frame;
                     
                     // now apply
                     switch (op->v1src_)

@@ -12,6 +12,7 @@
 #include <string>
 #include <iostream>
 #include <string.h>
+#include <sstream> // for bangerr
 
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
@@ -536,14 +537,17 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         inline void free_manual_storage()
         {
             using namespace std;
-            if (type_ == kStr)
-                reinterpret_cast<bangstring*>(v_.cstr)->~bangstring();
+            switch (type_)
+            {
+                case kStr: reinterpret_cast<bangstring*>(v_.cstr)->~bangstring(); return;
+                case kBoundFun:
+                case kFun:
 #if !USE_GC            
-            else if (type_ == kBoundFun || type_ == kFun)
-                reinterpret_cast<gcptrfun*>(v_.cfun)->~gcptrfun();
-#endif 
-            else if (type_ == kThread)
-                reinterpret_cast<BANGTHREADPTR*>(v_.cthread)->~shared_ptr<Thread>();
+                    reinterpret_cast<gcptrfun*>(v_.cfun)->~gcptrfun();
+#endif
+                    return;
+                case kThread: reinterpret_cast<BANGTHREADPTR*>(v_.cthread)->~shared_ptr<Thread>(); return;
+            }
         }
     public:
         enum EValueType
@@ -1306,8 +1310,32 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
     }; // end, class RequireKeyword
     
     DLLEXPORT void dumpProfilingStats();
+
+    template <class E = std::runtime_error>
+    class ebuild
+    {
+        std::ostringstream oss;
+    public:
+        template<class T> ebuild& operator <<( const T & t )
+        {
+            oss << t;
+            return *this;
+        }
+        ebuild() { }
+        // template <class T> ebuild( T&& t ) : E( std::forward(t) ) {}
+        
+        void throw_()
+        {
+            throw E( oss.str() );
+        }
+    };
     
 } // end, namespace Bang
+
+
+    
+#define bangerr(...) for ( Bang::ebuild<__VA_ARGS__> err; true; err.throw_() ) err
+
 
 #if !LCFG_STD_STRING
 inline std::ostream& operator<<( std::ostream& o, const Bang::bangstring& bs )

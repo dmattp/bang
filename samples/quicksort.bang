@@ -2,7 +2,7 @@
 
 'lib/hof.bang' require! .filter as filter
 
-def :quicksort = {
+fun :quicksort = {
   # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
   save-stack! as theStack
  
@@ -16,7 +16,7 @@ def :quicksort = {
 
 './mathlib' crequire! .random as random
 
-def :testQuicksort numItems = { 
+fun :testQuicksort numItems = { 
   random numItems times!
   quicksort!
   numItems 499 > ? save-stack! drop!
@@ -27,5 +27,7 @@ def :testQuicksort numItems = {
 fun=
 N testQuicksort!
 ;1 times!
+
+
 
 -- with GC 1.2s

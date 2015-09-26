@@ -66,19 +66,19 @@ Functions can be declared with zero to any number of arguments.  Arguments are p
     fun x y z = { ... }
     fun = { as z as y as x ... }
 
-Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we might do using "as".  Bang! provides a "def" keyword which simply swaps the name binding syntax around so that the function name can be placed up front.  The tywo following "plus" definitions are equivalent:
+Programmers are accustomed to the name of a function coming up front rather than being bound at the end like we might do using "as".  Bang! provides syntactic sugar to bind the function to a symbolic name by placing a function name preceded by a colon as the first token after fun; the two following definitions of a "plus" function are equivalent:
 
       fun x y = { 
           x y +
       } as plus
       
-      def :plus x y = { 
+      fun :plus x y = { 
          x y +
       }
 
-which also allows the function to reference itself recursively.
+this also allows the function to reference itself recursively.
 
-      def :loopForever nthTime = { 
+      fun :loopForever nthTime = { 
          nthTime 'This is iteration number %s\n' print!
          nthTime 1 + loopForever!
       }
@@ -89,7 +89,7 @@ The '?' operator provides a mechanism to conditionally branch.  When a '?' is en
 
 Here is a function that will either add 1 or subtract 1 from the provided value:
 
-      def :up-or-down goUp = {
+      fun :up-or-down goUp = {
          goUp ? 1 + : 1 -
       }
     
@@ -101,12 +101,12 @@ Here is a function that will either add 1 or subtract 1 from the provided value:
 
 ## Iteration
 
-In the functional world, iteration is usually introduced as recursion.  The "def" keyword introduced earlier gives a function a way to identify itself within the function body, allowing for recursion.  The conditional operator, ?, can be used to specify the termination condition for recursion.  Also, because Bang! provieds first class functions we can write higher order functions to implement iterating new constructs in bang itself without the need for additional syntax in the core language.
+In the functional world, iteration is usually introduced as recursion.  A labeled function can reference itself within the function body, allowing for recursion.  The conditional operator, ?, can be used to specify the termination condition for recursion.  Also, because Bang! provieds first class functions we can write higher order functions to implement new iteration constructs in bang itself without the need to add extra syntax to the core language.
 
 Here is a higher order function that does something N times:
 
-    def :times = { swap! as do-something
-        def! :innerLoop remain = {
+    fun :times = { swap! as do-something
+        fun! :innerLoop remain = {
           do-something!
           remain 1 > ? remain 1 - innerLoop!
         }
@@ -114,7 +114,7 @@ Here is a higher order function that does something N times:
     
 Which can be used like this:
 
-       def :say-hello "Hello World!" print!;
+       fun :say-hello "Hello World!" print!;
     
        say-hello 20 times!
 
@@ -130,8 +130,8 @@ Higher order functions are functions that do something with a function.  Typical
 
 I'm hestitant to add a firm list or array structure to Bang! because I think a lot of that can be done on the working stack.  To help with recursion over the stack, the '#' operator is provided which returns the current length of the stack.  With this operator, "map" can be implemented like this:
 
-    def :map xform = {
-      def :innermap = {
+    fun :map xform = {
+      fun :innermap = {
         # 0 > 
         ? as val innermap! val xform!
       }
@@ -142,7 +142,7 @@ Each value on the stack is transformed by the provided function.  The 'innermap'
 
 Given this map function, we can write a "filter" function that leaves only those values on the stack which pass a certain predicate test:
 
-    def :filter predicate = {
+    fun :filter predicate = {
         fun v = { v predicate! ? v }
         map!
     }
@@ -153,7 +153,7 @@ Additionally, parentheses may be used to set bounding markers on the size of the
 
 Here is a short implementation of quicksort using higher order functions:
 
-    def :quicksort = {
+    fun :quicksort = {
       # 2 / nth!  as pivotValue -- use the value midway on the stack as a pivot value
       save-stack! as theStack   -- save/duplicate the stack, because we'll need to filter it several times
      
@@ -176,7 +176,7 @@ It is possible to build a lightweight object/record system using just lexically 
 
 The typical way to do this is to write a "create-Thing" constructor method that binds the objects properties and returns an inner message handler function.  Messages can then be sent to the object by calling the message handler returned by the constructor.  How that message handler works is entirely up to the implementer of the object system, but generally goes something like this:
 
-      def :create-Employee = { as age as name
+      fun :create-Employee = { as age as name
           fun message = {
               message 'age'  = ? age
             : message 'name' = ? name
@@ -194,7 +194,7 @@ This is passable but a little syntax help can give us a more objecty feel. Bang!
 
 The "lookup" keyword accepts a string and then _dynamically_ looks for an available upvalue bound to a symbol name for the string.  So we can replace the message handler with much shorter code:
 
-      def :create-Employee = { as age as name
+      fun :create-Employee = { as age as name
           fun = lookup
       }
 
@@ -215,11 +215,11 @@ So now we can access the object using traditional dotted record syntax:
 
 So far this is really more of an immutable record than a object, as it just returrns the fields passed to the constructor.  But we can make this more of a traditional object by invoking the looked-up field, and binding the message names to functions rather than values:
 
-      def :create-Employee = { as age_ as name_
+      fun :create-Employee = { as age_ as name_
     
-          def :age = age_ 3 -; -- everybody lies about their age!
-          def :name = name_;
-          def :say-hello-to otherPerson = {
+          fun :age = age_ 3 -; -- everybody lies about their age!
+          fun :name = name_;
+          fun :say-hello-to otherPerson = {
             "Hello %s, my name is %s and I'm %d years old" otherPerson.name! name! age! print!
           }
        
@@ -265,15 +265,15 @@ These should also not be surprising
 Library files or modules support code reuse with the "require" keyword.  Require loads a file as a closure which must be applied.  A typical pattern is to have the library file return a message handler style function which can be used with the object syntax to access methods.  E.g., the core higher-order-functions are included in a file called [lib/hof.bang], which looks like this:
 
 
-    def :map xform = {
-      def :innermap = {
+    fun :map xform = {
+      fun :innermap = {
         # 0 > 
         ? as val innermap! val xform!
       }
       innermap!
     }
     
-    def :filter predicate = {
+    fun :filter predicate = {
         fun v = { v predicate! ? v }
         map!
     }
@@ -310,12 +310,14 @@ There are several samples ported from the "computer language shootout" benchmark
 
 # Summary of Language Elements
 
-* _Function/Binding_: fun, fun!, as, def
-* _Function Application_: ! ?
+* _Function/Binding_: fun, fun!, as
+* _Function Application_: !
+* _Conditional_: ? :
 * _Function Definition Delimiters_: ; { }
 * _Literals_: _Booleans_=true/false _Strings_='xyz' "xyz" Numbers=3.14159 42
 * _Object Syntax_: . lookup
 * _Stack Bounding Delimiters_: ( )
+* _Indexing_: [ ]
 * _(tentative)_ primitive functions:
 ** # + - * / < > = not! or! drop! swap! dup! nth! save-stack! stack-to-array!
 
