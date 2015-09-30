@@ -20,8 +20,6 @@
 #define LCFG_OPTIMIZE_OPVV2V_WITHLIT 1
 #define LCFG_USE_INDEX_OPERATOR 1
 
-#define LCFG_HAVE_SAVE_BINDINGS 1 // deprecated;  favor ^bind and ^^bind
-
 #define LCFG_HAVE_TAV_SWAP 0
 
 // #define LCFG_TRYJIT 1
@@ -32,7 +30,15 @@
   Keywords
     fun fun! as
     lookup -- (does not require apply!!!)
-  
+    import
+    try catch
+
+  keyword-like-primitives/primitive-like-keywords
+    require crequire
+    coroutine!
+    yield! yield-nil!
+    
+
 And there are some built-in operators:
 
   Operators
@@ -2037,14 +2043,6 @@ namespace Primitives {
 #endif 
     }
 
-#if LCFG_HAVE_SAVE_BINDINGS                
-    void savebindings( Stack& s, const RunContext& rc )
-    {
-        const auto& bindings = NEW_BANGFUN(DynamicLookup, rc.upvalues() );
-        s.push( STATIC_CAST_TO_BANGFUN(bindings) );
-    }
-#endif
-
     void rebindvalues( Stack& s, const Value& v, const Value& vbindname, const Value& newval )
     {
         const auto& bindname = vbindname.tostr();
@@ -3190,6 +3188,7 @@ class Parser
             bool isNegative = false;
             double val = 0;
             double fractional_adj = 0.1;
+            double base = 10;
             char c = mark.getc();
 
             if (c=='-')
@@ -3201,7 +3200,22 @@ class Parser
                 isNegative = true;
             }
 
-            while (isdigit(c))
+            if (c == '0')
+            {
+                c = mark.getc();
+                if (c == 'x')
+                {
+                    base = 16;
+                    mark.accept();
+                    c = mark.getc();
+                }
+                else
+                {
+                    mark.regurg(c);
+                }
+            }
+
+            while (isdigit(c) || ((base == 16) && tolower(c) >= 'a' && tolower(c) <= 'f'))
             {
                 gotOne = true;
                 mark.accept();
@@ -3212,7 +3226,7 @@ class Parser
                 }
                 else    
                 {
-                    val = val * 10 + (c - '0');
+                    val = val * base + (isdigit(c) ? (c - '0') : (10 + tolower(c) - 'a'));
                 }
                 c = mark.getc();
                 if (!gotDecimal)
@@ -4710,21 +4724,18 @@ Parser::Program::Program
                     return false;
                 };
                 
-                if (rwPrimitive( "drop",   &Primitives::drop   ) ) continue;
-                if (rwPrimitive( "swap",   &Primitives::swap   ) ) continue;
-                if (rwPrimitive( "isafun",   &Primitives::isfun   ) ) continue;
-                if (rwPrimitive( "dup",    &Primitives::dup    ) ) continue;
-                if (rwPrimitive( "nth",    &Primitives::nth    ) ) continue;
-                if (rwPrimitive( "print",   &Primitives::print   ) ) continue;
-                if (rwPrimitive( "format",   &Primitives::format   ) ) continue;
-                if (rwPrimitive( "save-stack",    &Primitives::savestack    ) ) continue;
-#if LCFG_HAVE_SAVE_BINDINGS                
-                if (rwPrimitive( "save-bindings",    &Primitives::savebindings    ) ) continue;
-#endif 
-                if (rwPrimitive( "rebind",    &Primitives::rebindFunction    ) ) continue;
-                if (rwPrimitive( "rebind-outer",    &Primitives::rebindOuterFunction    ) ) continue;
-                if (rwPrimitive( "crequire",    &Primitives::crequire    ) ) continue;
-                if (rwPrimitive( "tostring", &Primitives::tostring    ) ) continue;
+                if (rwPrimitive( "drop",             &Primitives::drop   ) ) continue;
+                if (rwPrimitive( "swap",             &Primitives::swap   ) ) continue;
+                if (rwPrimitive( "isafun",           &Primitives::isfun   ) ) continue;
+                if (rwPrimitive( "dup",              &Primitives::dup    ) ) continue;
+                if (rwPrimitive( "nth",              &Primitives::nth    ) ) continue;
+                if (rwPrimitive( "print",            &Primitives::print   ) ) continue;
+                if (rwPrimitive( "format",           &Primitives::format   ) ) continue;
+                if (rwPrimitive( "save-stack",       &Primitives::savestack    ) ) continue;
+                if (rwPrimitive( "rebind",           &Primitives::rebindFunction    ) ) continue;
+                if (rwPrimitive( "rebind-outer",     &Primitives::rebindOuterFunction    ) ) continue;
+                if (rwPrimitive( "crequire",         &Primitives::crequire    ) ) continue;
+                if (rwPrimitive( "tostring",         &Primitives::tostring    ) ) continue;
             
                 bool bFoundRecFunId = false;
 
