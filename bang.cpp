@@ -3212,6 +3212,7 @@ class Parser
                 else
                 {
                     mark.regurg(c);
+                    c = '0';
                 }
             }
 
