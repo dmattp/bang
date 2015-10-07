@@ -95,6 +95,7 @@ clean:
 	rm *.dll
 	rm *.exe
 	rm *.manifest
+	rm *.o
 
 
 

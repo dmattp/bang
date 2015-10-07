@@ -17,7 +17,7 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 1
+#define LCFG_MT_SAFEISH 0
 #define LCFG_HAVE_TRY_CATCH 0
 
 
@@ -122,9 +122,9 @@ namespace Bang
     class Thread;
 
 #if !LCFG_GCPTR_STD
-# include "gcptr.h"    
-#endif 
-    
+# include "gcptr.h"
+#endif
+
     template<>
     class GCDellocator<Upvalue>
     {
@@ -143,7 +143,9 @@ namespace Bang
 #else
     typedef gcptr<Function> gcptrfun;
     typedef gcptr<Upvalue>  gcptrupval;
-#endif 
+#endif
+
+    #include "pvec.h"
 
 typedef std::shared_ptr<Thread> bangthreadptr_t;
     

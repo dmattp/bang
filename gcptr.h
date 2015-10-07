@@ -1,3 +1,16 @@
+/******************************************************************************
+ *    History:      2015-10-07 DMP Initial Creation
+ ******************************************************************************/
+#ifndef HDR_GCPTR_H_6E131858_6D41_11E5_B707_00FF90F8250A__
+#define HDR_GCPTR_H_6E131858_6D41_11E5_B707_00FF90F8250A__
+
+
+
+
+
+
+
+
 template <class T>
 class GCDellocator
 {
@@ -144,3 +157,5 @@ public:
             other.ptr_ = tmp;
         }
     };
+
+#endif /* ifndef HDR_GCPTR_H_6E131858_6D41_11E5_B707_00FF90F8250A__ */
