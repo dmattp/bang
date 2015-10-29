@@ -627,6 +627,21 @@ namespace Primitives
         s.push(double(s.size()));
     }
 
+    void pushtype( Stack& s, const RunContext& ctx )
+    {
+        const Value& v = s.pop();
+        const auto t = v.type();
+        s.push
+        ( t == Value::kBool ? "bool"
+        : t == Value::kNum ? "number"
+        : t == Value::kStr ? "string"
+        : t == Value::kFun ? "function"
+        : t == Value::kBoundFun ? "bangfun"
+        : t == Value::kFunPrimitive ? "primitive"
+        :  "unknown"
+        );
+    }
+
     void isfun( Stack& s, const RunContext&)
     {
         const Value& v = s.loc_top();
@@ -4545,6 +4560,11 @@ Parser::Program::Program
                 {
                     ast_.push_back( new Ast::OperatorThrow() );
                     continue;
+                }
+                else if (token == "/type")
+                {
+                    ast_.push_back( new Ast::PushPrimitive( &Primitives::pushtype, "/type" ) );
+                    ast_.push_back( newapplywhere(mark) );
                 }
 #if LCFG_HAVE_TAV_SWAP
                 else if (token == "~-")
