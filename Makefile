@@ -91,11 +91,11 @@ bangone$(EXT_EXE): bangmain.cpp bang.cpp hashlib.cpp
 endif
 
 clean:
-	rm *.tlog
-	rm *.dll
-	rm *.exe
-	rm *.manifest
-	rm *.o
+	-rm *.tlog
+	-rm *.dll
+	-rm *.exe
+	-rm *.manifest
+	-rm *.o
 
 
 

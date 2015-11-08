@@ -17,7 +17,9 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
-#define LCFG_MT_SAFEISH 1
+#ifndef LCFG_MT_SAFEISH
+# define LCFG_MT_SAFEISH 1
+#endif
 #define LCFG_HAVE_TRY_CATCH 0
 
 

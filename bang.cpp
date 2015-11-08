@@ -542,7 +542,7 @@ namespace {
     template<class T>
     unsigned PtrToHash( const T& ptr )
     {
-        return (reinterpret_cast<unsigned>(ptr)&0xFFF0) >> 4;
+        return (reinterpret_cast<uintptr_t>(ptr)&0xFFF0) >> 4;
     }
 }
 

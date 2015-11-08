@@ -8,6 +8,8 @@
 
 #define LCFG_FULL_SUPPORT 0
 
+typedef std::ptrdiff_t ptrdiff_t;
+
 #define L_ESC		'%'
 #define SPECIALS	"^$*+?.([%-"
 #define CAP_UNFINISHED	(-1)
