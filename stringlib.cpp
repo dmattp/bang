@@ -517,9 +517,9 @@ static int push_captures (MatchState *ms, const char *s, const char *e) {
     void byte( Bang::Stack& s, const Bang::RunContext& ctx)
     {
         checkstrtype(s.loc_top());
-        const auto& str = s.pop().tostr();
+        const auto& v = s.pop();
         int ndx = s.pop().tonum();
-        s.push( (double)str[ndx] );
+        s.push( (double)(v.tostr()[ndx]) );
         // s.push( sLt.tostr() < sRt.tostr() );
     }
     

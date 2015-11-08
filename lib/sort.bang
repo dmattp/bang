@@ -16,7 +16,7 @@ fun :filter predicate = {
 fun :eqFromLt lt = {
    fun obj2 = as obj1
       obj1 obj2 lt!
-      obj2 obj1 lt! or! not!
+      obj2 obj1 lt! /or /not
 }
 
 fun :gtFromLt lt = { fun = swap! lt! }

@@ -697,6 +697,7 @@ namespace Primitives
             using namespace std;
             auto found_x = fmt.rfind( "%@", pos );
             auto found_s = fmt.rfind( "%s", pos );
+            // auto found_u = fmt.rfind( "%u", pos );
             auto found =
             (  found_x != string::npos ?
                 (   found_s != string::npos
@@ -2101,6 +2102,15 @@ namespace Primitives {
         const Value& v = s.pop();
         const Value& newval = s.pop();
         rebindvalues( s, v, vbindname, newval );
+    }
+    void threadIsActive( Stack& s, const RunContext& rc )
+    {
+        const Value& v = s.pop();
+        
+        if (v.isthread())
+            s.push( v.tothread()->callframe ? true : false );
+        else
+            s.push( false );
     }
 }
 
@@ -4339,7 +4349,7 @@ Parser::Program::Program
                     bHasOpenArray = true;
                     mark.accept();
 
-                    std::cerr << "opening array\n";
+//                    std::cerr << "opening array\n";
                     
                     Ast::Program::astList_t indexProgAst;
                     Program indexProgram( parsecontext, stream, nullptr, upvalueChain, upvalueChain, pRecParsing, indexProgAst, true );
@@ -4757,6 +4767,7 @@ Parser::Program::Program
                 if (rwPrimitive( "rebind-outer",     &Primitives::rebindOuterFunction    ) ) continue;
                 if (rwPrimitive( "crequire",         &Primitives::crequire    ) ) continue;
                 if (rwPrimitive( "tostring",         &Primitives::tostring    ) ) continue;
+                if (rwPrimitive( "is-thread-active", &Primitives::threadIsActive    ) ) continue;
             
                 bool bFoundRecFunId = false;
 

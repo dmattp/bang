@@ -1,8 +1,22 @@
 
+
+fun :reverse = {
+  fun :inner list = { as element
+      fun = list! element; as newList
+      # 0 > ? newList inner! : newList!
+  }
+  fun=; inner!
+}
+
+------------------------------------------------------------------
+-- classic hofs; map, filter, foldl
+------------------------------------------------------------------
+
 fun :foldl operator = {
   # 1 > ?
   operator! operator foldl!
 }
+
 
 fun :map xform = {
   fun :innermap = {
@@ -18,4 +32,28 @@ fun :filter predicate = {
     } map!
 }
 
-fun = lookup
+------------------------------------------------------------------
+-- simple iteration
+------------------------------------------------------------------
+
+fun :times = { swap! as loopFun
+    fun! :innerLoop remain = {
+      loopFun!
+      remain 1 >
+      ? remain 1 - innerLoop!
+    }
+}
+
+fun :range last = { swap! as do-me
+   fun! :inner current = {
+      current last >~ ?
+         current do-me!
+         current 1 + inner!
+   }
+}
+
+
+
+^bind
+
+

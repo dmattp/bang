@@ -15,4 +15,7 @@
 
 
 
-
+-- '------------------'
+-- fun :time-from-string timeStr = { ('(%d)(%d):(%d)(%d):(%d)(%d)' timeStr string.match! ? 'yes' : 'no'; ) }
+-- "19:44:33" time-from-string! 
+-- '------------------'
