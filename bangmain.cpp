@@ -4,11 +4,15 @@
 
 #ifdef WIN32
 # include <windows.h>
+#else
+# include <pthread.h>
+static volatile void* xyz = (void*)&pthread_create;
 #endif 
 
 #include "bang.h"
 
 // #define kDefaultScript "c:/m/n2proj/bang/test/opt-01-multiops-upval.bang";
+
 
 
 using namespace Bang;
@@ -354,5 +358,7 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 
 int main( int argc, char* argv[] )
 {
+    volatile void* p = xyz;
+//    std::cout << "p=" << xyz << " pthread_create=" << (void*)&pthread_create << std::endl;
     bangmain( argc, argv );
 }

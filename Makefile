@@ -48,7 +48,7 @@ ifeq (1,$(HAVE_BUILTIN_HASH))
    CPPFLAGS += -DHAVE_BUILTIN_HASH=1
    OBJS_LIBBANG += hashlib.o
 else
-all:: arraylib$(EXT_SO)
+all:: hashlib$(EXT_SO)
 endif
 
 
@@ -59,10 +59,10 @@ bang.o: bang.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) -c $< -o $@
 
 libbang$(EXT_SO): $(OBJS_LIBBANG)
-	$(CXX) $(OBJS_LIBBANG) $(LDFLAGS) $(LDFLAGS_DL) -shared -o $@
+	$(CXX) $(OBJS_LIBBANG) $(LDFLAGS) $(LDFLAGS_DL) -lpthread -shared -o $@
 
-bang$(EXT_EXE): bangmain.cpp bang.h Makefile libbang$(EXT_SO)
-	$(CXX) $(CPPFLAGS)  $< -L . -lbang -o $@
+bang$(EXT_EXE): bangmain.o bang.h Makefile libbang$(EXT_SO)
+	$(CXX) $< -L . -lbang -lpthread -o $@
 
 ifneq (1,$(HAVE_BUILTIN_ARRAY))
 arraylib$(EXT_SO): arraylib.o

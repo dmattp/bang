@@ -9,6 +9,7 @@
 #if HAVE_MUTATION
 # if __GNUC__
 // "Making something variable is easy. Controlling duration of constancy is the trick" - Alan Perlis
+# include <pthread.h>
 # warning Mutation enabled: You have strayed from the true and blessed path.
 #endif 
 #endif
@@ -1110,12 +1111,14 @@ const Ast::Base* gFailedAst = nullptr;
             );
         }
     
-    
+
+
 namespace Ast
 {
     DLLEXPORT void BreakProg::dump( int level, std::ostream& o ) const
     {
         indentlevel(level, o);
+        o << " pthread_create=" << (void*)&pthread_create << std::endl;
         o << "---\n";
     }
     DLLEXPORT void EofMarker::repl_prompt( Stack& stack ) const
@@ -4018,6 +4021,10 @@ void OptimizeAst( std::vector<Ast::Base*>& ast, const Ast::CloseValue* upvalueCh
     }
 }
 
+#if !defined(_WIN32)
+# include "sys/errno.h"
+#endif    
+    
 namespace Primitives {
 
 // #if HAVE_BUILTIN_ARRAY
@@ -4093,6 +4100,23 @@ namespace Primitives {
         const auto& v = s.pop();
         std::string libname = v.tostr();
 
+#if HAVE_BUILTIN_ARRAY
+        if (libname == "arraylib")
+        {
+            bang_arraylib_open( &s, &rc );
+            return;
+        }
+#endif 
+#if HAVE_BUILTIN_HASH
+        if (libname == "hashlib")
+        {
+            bang_hashlib_open( &s, &rc );
+            return;
+        }
+#endif 
+        
+        const std::string libname_noext = libname;
+
         if (libname.substr(libname.size()-1-3,std::string::npos) != ".so")
         {
             libname += ".so";
@@ -4104,15 +4128,16 @@ namespace Primitives {
 
         if (!lib)
         {
-            std::cerr << "Could not load library=" << libname << std::endl;
+            std::cerr << "Could not load library=" << libname
+                      << " error=" << dlerror() << std::endl;
             return;
         }
         void* voidproc = dlsym( lib, "bang_open" );
         if (!voidproc)
         {
-            auto altname = std::string("bang_") + libname + "_open";
+            auto altname = std::string("bang_") + libname_noext + "_open";
             voidproc = dlsym( lib, altname.c_str() );
-            bangerr() << "Could not find 'bang_open()' or '" << altname << "' in library=" << libname;
+            bangerr() << "Could not find 'bang_open()' or '" << altname << "()' in library=" << libname;
             return;
         }
 //         std::cerr << "Calling 'bang_open()' in library=" << libname 

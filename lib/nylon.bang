@@ -9,14 +9,14 @@ nsys.asthread as asthread
 nsys.uptime as uptime
 
 
-def :cord cordfun = {
+fun :cord cordfun = {
   array.new! as msg-queue
   array.new! as cordstate
   0 cordstate/push
 --     false as cordstate
 --     false as cordstate
 
-  def :the-startup-coroutine-wrapper xcord = {
+  fun :the-startup-coroutine-wrapper xcord = {
     xcord.coro nsys.register-thread!
     xcord.coro nsys.schedule!
     save-stack! as ss
@@ -28,9 +28,9 @@ def :cord cordfun = {
   the-startup-coroutine-wrapper coroutine! as coro
 --    cordfun coroutine! as coro
 
-  def :schedule = coro nsys.schedule!;
+  fun :schedule = coro nsys.schedule!;
 
-  def :sleep seconds = {
+  fun :sleep seconds = {
 --      seconds 'starting timer callback after %s seconds\n' print!
       fun = {
 --          seconds 'got timer callback after %s seconds\n' print!
@@ -41,11 +41,11 @@ def :cord cordfun = {
 --      seconds 'coroutine woke up after %s seconds\n' print!
   }
 
-  def :asthread torun = {
+  fun :asthread torun = {
       torun coro nsys.asthread! yield-nil!
   }
 
-  def :getmsg = {
+  fun :getmsg = {
     msg-queue/# as nMsgs
     -- nMsgs 'getmsg, q#=%@\n' print! 
     nMsgs 1 < ? {
@@ -55,7 +55,7 @@ def :cord cordfun = {
     msg-queue/dequeue
   }
 
-  def :msg = {
+  fun :msg = {
     msg-queue /push
     cordstate[0] ?
       false 0 cordstate/set
@@ -74,7 +74,7 @@ def :cord cordfun = {
 nsys.waitforthread as waitforthread
 nsys.have-threads as have-threads
 
-def :runloop = {
+fun :runloop = {
     have-threads! as have-any
 --    have-any # 'any=%@ stk=%s nylon mainloop wait for thread\n' print!
     have-any ? 
