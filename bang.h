@@ -19,9 +19,15 @@
 #define LCFG_STD_STRING 0
 #define LCFG_GCPTR_STD 0
 #define LCFG_UPVAL_SIMPLEALLOC 1
+
 #ifndef LCFG_MT_SAFEISH
-# define LCFG_MT_SAFEISH 1
+# if defined(WIN32) && __GNUC__
+#  define LCFG_MT_SAFEISH 0 // no threading/nylon for mingw build, so don't bother!
+# else
+#  define LCFG_MT_SAFEISH 1
+# endif 
 #endif
+
 #define LCFG_HAVE_TRY_CATCH 0
 
 

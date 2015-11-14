@@ -2,7 +2,7 @@
 #include <numeric> // for std::accumulate
 #include <stdio.h>
 
-#ifdef WIN32
+#ifdef _WIN32
 # include <windows.h>
 #else
 # include <pthread.h>
@@ -358,7 +358,7 @@ DLLEXPORT int bangmain( int argc, char* argv[] )
 
 int main( int argc, char* argv[] )
 {
-    volatile void* p = xyz;
+//    volatile void* p = xyz;
 //    std::cout << "p=" << xyz << " pthread_create=" << (void*)&pthread_create << std::endl;
     bangmain( argc, argv );
 }

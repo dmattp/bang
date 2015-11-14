@@ -1118,7 +1118,9 @@ namespace Ast
     DLLEXPORT void BreakProg::dump( int level, std::ostream& o ) const
     {
         indentlevel(level, o);
+#ifndef _WIN32        
         o << " pthread_create=" << (void*)&pthread_create << std::endl;
+#endif 
         o << "---\n";
     }
     DLLEXPORT void EofMarker::repl_prompt( Stack& stack ) const

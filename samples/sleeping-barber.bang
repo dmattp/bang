@@ -9,7 +9,7 @@
 4 as maxSeats
 Array.new! as freeSeats
 
-def :cut-hair cid barber-cord = {
+fun :cut-hair cid barber-cord = {
 -- ... long process runs as thread
   math.random! 10 % 5 + as t
   cid t 'barber cutting customer%@ hair for %@s\n' print!
@@ -17,9 +17,9 @@ def :cut-hair cid barber-cord = {
 }
 
 
-def :barber cord = {
+fun :barber cord = {
   'enter barber\n' print!
-  def! :innerloop = {
+  fun! :innerloop = {
     cord.getmsg! as _
     freeSeats/dequeue as nextCustomer
     nextCustomer.id cord cut-hair! --  cord.asthread!
@@ -31,7 +31,7 @@ def :barber cord = {
 
 barber nylon.cord! as theBarber
 
-def :customer id cord = {
+fun :customer id cord = {
     freeSeats/# as nwaiting
     id nwaiting 'customer%@ arrived, nwaiting=%@\n' print!
     nwaiting maxSeats < ?
@@ -42,9 +42,9 @@ def :customer id cord = {
     id 'customer%@ is done, leaving\n' print!
 }
 
-def :send-customers cord = {
+fun :send-customers cord = {
     'enter send-customers\n' print!
-    1 def! :inner id = {
+    1 fun! :inner id = {
         id customer nylon.cord! as _
         math.random! 10 % 5 + as t
         t 'send-customers sleeping for %@s\n' print!

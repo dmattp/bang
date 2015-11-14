@@ -59,10 +59,10 @@ bang.o: bang.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) -c $< -o $@
 
 libbang$(EXT_SO): $(OBJS_LIBBANG)
-	$(CXX) $(OBJS_LIBBANG) $(LDFLAGS) $(LDFLAGS_DL) -lpthread -shared -o $@
+	$(CXX) $(OBJS_LIBBANG) $(LDFLAGS) $(LDFLAGS_DL) $(LDFLAGS_THREADLIB) -shared -o $@
 
 bang$(EXT_EXE): bangmain.o bang.h Makefile libbang$(EXT_SO)
-	$(CXX) $< -L . -lbang -lpthread -o $@
+	$(CXX) $< -L . -lbang $(LDFLAGS_THREADLIB) -o $@
 
 ifneq (1,$(HAVE_BUILTIN_ARRAY))
 arraylib$(EXT_SO): arraylib.o
