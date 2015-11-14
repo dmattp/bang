@@ -51,13 +51,39 @@ namespace Atomic
    inline long
    increment( volatile long& var )
    {
+#if __GNUC__
+       const long v = __sync_fetch_and_add( &var, 1 );
+       return v + 1;
+#else
        return InterlockedIncrement( &var );
+#endif 
    }
+
    inline long
    decrement( volatile long& var )
    {
+#if __GNUC__
+       const long v = __sync_fetch_and_sub( &var, 1 );
+       return v - 1;
+#else
        return InterlockedDecrement( &var );
+#endif 
    }
+
+   template< typename TVAR, typename TADDEND >
+   inline TVAR
+   add( volatile TVAR& var, TADDEND addend )
+   {
+      
+      while( true )
+      {
+         TVAR oldVal( var );
+         TVAR newVal( oldVal + addend );
+         if( oldVal == Atomic::cmpxchg( var, oldVal, newVal ) )
+            return oldVal;
+      }
+   }
+    
 }
 
 #endif 
