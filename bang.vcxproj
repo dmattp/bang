@@ -13,11 +13,11 @@
   <PropertyGroup>
     <OutDir>$(Configuration)\</OutDir>
   </PropertyGroup>
+  <Import Project="build/bangself.props" />
   <PropertyGroup Label="Globals">
     <ProjectGuid>{97003575-1999-4E27-9783-80D811BAF54A}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>bang</RootNamespace>
-    <PlatformToolset>v100</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -30,7 +30,6 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <PlatformToolset>v100</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">

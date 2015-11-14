@@ -1,6 +1,8 @@
 #ifndef BANG_H__
 #define BANG_H__
 
+// high performance parallel malloc? https://github.com/gperftools/gperftools
+
 #include <memory>
 #include <vector>
 #include <iterator>

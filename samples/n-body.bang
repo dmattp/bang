@@ -22,7 +22,7 @@ Iter.times as times
 
 'hashlib' crequire! .new as make-hash
 
-def :make-Body = {
+fun :make-Body = {
   make-hash! as h
   h/set.mass
   h/set.vz
@@ -35,17 +35,17 @@ def :make-Body = {
 }
 
 
-def :advance dt = { as nbody as bodies
+fun :advance dt = { as nbody as bodies
   nbody 1 - as maxbodyndx
 
   0
-  def! :each-body i = {
+  fun! :each-body i = {
     bodies[i] as bi
     bi.x bi.y bi.z bi.mass as bimass as biz as biy as bix
 
     bi.vx bi.vy bi.vz
     i 1 + 
-    def! :innerloop bivx bivy bivz j = { 
+    fun! :innerloop bivx bivy bivz j = { 
       j nbody <
       ? bodies[j] as bj
         bix bj.x - as dx biy bj.y - as dy biz bj.z - as dz
@@ -88,10 +88,10 @@ def :advance dt = { as nbody as bodies
 }
 
 
-def :energy nbody = { as bodies
+fun :energy nbody = { as bodies
 --  0 as e
   nbody 1 - as maxarrayndx
-  def :each-body i = { as energySum
+  fun :each-body i = { as energySum
 --    i energySum 'each-body i=%@ energySum=%@\n' print!
     bodies[i] as bi
     
@@ -103,7 +103,7 @@ def :energy nbody = { as bodies
     
     vx vx * vy vy * + vz vz * + bim * 0.5 * energySum + 
 
-    def :other-body j = { as eBefore
+    fun :other-body j = { as eBefore
       -- i j eBefore 'other-body i=%@ j=%@ eBefore=%@\n' print!
       bodies[j] as bj
       bi.x bj.x - as dx bi.y bj.y - as dy bi.z bj.z - as dz
@@ -119,9 +119,9 @@ def :energy nbody = { as bodies
 }
 
 
-def :offsetMomentum nbody = { as bodies
+fun :offsetMomentum nbody = { as bodies
   0 0 0 0
-  def! :inner i = { 
+  fun! :inner i = { 
     as pz as py as px
     i nbody < 
     ? -- nbody i pz py px 'offsetMomentum nbody=%@ i=%@ pz=%@ py=%@ px=%@\n' print!

@@ -10,6 +10,7 @@
       <Platform>Win32</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <Import Project="build/bangself.props" />
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9877DDCA-C476-4560-9F75-AE6C681F9B63}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
