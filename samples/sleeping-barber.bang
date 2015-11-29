@@ -11,7 +11,7 @@ Array.new! as freeSeats
 
 fun :cut-hair cid barber-cord = {
 -- ... long process runs as thread
-  math.random! 10 % 5 + as t
+  math.random! 10 * 5 + as t
   cid t 'barber cutting customer%@ hair for %@s\n' print!
   t barber-cord.sleep!
 }
@@ -46,7 +46,7 @@ fun :send-customers cord = {
     'enter send-customers\n' print!
     1 fun! :inner id = {
         id customer nylon.cord! as _
-        math.random! 10 % 5 + as t
+        math.random! 10 * 5 + as t
         t 'send-customers sleeping for %@s\n' print!
         t cord.sleep!
         id 1 + inner!

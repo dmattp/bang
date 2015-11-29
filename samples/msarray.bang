@@ -36,7 +36,7 @@ def :mergesort min max a = {
 
 
 'lib/iterate.bang' require! .times as times
-'./mathlib' crequire! as math
+'mathlib' crequire! as math
 math.random as random
 
 Array.new! as arr

@@ -103,6 +103,11 @@ And there are primitives, until a better library / module system is in place.
 # include "hashlib.h"
 #endif 
 
+#if HAVE_BUILTIN_MATH
+# include "mathlib.h"
+#endif 
+
+
 //~~~temporary #define for refactoring
 #define TMPFACT_PROG_TO_RUNPROG(p) &((p)->getAst()->front())
 #define FRIENDOF_RUNPROG friend DLLEXPORT void Bang::RunProgram( Thread* pThread, const Ast::Program* inprog, SHAREDUPVALUE inupvalues );
@@ -1119,7 +1124,7 @@ namespace Ast
     {
         indentlevel(level, o);
 #ifndef _WIN32        
-        o << " pthread_create=" << (void*)&pthread_create << std::endl;
+//        o << " pthread_create=" << (void*)&pthread_create << std::endl;
 #endif 
         o << "---\n";
     }
@@ -1460,7 +1465,7 @@ namespace Ast
         virtual void dump( int level, std::ostream& o ) const
         {
             indentlevel(level, o);
-
+ 
             if (argSwap_)
             {
                 o << "SWAP ";
@@ -4064,6 +4069,13 @@ namespace Primitives {
         if (libname == "hashlib")
         {
             bang_hashlib_open( &s, &rc );
+            return;
+        }
+#endif 
+#if HAVE_BUILTIN_MATH
+        if (libname == "mathlib")
+        {
+            bang_mathlib_open( &s, &rc );
             return;
         }
 #endif 

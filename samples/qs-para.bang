@@ -6,7 +6,7 @@
 'arraylib' crequire! as array
 
 
-def :quicksort-inner = {
+fun :quicksort-inner = {
   # 2 / nth!  as pivotValue -- Stack[stacklen / 2]
   save-stack! as theStack
  
@@ -18,19 +18,19 @@ def :quicksort-inner = {
 'lib/iterate.bang' require! as iterate
 
 -- cord
-def :qs-stack-coro low hi theArray cord = {
+fun :qs-stack-coro low hi theArray cord = {
   # low hi theArray 'qs-stack-coro #=%@ lo=%@ hi=%@ theArray=%@\n' print!
   (theArray low hi iterate.range! quicksort-inner cord.asthread!)
 }
 
 
-def :quicksort = {
+fun :quicksort = {
   # as nvalues
   nvalues 4 / as one-fourth
   array.from-stack! as values
 
   0 
-  def! :sortsome initplace = {
+  fun! :sortsome initplace = {
      initplace nvalues < ?
      initplace one-fourth + as nextplace
      initplace nextplace 1 - values qs-stack-coro nylon.cord! as theCord
@@ -41,7 +41,7 @@ def :quicksort = {
 
 './mathlib' crequire! .random as random
 
-def :testQuicksort numItems = { 
+fun :testQuicksort numItems = { 
   random numItems iterate.times!
   quicksort!
 }

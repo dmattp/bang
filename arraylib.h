@@ -37,6 +37,15 @@ namespace Bang
             RunContext* pctx(nullptr);
             this->indexOperator( msg, s, *pctx );
         }
+
+        void sort()
+        {
+            // Value Value::applyAndValue2Value( EOperators which, const Value& other ) const
+            std::sort( stack_.begin(), stack_.end(),
+                []( const Value& l, const Value& r ) -> bool {
+                    return r.applyAndValue2Value( kOpLt, l ).tobool();
+                } );
+        }
         
         void customOperator( const bangstring& str, Stack& s)
         {
@@ -49,6 +58,7 @@ namespace Bang
             const static Bang::bangstring opAppend("/append");
             const static Bang::bangstring opPush("/push");
             const static Bang::bangstring opDequeue("/dequeue");
+            const static Bang::bangstring opSort("/sort");
         
             if (str == opSize)
                 s.push( double(stack_.size()) );
@@ -95,6 +105,10 @@ namespace Bang
             {
                 s.push( stack_.front() );
                 stack_.erase( stack_.begin() );
+            }
+            else if (str == opSort)
+            {
+                this->sort();
             }
         }
     }; // end, Array class

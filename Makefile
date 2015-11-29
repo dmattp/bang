@@ -5,21 +5,15 @@ ifeq (,$(BUILD_FOR)) # if site.mak doesn't include a target (linux.mak,win32.mak
 endif
 
 all:: bang$(EXT_EXE) #-- mathlib.dll
-all:: mathlib$(EXT_SO)
 all:: stringlib$(EXT_SO)
 all:: iolib$(EXT_SO)
 
 CPPOPTLEVEL ?= -O2
 CPPFLAGS += --std=c++11 $(CPPOPTLEVEL)
+
 HAVE_BUILTIN_ARRAY=1
 HAVE_BUILTIN_HASH=1
-
-
-# CPPFLAGS += -march=i686
-
-# -fomit-frame-pointer
-
-#CPPFLAGS += -S
+HAVE_BUILTIN_MATH=1
 
 ifeq (1,$(USE_GC))
  LDFLAGS += -L$(DIR_BOEHM_LIB) -lgc
@@ -51,6 +45,14 @@ else
 all:: hashlib$(EXT_SO)
 endif
 
+ifeq (1,$(HAVE_BUILTIN_MATH))
+   CPPFLAGS += -DHAVE_BUILTIN_MATH=1
+   OBJS_LIBBANG += mathlib.o
+else
+all:: mathlib$(EXT_SO)
+endif
+
+
 
 bang.o: bang.cpp bang.h Makefile
 	$(CXX) $(CPPFLAGS) -c $< -o $@
@@ -74,8 +76,10 @@ hashlib$(EXT_SO): hashlib.cpp hashlib.h bang.h
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<
 endif 
 
+ifneq (1,$(HAVE_BUILTIN_MATH))
 mathlib$(EXT_SO): mathlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -L. -lbang -o $@ $<
+endif 
 
 stringlib$(EXT_SO): stringlib.cpp bang.h
 	$(CXX) $(CPPFLAGS) -shared -L . -lbang -o $@ $<

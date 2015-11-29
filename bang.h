@@ -85,6 +85,12 @@ namespace Bang
         
         kOpCustom,       // ... thing/custom -> ... // ApplyThingWithCustomOperator2Stack     G
         //      kOpCustomDotted, // ... thing/custom.parse-time-ident -> ... // ApplyThingWithCustomOperator2Stack H
+
+#if LCFG_OTHER_POTENTIAL_OPERATORS
+        kOpToString,
+        kOpToBool,
+#endif
+        
         kOpLAST
     };
     
@@ -682,34 +688,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         const Value& getUpValue( NthParent uvnumber ) const
         {
             const Upvalue* uv = this;
-#if 0
-            int uvn = uvnumber.toint();
-            {
-                switch( uvn & 0x7 )
-                {
-                    case 7:  uv = uv->parent_.get();
-                    case 6:  uv = uv->parent_.get();
-                    case 5:  uv = uv->parent_.get();
-                    case 4:  uv = uv->parent_.get();
-                    case 3:  uv = uv->parent_.get();
-                    case 2:  uv = uv->parent_.get();
-                    case 1:  uv = uv->parent_.get();
-                    case 0:  ; // uv = uv->parent_.get();
-                }
-
-                for ( ;uvn > 7; uvn -= 8 )
-                {
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                    uv = uv->parent_.get();
-                }
-            }
-#elif 1            
+#if 1            
             while ( uvnumber != NthParent(0) )
             {
                 uv = uv->parent_.get();

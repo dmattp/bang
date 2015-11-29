@@ -1,17 +1,15 @@
 # 1 < ? 19000; as N
 
-'lib/hof.bang' require! .filter as filter
+'lib/hof.bang'   require! as hof
+'lib/nylon.bang' require! as Nylon
+'arraylib'       crequire! as Array
+'mathlib'        crequire! .random as random
 
-'lib/nylon.bang' require! as nylon
-'arraylib' crequire! as Array
-
-
-'lib/iterate.bang' require! as iterate
 
 -- cord
-def :qs-stack-coro low hi theArray cord = {
+fun :qs-stack-coro low hi theArray cord = {
 
-def :mergesort min max a = {
+fun :mergesort min max a = {
   max min - 1 + as n
 --  min max n 'enter min=%@ max=%@ n=%@\n' print!
   n 3 < ? { -- array 2 elements or less
@@ -24,7 +22,7 @@ def :mergesort min max a = {
   min mid a mergesort! as left left/# as nleft
   mid 1 + max a mergesort! as right right/# as nright
   (
-  0 0 def! :merge il ir = {
+  0 0 fun! :merge il ir = {
 --    il nleft ir nright 'merge il=%@ nleft=%@ ir=%@ nright=%@\n' print!
     il nleft < as haveLeft ir nright < as haveRight
     haveLeft ? {
@@ -45,46 +43,38 @@ def :mergesort min max a = {
 
     # low hi theArray 'ms-stack-coro #=%@ lo=%@ hi=%@ theArray=%@\n' print!
 
-  (theArray low hi iterate.range! Array.from-stack! as a
-  fun= {
-    0 hi low - a mergesort!
-  }
-  cord.asthread
-  !
+  (theArray low hi hof.range! Array.from-stack! as a
+     fun= 0 hi low - a mergesort!; cord.asthread!
   )
   as sorted sorted/to-stack
 }
 
 
-def :quicksort = {
+fun :mergesort = {
   # as nvalues
   nvalues 4 / as one-fourth
   Array.from-stack! as values
 
   0 
-  def! :sortsome initplace = {
+  fun! :sortsome initplace = {
      initplace nvalues < ?
      initplace one-fourth + as nextplace
-     initplace nextplace 1 - values qs-stack-coro nylon.cord! as theCord
+     initplace nextplace 1 - values qs-stack-coro Nylon.cord! as theCord
      nextplace sortsome!
   }
 }
 
 
-'./mathlib' crequire! .random as random
-
-def :testQuicksort numItems = { 
-  random numItems iterate.times!
-  quicksort!
+fun :testQuicksort numItems = { 
+  random numItems hof.times!
+  mergesort!
 }
 
 -- 
 
-fun=
 N testQuicksort!
-;1 iterate.times!
 
-nylon.runloop!
+Nylon.runloop!
 
 
 N 9499 > ? { save-stack! drop! }
