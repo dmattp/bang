@@ -15,11 +15,6 @@ HAVE_BUILTIN_ARRAY=1
 HAVE_BUILTIN_HASH=1
 HAVE_BUILTIN_MATH=1
 
-ifeq (1,$(USE_GC))
- LDFLAGS += -L$(DIR_BOEHM_LIB) -lgc
- CPPFLAGS += -D USE_GC=1 -I $(DIR_BOEHM_HDR) $(LDFLAGS_GC)
-endif
-
 # GNU lightning JIT
 #   DIR_LIGHTNING_LIB should be set in [site.mak] with path to liblightning.so/.a
 #   Also set CPPFLAGS_LIGHTNING in [site.mak] if necessary for include paths

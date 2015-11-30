@@ -8,14 +8,14 @@
 
 # N "fannkuck start stack=%@ N=%@\n" print!
 
-def :fannkuch n = {
+fun :fannkuch n = {
 --  # n "stack=%@ fannkuck n=%@\n" print!
 
    (fun=; 0 n range! stack-to-array!) as p
    (p/to-stack stack-to-array!) as q
    (p/to-stack stack-to-array!) as s
 
-   def :iloopy j = { as i
+   fun :iloopy j = { as i
 --      'iloopy\n' print!
       i j q/swap
       j i - 2 >
@@ -26,16 +26,16 @@ def :fannkuch n = {
 
 ---    fun j = { j 1 + p[] j p/set } as setjfromplus1
 --- 
----    def :setjfromplus1x top = {
+---    fun :setjfromplus1x top = {
 --- --     1 inner9!
 ---      1
----      def! :inner9 j = {
+---      fun! :inner9 j = {
 ---        j 1 + p[] j p/set
 ---        j top < ? j 1 + inner9!
 ---      }
 ---    }
 
-   def :permute-loop i = {
+   fun :permute-loop i = {
 --      'permute-loop\n' print!
        s[i] as sx
        sx 1 = 
@@ -46,7 +46,7 @@ def :fannkuch n = {
               p[1] as t
 
 --              setjfromplus1 1 i range!
-     1 def! :inner9 jpr = {
+     1 fun! :inner9 jpr = {
 --      'inner9\n' print!
        jpr 1 + as next-jpr
        p[next-jpr] jpr p/set
@@ -61,9 +61,9 @@ def :fannkuch n = {
        : { sx 1 - i s/set true }
    }
 
-   def :flipper-loop sum maxflips sign = { 
+   fun :flipper-loop sum maxflips sign = { 
 --      sum maxflips sign 'flipper-loop sum=%@ maxflips=%@ sign=%@\n' print!
-      def! :inner-flipper q1 flips = { 
+      fun! :inner-flipper q1 flips = { 
 --       'inner-flipper\n' print!
         q[q1] as qq
         qq 1 =
@@ -79,7 +79,7 @@ def :fannkuch n = {
    } -- end, flipper-loop
 
    0 0 1
-   def! :inner-mainloop sum maxflips sign = { 
+   fun! :inner-mainloop sum maxflips sign = { 
      p[1] as q1
 --     sum maxflips sign q1 'inner-mainloop sum=%@ maxflips=%@ sign=%@ q1=%@\n' print!
      q1 1 = ? sum maxflips : {

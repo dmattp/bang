@@ -384,7 +384,6 @@ namespace Bang {
     void OptimizeAst( std::vector<Bang::Ast::Base*>& ast, const Bang::Ast::CloseValue* upvalueChain, bool notco );
 
 
-#if !USE_GC
 template< class Tp >    
 struct FcStack
 {
@@ -452,7 +451,6 @@ bool operator!=(const SimpleAllocator<T>& a, const SimpleAllocator<U>& b)
 {
     return &a != &b;
 }
-#endif 
 
 #if LCFG_MT_SAFEISH    
 template <class Tp>
@@ -477,19 +475,15 @@ struct SimplestAllocator
 };
 #endif
 
-#if !USE_GC    
 #if LCFG_MT_SAFEISH    
 SimplestAllocator< Upvalue > gUpvalAlloc;
 #else
 SimpleAllocator< Upvalue > gUpvalAlloc;
 #endif 
-#endif
     
 
         
-#if USE_GC
-# define NEW_UPVAL new Upvalue
-#elif LCFG_GCPTR_STD    
+#if LCFG_GCPTR_STD    
 # define NEW_UPVAL(c,p,v) std::allocate_shared<Upvalue>( gUpvalAlloc, c, p, v )
 #elif LCFG_UPVAL_SIMPLEALLOC
     
@@ -2263,8 +2257,8 @@ DLLEXPORT Thread* Thread::nullthread() { return &gNullThread; }
 
 #if LCFG_HAVE_TAV_SWAP
             // i think a better implementation would be to have a distinct Ast::Swap()
-            // instruction, then the optimizer could remove it when followed by a dual ValueEater where
-            // both Values are not coming from the stack.  if both values come from the stack
+            // instruction, then the optimizer could remove it when followed by a dual ValueEater 
+            // except where both Values are coming from the stack.  if both values come from the stack
             // then the Ast::Swap() instruction is left in place.
             if (pa.argSwap_)
             {

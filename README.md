@@ -15,7 +15,7 @@ Or they can be as complicated as you wish to make them, with all the power of fu
 
 # Status
 
-Bang! is barely a month old and many features are incomplete and specifications are tentative.  The current implementation is rough around the edges but usable.  There are probably issues that make it unsuitable for use in long-lived production environments.  But it does demonstrate the concepts and runs short-lived scripts quite ably.  Performance is reasonable, but not quite at par with more mature languages like Lua/Ruby/Python.
+Bang! is still young and many features are incomplete and specifications are tentative.  The current implementation is rough around the edges but usable.  There are probably issues that make it unsuitable for use in long-lived production environments, but it does demonstrate the concepts and runs short-lived scripts quite ably.  Performance is reasonable, but not quite at par with more mature languages like Lua/Ruby/Python.
 
 # Introduction
 
@@ -157,9 +157,9 @@ Here is a short implementation of quicksort using higher order functions:
       # 2 / nth!  as pivotValue -- use the value midway on the stack as a pivot value
       save-stack! as theStack   -- save/duplicate the stack, because we'll need to filter it several times
      
-       theStack! fun = pivotValue <; filter! quicksort # 1 >? 
+       theStack! fun = pivotValue <; filter! # 1 > ? quicksort!;
       (theStack! fun = pivotValue =; filter!)
-      (theStack! fun = pivotValue >; filter! quicksort # 1 >?)
+      (theStack! fun = pivotValue >; filter! # 1 > ? quicksort!;)
     }
 
 When quicksort is invoked, it looks at the size of the stack, calculates the midpoint index and stores the midpoint value for use as a 'pivot'.  The full stack contents are then saved off in a closure, as we'll need to operate on this list of values several times.

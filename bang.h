@@ -1,8 +1,6 @@
 #ifndef BANG_H__
 #define BANG_H__
 
-// high performance parallel malloc? https://github.com/gperftools/gperftools
-
 #include <memory>
 #include <vector>
 #include <iterator>
@@ -37,11 +35,6 @@ static const char* const BANG_VERSION = "0.006";
 # define DLLEXPORT _declspec(dllexport)
 #else
 # define DLLEXPORT
-#endif
-
-#if USE_GC
-# include "gc_cpp.h"
-# include "gc_allocator.h"
 #endif
 
 #if LCFG_MT_SAFEISH 
@@ -165,20 +158,13 @@ namespace Bang
 
 typedef std::shared_ptr<Thread> bangthreadptr_t;
     
-#if USE_GC
-  typedef Function* bangfunptr_t;
-# define BANGFUN_CREF Bang::bangfunptr_t
-# define STATIC_CAST_TO_BANGFUN(f)  static_cast<Bang::Function*>( f )
-# define NEW_BANGFUN(A,...) new A( __VA_ARGS__ )
+typedef gcptrfun bangfunptr_t;
+#define BANGFUN_CREF const Bang::bangfunptr_t&
+#define STATIC_CAST_TO_BANGFUN(f) Bang::gcptrfun( reinterpret_cast<const Bang::gcptrfun&>(f) )
+#if LCFG_GCPTR_STD    
+# define NEW_BANGFUN(A,...)  std::make_shared<A>( __VA_ARGS__ )
 #else
-  typedef gcptrfun bangfunptr_t;
-# define BANGFUN_CREF const Bang::bangfunptr_t&
-# define STATIC_CAST_TO_BANGFUN(f) Bang::gcptrfun( reinterpret_cast<const Bang::gcptrfun&>(f) )
-# if LCFG_GCPTR_STD    
-#  define NEW_BANGFUN(A,...)  std::make_shared<A>( __VA_ARGS__ )
-# else
-#  define NEW_BANGFUN(A,...)  Bang::gcptr<A >( new A( __VA_ARGS__ ) )
-# endif 
+# define NEW_BANGFUN(A,...)  Bang::gcptr<A >( new A( __VA_ARGS__ ) )
 #endif 
 
 #define BANGFUNPTR bangfunptr_t
@@ -384,12 +370,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
             switch (rhs.type_)
             {
-#if USE_GC            
-                case kFun: v_.funptr = rhs.v_.funptr; return;
-#else
                 case kBoundFun: // fall through
                 case kFun:  new (v_.cfun) gcptrfun( rhs.tofun() ); return;
-#endif
                 case kStr:  new (v_.cstr) bangstring( rhs.tostr() ); return;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
@@ -403,12 +385,8 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         {
             switch (rhs.type_)
             {
-#if USE_GC            
-                case kFun: v_.funptr = rhs.v_.funptr; return;
-#else
                 case kBoundFun: // fall through
                 case kFun: new (v_.cfun) gcptrfun( std::move(rhs.tofun()) ); return;
-#endif
                 case kStr:  new (v_.cstr) bangstring( std::move(rhs.tostr()) ); return;
                 case kBool: v_.b = rhs.v_.b; return;
                 case kNum:  v_.num = rhs.v_.num; return;
@@ -426,9 +404,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
                 case kStr: reinterpret_cast<bangstring*>(v_.cstr)->~bangstring(); return;
                 case kBoundFun:
                 case kFun:
-#if !USE_GC            
                     reinterpret_cast<gcptrfun*>(v_.cfun)->~gcptrfun();
-#endif
                     return;
                 case kThread: reinterpret_cast<BANGTHREADPTR*>(v_.cthread)->~shared_ptr<Thread>(); return;
             }
@@ -450,11 +426,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
             bool     b;
             double   num;
             char     cstr[sizeof(bangstring)];
-#if USE_GC
-            bangfunptr_t funptr;
-#else
             char     cfun[sizeof(gcptrfun)];
-#endif
             char cthread[sizeof(BANGTHREADPTR)];
             tfn_primitive funprim;
         } v_;
@@ -535,11 +507,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value( BANGFUN_CREF f )
         : type_( kFun )
         {
-#if USE_GC
-            v_.funptr = f;
-#else
             new (v_.cfun) gcptrfun(f);
-#endif 
         }
 
         Value( const gcptr<BoundProgram>& bp )
@@ -553,11 +521,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         Value( BANGFUNPTR&& f )
         : type_( kFun )
         {
-#if USE_GC
-            v_.funptr = f;
-#else
             new (v_.cfun) gcptrfun(std::move(f));
-#endif 
         }
         
         Value( tfn_primitive pprim )
@@ -587,11 +551,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
         BANGFUN_CREF tofun() const
         {
-#if USE_GC
-            return v_.funptr;
-#else
             return *reinterpret_cast<const gcptrfun* >(v_.cfun);
-#endif 
         }
 
         EValueType type_;
@@ -622,20 +582,15 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
         EValueType type() const { return type_; }
 
         double tonum()  const { return v_.num; }
-        // size_t numoffset() const { return ((const char*)&v_.num - (const char*)this); }
-//        const double& numref()  const { return v_.num; }
         bool   tobool() const { return v_.b; }
         const bangstring& tostr() const { return *reinterpret_cast<const bangstring*>(v_.cstr); }
         tfn_primitive tofunprim() const { return v_.funprim; }
-        BANGTHREAD_CREF tothread() const {
-            return *reinterpret_cast<const std::shared_ptr<Thread>* >(v_.cthread);
-        }
+        BANGTHREAD_CREF tothread() const { return *reinterpret_cast<const std::shared_ptr<Thread>* >(v_.cthread); }
         void tostring( std::ostream& ) const;
     
         void dump( std::ostream& o ) const;
         
-        void applyOperator( EOperators which, Stack& ) const;
-        Value applyAndValue2Value( EOperators which, const Value& other ) const;
+        DLLEXPORT Value applyAndValue2Value( EOperators which, const Value& other ) const;
         tfn_opThingAndValue2Value getOperator( EOperators which ) const;
         void applyCustomOperator( const bangstring& theOperator, Stack& ) const;
         void applyIndexOperator( const Value& theIndex, Stack&, const RunContext& ) const;
@@ -848,11 +803,7 @@ typedef std::shared_ptr<Thread> bangthreadptr_t;
 
 
     class Function
-#if USE_GC
-        : public gc
-#else
         : public gcbase<Function>
-#endif
     {
         Function( const Function& ); // uncopyable
         Function& operator=(const Function&);
