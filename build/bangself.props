@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup Label="Globals">
+  </PropertyGroup>
+
+   <!--
+    <PlatformToolset>Windows7.1SDK</PlatformToolset>
+       0x0601
+
+  <PropertyGroup Label="Globals">
+    <PlatformToolset>v100</PlatformToolset>
+    <PlatformToolset>v140</PlatformToolset>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <WindowsSdkDir>C:\pf32\Microsoft SDKs\windows\v7.1A</WindowsSdkDir>
+    <WindowsSdkPath>C:\pf32\Microsoft SDKs\windows\v7.1A</WindowsSdkPath>
+    <FrameworkSDKDir>C:\pf32\Microsoft SDKs\windows\v7.1A</FrameworkSDKDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+    <ClCompile>
+        <PreprocessorDefinitions>_WIN32_WINNT=0x601;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+
+    <PlatformToolset>v100</PlatformToolset>
+
+   <PropertyGroup Label="Globals" Condition="'$(Platform)'=='Win32'">
+    <DIR_BANG_SRC>c:\m\n2proj\bang</DIR_BANG_SRC>
+   </PropertyGroup>
+  
+       <Import Project="$(DIR_BANG_SRC)/build/gc.props" />
+
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+    <ClCompile>
+          <AdditionalIncludeDirectories>$(DIR_BANG_SRC);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(DIR_BANG_SRC)/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>banglib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+    -->
+  
+</Project>
+

@@ -1,0 +1,7 @@
+def :fibR n = {
+  n 2 < ? n :
+  n 2 - fibR!  n 1 - fibR! +
+}
+
+
+34 fibR!

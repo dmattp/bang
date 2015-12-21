@@ -22,3 +22,5 @@ Release
 bang.sln
 *.manifest.res
 *_manifest.rc
+samples/euler*bang
+

@@ -1,4 +1,4 @@
--- 499000 'samples/n-body.bang' require!
-16 'samples/binary-trees.bang' require!
+499000 'samples/n-body.bang' require!
+--16 'samples/binary-trees.bang' require!
 -- 900 'samples/spectral.bang' require!
 save-stack! drop!
