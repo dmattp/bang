@@ -1,11 +1,16 @@
 # 1 < ? 10; as N
 
-'mathlib' crequire! .pow as pow
+--'mathlib' crequire! .pow as pow
 
 -- The Computer Language Benchmarks Game
 -- http://benchmarksgame.alioth.debian.org/
 -- contributed by David M. Placek
-def :pow2 n = { 2 n pow! }
+fun :pow2 n = { 2 n
+  fun! :inner rc rem = {
+     rem 1 > ? rc 2 * rem 1 - inner! :
+     rc
+  }
+}
 
 def :times = { swap! as loopFun
     def! :innerLoop remain = {

@@ -2406,7 +2406,74 @@ restartTco:
                     pInstr->run( stack, frame );
             OPCODE_END();
 
+                OPCODE_LOC(kCloseValue):
+                    frame.upvalues_ =
+                        NEW_UPVAL
+                        (   reinterpret_cast<const Ast::CloseValue*>(pInstr),
+                            frame.upvalues_,
+                            stack.pop()
+                        );
+                OPCODE_END();
+            
 //                dobreakprog:
+                OPCODE_LOC(kTCOApplyFunRec):
+                {
+                    // no dynamic cast, should be safe since we know the type from instr_
+//                    std::cerr << "got kTCOApplyFunRec" << std::endl;
+                    const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
+                    frame.rebind
+                    (  TMPFACT_PROG_TO_RUNPROG(afn->pRecFun_),
+                        (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ )
+                    );
+                    goto restartTco;
+                }
+                OPCODE_END();
+
+            OPCODE_LOC(kMove):
+                {
+                    const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
+                    
+                    switch (move.dest_)
+                    {
+                        case kSrcStack: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcStack>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcStack>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcRegister: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcRegister>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcRegister>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcRegisterBool: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcRegisterBool>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcRegisterBool>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                        case kSrcCloseValue: { switch (move.src_.v1src_) {
+                                case kSrcUpval:   Mover<kSrcUpval,kSrcCloseValue>  ::domove( move, move.src_, pThread, frame, stack ); break;
+                                case kSrcLiteral: Mover<kSrcLiteral,kSrcCloseValue>::domove( move, move.src_, pThread, frame, stack ); break;
+                            } break; } break;
+                    }
+            }
+            OPCODE_END();
+            
+            OPCODE_LOC(kApplyThingAndValue2ValueOperator):
+                {
+//                     static void* dispatch_table_tav2v = { &&OPCODE_2LOC(tav2v,kSrcStack), 0, 0, 0,
+//                                          &&OPCODE_2LOC(tav2v,kSrcRegister),
+//                                          &&OPCODE_2LOC(tav2v,kSrcRegisterBool),
+//                                          &&OPCODE_2LOC(tav2v,kSrcCloseValue) };
+                    const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
+//                    goto *dispatch_table_tav2v[pa.dest_];
+                    switch (pa.dest_)
+                    {
+                        case kSrcStack:        ApplyThingValueCall<kSrcStack>       ::docall( stack, pThread, frame, pa ); break;
+                        case kSrcRegister:     ApplyThingValueCall<kSrcRegister>    ::docall( stack, pThread, frame, pa ); break;
+                        case kSrcRegisterBool: ApplyThingValueCall<kSrcRegisterBool>::docall( stack, pThread, frame, pa ); break;
+                        case kSrcCloseValue:   ApplyThingValueCall<kSrcCloseValue>  ::docall( stack, pThread, frame, pa ); break;
+                    }
+                }
+            OPCODE_END();
+
+            
                 OPCODE_LOC(kBreakProg):
                 {
                     RunContext* prev = frame.prev;
@@ -2488,28 +2555,6 @@ restartTco:
             OPCODE_LOC(kMakeCoroutine):
                     Ast::MakeCoroutine::go( stack, pThread );
             OPCODE_END();
-
-                OPCODE_LOC(kCloseValue):
-                    frame.upvalues_ =
-                        NEW_UPVAL
-                        (   reinterpret_cast<const Ast::CloseValue*>(pInstr),
-                            frame.upvalues_,
-                            stack.pop()
-                        );
-                OPCODE_END();
-            
-                OPCODE_LOC(kTCOApplyFunRec):
-                {
-                    // no dynamic cast, should be safe since we know the type from instr_
-//                    std::cerr << "got kTCOApplyFunRec" << std::endl;
-                    const Ast::PushFunctionRec* afn = reinterpret_cast<const Ast::PushFunctionRec*>(pInstr);
-                    frame.rebind
-                    (  TMPFACT_PROG_TO_RUNPROG(afn->pRecFun_),
-                        (afn->nthparent_ == kNoParent) ? SHAREDUPVALUE() : frame.nthBindingParent( afn->nthparent_ )
-                    );
-                    goto restartTco;
-                }
-                OPCODE_END();
 
             OPCODE_LOC(kApplyFunRec):
                 {
@@ -2637,31 +2682,6 @@ restartTco:
                 }
                 OPCODE_END();
 
-            OPCODE_LOC(kMove):
-                {
-                    const Ast::Move& move = *reinterpret_cast<const Ast::Move*>(pInstr);
-                    
-                    switch (move.dest_)
-                    {
-                        case kSrcStack: { switch (move.src_.v1src_) {
-                                case kSrcUpval:   Mover<kSrcUpval,kSrcStack>  ::domove( move, move.src_, pThread, frame, stack ); break;
-                                case kSrcLiteral: Mover<kSrcLiteral,kSrcStack>::domove( move, move.src_, pThread, frame, stack ); break;
-                            } break; } break;
-                        case kSrcRegister: { switch (move.src_.v1src_) {
-                                case kSrcUpval:   Mover<kSrcUpval,kSrcRegister>  ::domove( move, move.src_, pThread, frame, stack ); break;
-                                case kSrcLiteral: Mover<kSrcLiteral,kSrcRegister>::domove( move, move.src_, pThread, frame, stack ); break;
-                            } break; } break;
-                        case kSrcRegisterBool: { switch (move.src_.v1src_) {
-                                case kSrcUpval:   Mover<kSrcUpval,kSrcRegisterBool>  ::domove( move, move.src_, pThread, frame, stack ); break;
-                                case kSrcLiteral: Mover<kSrcLiteral,kSrcRegisterBool>::domove( move, move.src_, pThread, frame, stack ); break;
-                            } break; } break;
-                        case kSrcCloseValue: { switch (move.src_.v1src_) {
-                                case kSrcUpval:   Mover<kSrcUpval,kSrcCloseValue>  ::domove( move, move.src_, pThread, frame, stack ); break;
-                                case kSrcLiteral: Mover<kSrcLiteral,kSrcCloseValue>::domove( move, move.src_, pThread, frame, stack ); break;
-                            } break; } break;
-                    }
-            }
-            OPCODE_END();
                 
         OPCODE_LOC(kTCOApplyProgram):
                 {
@@ -2684,24 +2704,6 @@ restartTco:
                 case Value::kThread: { auto other = v.tothread().get(); other->setcallin(pThread); xferstack(pThread,other); pThread = other; goto restartThread; }
                 
                 /* 150629 Coroutine issue:  Currently, coroutine yield returns to creating thread, not calling thread. */
-
-            OPCODE_LOC(kApplyThingAndValue2ValueOperator):
-                {
-//                     static void* dispatch_table_tav2v = { &&OPCODE_2LOC(tav2v,kSrcStack), 0, 0, 0,
-//                                          &&OPCODE_2LOC(tav2v,kSrcRegister),
-//                                          &&OPCODE_2LOC(tav2v,kSrcRegisterBool),
-//                                          &&OPCODE_2LOC(tav2v,kSrcCloseValue) };
-                    const Ast::ApplyThingAndValue2ValueOperator& pa = *reinterpret_cast<const Ast::ApplyThingAndValue2ValueOperator*>(pInstr);
-//                    goto *dispatch_table_tav2v[pa.dest_];
-                    switch (pa.dest_)
-                    {
-                        case kSrcStack:        ApplyThingValueCall<kSrcStack>       ::docall( stack, pThread, frame, pa ); break;
-                        case kSrcRegister:     ApplyThingValueCall<kSrcRegister>    ::docall( stack, pThread, frame, pa ); break;
-                        case kSrcRegisterBool: ApplyThingValueCall<kSrcRegisterBool>::docall( stack, pThread, frame, pa ); break;
-                        case kSrcCloseValue:   ApplyThingValueCall<kSrcCloseValue>  ::docall( stack, pThread, frame, pa ); break;
-                    }
-                }
-            OPCODE_END();
 
 #if DOT_OPERATOR_INLINE
             OPCODE_LOC(kApplyIndexOperator):
