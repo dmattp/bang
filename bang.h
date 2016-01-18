@@ -1061,8 +1061,10 @@ bool operator!=(const SimplePTAllocator<T>& a, const SimplePTAllocator<U>& b)
     {
     public:
         InteractiveEnvironment interact;
-        ParsingContext( InteractiveEnvironment& env )
-        : interact( env )
+        bool unknownSymbolsAreStrings;
+        ParsingContext( InteractiveEnvironment& env, bool in_unknownSymbolsAreStrings = false )
+        : interact( env ),
+          unknownSymbolsAreStrings( in_unknownSymbolsAreStrings )
         {}
         ParsingContext() 
         {}

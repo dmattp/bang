@@ -4524,7 +4524,7 @@ Parser::Program::Program
 #if HAVE_DOT_OPERATOR
                     ast_.push_back( new Ast::ApplyIndexOperator( internstring(methodName.name())) );
 #else
-                    ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );                    
+                    ast_.push_back( new Ast::PushLiteral( Value(methodName.name())) );
                     ast_.push_back( new Ast::PushPrimitive( &Primitives::swap, "swap" ) );
                     ast_.push_back( newapplywhere(mark) ); // haveto apply the swap
                     ast_.push_back( newapplywhere(mark) ); // now apply to the object!!
@@ -4823,17 +4823,26 @@ Parser::Program::Program
                 
                     if (upvalNumber == kNoParent)
                     {
-                        bangerr(ParseFail) << "Could not find binding for var=" << ident.name() << " uvchain=" << (void*)upvalueChain 
-                                           << " in " << mark.sayWhere();
+                        if (parsecontext.unknownSymbolsAreStrings)
+                        {
+                            ast_.push_back( new Ast::Move( Value(ident.name())) );
+                        }
+                        else
+                        {
+                            bangerr(ParseFail) << "Could not find binding for var=" << ident.name() << " uvchain=" << (void*)upvalueChain 
+                                               << " in " << mark.sayWhere();
+                        }
                     }
-
-                    const NthParent entryUvNumber = upvalueChain->FindBinding( entryUvChain );
-                    if (! (upvalNumber < entryUvNumber) )
+                    else
                     {
-                        auto& cvForUpval = const_cast<Ast::CloseValue*>(upvalueChain)->nthUpvalue( upvalNumber );
-                        cvForUpval.incUseCount();
+                        const NthParent entryUvNumber = upvalueChain->FindBinding( entryUvChain );
+                        if (! (upvalNumber < entryUvNumber) )
+                        {
+                            auto& cvForUpval = const_cast<Ast::CloseValue*>(upvalueChain)->nthUpvalue( upvalNumber );
+                            cvForUpval.incUseCount();
+                        }
+                        ast_.push_back( new Ast::Move(ident.name(), upvalNumber) );
                     }
-                    ast_.push_back( new Ast::Move(ident.name(), upvalNumber) );
                 }
                 
                 mark.accept();
@@ -4854,7 +4863,7 @@ Parser::Program::Program
         ast_.push_back( parsecontext.hitEof( upvalueChain ) );
         OptimizeAst( ast_, upvalueChain, noTco_ );
     }
-}
+} // end, Parser::Program::Program()
 
 
 

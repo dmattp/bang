@@ -160,7 +160,7 @@ Ast::Base* BangmainParsingContext::hitEof( const Ast::CloseValue* uvchain )
     {
     public:
         ShParsingContext( Bang::InteractiveEnvironment& i )
-        : Bang::ParsingContext(i)
+        : Bang::ParsingContext(i,true) // true=treat unknown symbols as strings
         {
         }
         Bang::Ast::Base* hitEof( const Bang::Ast::CloseValue* uvchain )

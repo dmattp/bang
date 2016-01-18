@@ -84,7 +84,7 @@ namespace Math
             :  str == "random" ? &random
             :  str == "sin"    ? &sin
             :  str == "sqrt"   ? &sqrt
-//            :  str == "innerspectral"   ? &sqrt
+//            :  str == "innerspectral"   ? &innerspectral
             :  nullptr
             );
 
