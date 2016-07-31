@@ -105,9 +105,10 @@ In the functional world, iteration is usually introduced as recursion.  A labele
 
 Here is a higher order function that does something N times:
 
-    fun :times = { swap! as do-something
+    fun :times doThis nTimes = { 
+        nTimes 
         fun! :innerLoop remain = {
-          do-something!
+          doThis!
           remain 1 > ? remain 1 - innerLoop!
         }
     }
@@ -118,7 +119,7 @@ Which can be used like this:
     
        say-hello 20 times!
 
-When the "times" function is called, it invokes the supplied "do something" function, then calls itself again with the number of remaining iterations decremented by 1.  It repeats this as long as the number of times remaining is greater than 1.
+When the "times" function is called, it invokes the supplied "doThis" function, then calls itself again with the number of remaining iterations decremented by 1.  It repeats this as long as the number of times remaining is greater than 1.
 
 Bang includes libraries with some standard iteration functions like "times" and "range" to iterate a number of times or over a range of values.  Much of the time that iteration would be used in an imperative language a higher order function such as map or fold ought to be preferred as more idiomatic.  And where neither that nor something like "times" or "range" fits well you can always buckle down and write a recursive function.
 
