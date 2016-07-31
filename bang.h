@@ -19,7 +19,7 @@
 #define LCFG_UPVAL_SIMPLEALLOC 1
 
 #ifndef LCFG_MT_SAFEISH
-# if defined __GNUC__ // (WIN32) && __GNUC__
+# if defined(WIN32) && __GNUC__
 #  define LCFG_MT_SAFEISH 0 // no threading/nylon for mingw build, so don't bother!
 # else
 #  define LCFG_MT_SAFEISH 1
