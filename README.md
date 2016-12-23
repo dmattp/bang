@@ -115,7 +115,7 @@ Here is a higher order function that does something N times:
     
 Which can be used like this:
 
-       fun :say-hello "Hello World!" print!;
+       fun :say-hello = "Hello World" print!;
     
        say-hello 20 times!
 
@@ -295,7 +295,7 @@ Or rebound to local upvalues as
 
 # Thoughts on Performance
 
-There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy, and on the 4 ported samples Bang! runs about 3.3x slower than Lua.  This isn't stellar compared to native compiled and JIT'ed languages, but comparing to say Ruby or Python- Python is 1.6x slower than Lua, and Ruby is 1.4x.  Closing in on 2x the speed of Python I think is not bad for a language under development by one person for less than 3 months.
+There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy, and on the 4 ported samples Bang! runs about 2.5x slower than Lua.  This isn't stellar compared to native compiled and JIT'ed languages, but comparing to say Ruby or Python- Python is 1.6x slower than Lua, and Ruby is 1.4x.  Closing in on 2x the speed of Python I think is not bad for a language under development part time by one person.  Getting it much faster has been challenging; the big expenses tend to be in allocation and ref counting, so without GC it just won't go much faster easily.  Rolling in the boehm GC helps but adds an extra dependency and increases the size; adding a home-brewed garbage collector hasn't interested me yet, as it adds complexity and size that I'm not sure the language is mature enough to warrant.  At this point I'd rather live with mediocre performance in favor of choices that keep the implementation simple, small, and adaptable.
 
 # Roadmap
 
