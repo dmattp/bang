@@ -105,7 +105,8 @@ In the functional world, iteration is usually introduced as recursion.  A labele
 
 Here is a higher order function that does something N times:
 
-    fun :times = { swap! as do-something
+    fun :times do-something ntimes = { 
+        ntimes
         fun! :innerLoop remain = {
           do-something!
           remain 1 > ? remain 1 - innerLoop!
@@ -128,14 +129,13 @@ In many imperative languages you have to worry about recursive functions overflo
 
 Higher order functions are functions that do something with a function.  Typically these are used to transform, accumulate, or filter a list or other such fun things.  "map" traditionally applies a functional operator to an entire list of values, applying the function each value value in the list and returning a list of transformed values.
 
-I'm hestitant to add a firm list or array structure to Bang! because I think a lot of that can be done on the working stack.  To help with recursion over the stack, the '#' operator is provided which returns the current length of the stack.  With this operator, "map" can be implemented like this:
+Although Bang! includes an explicit array structure it is generally preferred to write algorithms for lists which operate on the working stack.  To help with recursion over the stack, the '#' operator returns the current length of the stack.  With this operator, "map" can be implemented like this:
 
     fun :map xform = {
-      fun :innermap = {
+      fun! :innermap = {
         # 0 > 
         ? as val innermap! val xform!
       }
-      innermap!
     }
 
 Each value on the stack is transformed by the provided function.  The 'innermap' function is called recursively as long as values remain on the stack.
@@ -294,7 +294,9 @@ Or rebound to local upvalues as
 
 # Thoughts on Performance
 
-There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy, and on the 4 ported samples Bang! runs about 3.3x slower than Lua.  This isn't stellar compared to native compiled and JIT'ed languages, but comparing to say Ruby or Python- Python is 1.6x slower than Lua, and Ruby is 1.4x.  Closing in on 2x the speed of Python I think is not bad for a language under development by one person for less than 3 months.
+There are several samples ported from the "computer language shootout" benchmarks in the [samples] directory.  I've compared mostly to Lua as it's one of the nearest languages in size and philosophy.  In non-threading builds (does not provide builtin threading concurrency) Bang! runs about 2.5x slower than Lua on a small collection of shootout benchmarks .  
+
+This isn't stellar compared to native compiled and JIT'ed languages, but comparing to say Ruby or Python- Python is 1.6x slower than Lua, and Ruby is 1.4x.  Coming within 2x the speed of Python/Ruby I think is not bad for a one-man effort with minimal time invested.  I experimented with jit'ing a bit, but I'm not too keen to pursue that further because it adds dependencies and complexity and demands more man-hours to support additional platforms, and it's also a poor trade-off for code that transitions frequently between the scripting language and native code (ie, C++ libraries).  Since one goal of Bang! is to serve as convenient glue for binding together C++ libraries the transition between the JIT and native environment really minimizes the performance gained by the JITter.
 
 # Roadmap
 
