@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup Label="Globals">
+    <bb_wsdk_ver>10.0.18362.0</bb_wsdk_ver>
+    <bb_vctool_ver>14.34.31933</bb_vctool_ver>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)'=='Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <LibraryPath>$(VCInstallDir)\Tools\MSVC\14.34.31933\lib\x86;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib\10.0.18362.0\um\x86;$(WindowsSdkDir)lib\10.0.18362.0\ucrt\x86;$(FrameworkSDKDir)\lib;\usr\lib;$(SolutionDir)$(Configuration)\</LibraryPath>
+  </PropertyGroup>
+  
+</Project>
