@@ -14,7 +14,6 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9877DDCA-4560-C476-9F75-AE6C681F9B63}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>radrug</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
 
@@ -42,13 +41,16 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+
+  <Import Project="bang.props" />
+  
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;\usr\lib;$(SolutionDir)$(Configuration)\;c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\debug;C:\Dev\PCS_SDKS\JAG\NewDev\PlatformSystemsSDK\Lib\NT-VS10\Debug;..\Debug;..\..\n2\build\src\$(Configuration)</LibraryPath>
+    <LibraryPath>$(LibraryPath);$(SolutionDir)$(Configuration)\</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <LibraryPath>$(VCInstallDir)lib;$(VCInstallDir)atlmfc\lib;$(WindowsSdkDir)lib;$(FrameworkSDKDir)\lib;\usr\lib;$(SolutionDir)$(Configuration)\;c:\Dev\pcs_sdks\jag\newdev\radiosdk\lib\nt\debug;C:\Dev\PCS_SDKS\JAG\NewDev\PlatformSystemsSDK\Lib\NT-VS10\Debug;..\Debug;..\..\n2\build\src\$(Configuration)</LibraryPath>
+    <LibraryPath>$(LibraryPath);$(SolutionDir)$(Configuration)\;</LibraryPath>
   </PropertyGroup>
 
   <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
